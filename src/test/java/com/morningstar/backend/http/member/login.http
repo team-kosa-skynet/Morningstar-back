@@ -1,0 +1,21 @@
+POST http://localhost:8080/login
+Content-Type: application/json
+
+{
+  "email":"test1@naver.com",
+  "password": 123456
+}
+
+### 회원가입
+POST http://localhost:8080/member/signup
+Content-Type: application/json
+
+{
+  "email": "test1@naver.com",
+  "password": "123456"
+}
+
+### 구글로그인
+GET http://localhost:8080/oauth2/authorization/google
+//http://192.168.230.30:8080/oauth2/authorization/google
+//https://8f98-115-90-99-121.ngrok-free.app/oauth2/authorization/google
