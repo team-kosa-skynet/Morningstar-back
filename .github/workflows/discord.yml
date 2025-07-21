@@ -1,0 +1,24 @@
+name: Discord Notification
+
+on:
+  push:
+    branches: [ main, develop ]  # main 또는 master 브랜치에 푸시될 때
+  pull_request:
+    branches: [ main, develop ]  # PR 생성될 때
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Discord notification
+      uses: Ilshidur/action-discord@master
+      with:
+        args: |
+          🚀 **{{ GITHUB_ACTOR }}**님이 **{{ GITHUB_REPOSITORY }}**에 푸시했습니다!
+          
+          📝 커밋: {{ GITHUB_SHA }}
+          🌿 브랜치: {{ GITHUB_REF }}
+          
+          [변경사항 보기]({{ GITHUB_SERVER_URL }}/{{ GITHUB_REPOSITORY }}/commit/{{ GITHUB_SHA }})
+      env:
+        DISCORD_WEBHOOK: https://discord.com/api/webhooks/1396661287299321969/o7h4dQ6hG8YIQHRZi3jrM8TJ1bMq9rKPdusJUWTkDMYruQDTxzMhj1IJpqX-3IaHTKDJ
