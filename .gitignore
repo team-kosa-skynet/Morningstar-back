@@ -37,3 +37,9 @@ out/
 .vscode/
 
 src/main/resources/application.yml
+
+### DATABASE/DATA Directory ###
+database/data/
+
+### ENV FILE ###
+.env
