@@ -1,5 +1,6 @@
 package com.gaebang.backend.domain.member.controller;
 
+import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
 import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
@@ -54,13 +55,25 @@ public class MemberController {
                 .body(response);
     }
 
-    @PatchMapping("/change-password")
+    @PatchMapping("/password")
     public ResponseEntity<ResponseDTO<Void>> changePassword(
             @AuthenticationPrincipal PrincipalDetails principalDetails,
             @Valid @RequestBody ChangePasswordRequestDto changePasswordRequestDto) {
 
         memberService.changePassword(principalDetails, changePasswordRequestDto);
         ResponseDTO<Void> response = ResponseDTO.okWithMessage("비밀번호가 성공적으로 변경되었습니다.");
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
+    }
+
+    @PatchMapping("/nickname")
+    public ResponseEntity<ResponseDTO<Void>> changeNickname(
+            @AuthenticationPrincipal PrincipalDetails principalDetails,
+            @Valid @RequestBody ChangeNicknameRequestDto changeNicknameRequestDto) {
+
+        memberService.changeNickname(principalDetails, changeNicknameRequestDto);
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("닉네임이 성공적으로 변경되었습니다.");
         return ResponseEntity
                 .status(response.getCode())
                 .body(response);

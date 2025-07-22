@@ -21,12 +21,21 @@ Authorization: {{authToken}}
 Content-Type: application/json
 
 ### 비밀번호 변경
-PATCH http://localhost:8080/member/change-password
+PATCH http://localhost:8080/member/password
 Authorization: {{authToken}}
 Content-Type: application/json
 
 {
   "currentPassword": "123456",
   "newPassword": "1234567"
+}
+
+### 닉네임변경
+PATCH http://localhost:8080/member/nickname
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "nickname": "변경된닉네임"
 }
 
