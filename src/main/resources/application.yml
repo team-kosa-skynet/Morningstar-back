@@ -1,0 +1,11 @@
+spring:
+  profiles:
+    include:
+      core
+    active: dev
+  config:
+    import: optional:file:.env[.properties]
+
+  web:
+    resources:
+      add-mappings: false # 정적 리소스 매핑 비활성화 (NoHandlerFoundException 발생을 위함)
