@@ -1,8 +1,8 @@
-package com.gaebang.backend.domain.pointTier.controller;//package com.project.stock.investory.pointTier.controller;
+//package com.gaebang.backend.domain.pointTier.controller;
 //
-//import com.project.stock.investory.pointTier.dto.response.PointTierResponseDto;
-//import com.project.stock.investory.pointTier.service.PointTierService;
-//import com.project.stock.investory.security.CustomUserDetails;
+//import com.gaebang.backend.domain.pointTier.dto.response.PointTierResponseDto;
+//import com.gaebang.backend.domain.pointTier.service.PointTierService;
+//import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 //import lombok.RequiredArgsConstructor;
 //import org.springframework.http.ResponseEntity;
 //import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,8 +19,8 @@ package com.gaebang.backend.domain.pointTier.controller;//package com.project.st
 //
 //    // 현재 남아 있는 포인트 조회
 //    @GetMapping("/")
-//    public ResponseEntity<PointTierResponseDto> findPoint(@AuthenticationPrincipal CustomUserDetails userDetails) {
-//        PointTierResponseDto pointTier = pointTierService.getCurrentPointTier(userDetails);
+//    public ResponseEntity<PointTierResponseDto> findPoint(@AuthenticationPrincipal PrincipalDetails principalDetails) {
+//        PointTierResponseDto pointTier = pointTierService.getCurrentPointTier(principalDetails);
 //        return ResponseEntity.ok(pointTier);
 //    }
 //

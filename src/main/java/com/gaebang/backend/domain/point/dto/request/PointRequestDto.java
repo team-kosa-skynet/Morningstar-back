@@ -1,18 +1,26 @@
 package com.gaebang.backend.domain.point.dto.request;
 
-import com.project.stock.investory.point.entity.PointType;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.domain.point.entity.Point;
+import com.gaebang.backend.domain.point.entity.PointType;
 
-@Getter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class PointRequestDto {
+import java.time.LocalDateTime;
 
-    private Integer amount;
-    private PointType type;
+public record PointRequestDto (
+        Integer amount,
+        PointType type
+) {
+
+    public Point toEntity(Member member, Integer newDepositSum, Integer newWithdrawSum, Integer nextVersion) {
+        return Point.builder()
+                .member(member)
+                .amount(amount)
+                .type(type)
+                .depositSum(newDepositSum)
+                .withdrawSum(newWithdrawSum)
+                .date(LocalDateTime.now())
+                .version(nextVersion)
+                .build();
+    }
 
 }
