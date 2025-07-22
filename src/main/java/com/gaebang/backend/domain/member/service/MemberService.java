@@ -121,5 +121,13 @@ public class MemberService {
 
         member.getMemberBase().changeNickname(changeNicknameRequestDto.nickname());
     }
+
+    public void deleteMember(PrincipalDetails principalDetails) {
+
+        Member member = memberRepository.findById(principalDetails.getMember()
+                .getId()).orElseThrow(UserNotFoundException::new);
+
+        memberRepository.delete(member);
+    }
 }
 
