@@ -8,8 +8,6 @@ public record MemberInfoResponseDto(
 
         String email,
         String nickname,
-        String profileImage,
-        String profileMessage,
         String createdAt,
         Long userId
 ) {
@@ -18,8 +16,6 @@ public record MemberInfoResponseDto(
         return new MemberInfoResponseDto(
                 member.getMemberBase().getEmail(),
                 member.getMemberBase().getNickname(),
-                member.getProfileImage(),
-                member.getProfileMessage(),
                 DataFormatter.getFormattedCreatedAt(member.getCreatedAt()),
                 member.getId()
         );

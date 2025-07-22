@@ -1,13 +1,13 @@
 package com.gaebang.backend.domain.member.service;
 
-import com.gaebang.backend.domain.member.dto.request.PasswordRequestDto;
+import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
-import com.gaebang.backend.domain.member.exception.CurrentPasswordNotMatchException;
 import com.gaebang.backend.domain.member.exception.EmailDuplicateException;
-import com.gaebang.backend.domain.member.exception.NewPasswordNotMatchException;
+import com.gaebang.backend.domain.member.exception.InvalidPasswordException;
 import com.gaebang.backend.domain.member.exception.NewPasswordSameAsOldException;
+import com.gaebang.backend.domain.member.exception.NicknameAlreadyExistsException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
@@ -33,9 +33,13 @@ public class MemberService {
             throw new EmailDuplicateException();
         });
 
+        memberRepository.findByMemberBase_Nickname(signUpRequestDto.nickname()).ifPresent(user -> {
+            throw new NicknameAlreadyExistsException();
+        });
+
         String encodedPassword = passwordEncoder.encode(signUpRequestDto.password());
 
-        Member newMember = signUpRequestDto.toEntity(encodedPassword, generateName());
+        Member newMember = signUpRequestDto.toEntity(encodedPassword);
         memberRepository.save(newMember);
         return SignUpResponseDto.fromEntity(newMember);
     }
@@ -59,61 +63,25 @@ public class MemberService {
     }
 
     public void changePassword(
-            PrincipalDetails principalDetails, PasswordRequestDto passwordRequestDto) {
-        Member member = getLoginMember(principalDetails);
+            PrincipalDetails principalDetails, ChangePasswordRequestDto changePasswordRequestDto) {
+        Member member = principalDetails.getMember();
 
         String currentPassword = member.getMemberBase().getPassword();
-        String newPassword = passwordRequestDto.newPassword();
+        String newPassword = changePasswordRequestDto.newPassword();
+
+        //비밀번호 일치 검증
+        if (!passwordEncoder.matches(changePasswordRequestDto.currentPassword(), currentPassword)) {
+            throw new InvalidPasswordException();
+        }
 
         //새 비밀번호, 현재 비밀번호와 동일여부  최종 검증
         if (passwordEncoder.matches(newPassword, currentPassword)) {
             throw new NewPasswordSameAsOldException();
         }
 
-        //새비밀번호 재입력값 동일여부 최종 검증
-        if (!passwordRequestDto.newPassword().equals(passwordRequestDto.confirmPassword())) {
-            throw new NewPasswordNotMatchException();
-        }
-
         String encodedNewPassword = passwordEncoder.encode(newPassword);
         member.getMemberBase().changePassword(encodedNewPassword);
         memberRepository.save(member);
-    }
-
-    public void checkPassword(
-            PrincipalDetails principalDetails, PasswordRequestDto passwordRequestDto) {
-        Member member = principalDetails.getMember();
-        String currentPassword = member.getMemberBase().getPassword();
-        String inPuttedCurrentPassword = passwordRequestDto.currentPassword();
-        String newPassword = passwordRequestDto.newPassword();
-
-        // 현재 비밀번호만 입력된 경우
-        if (passwordRequestDto.currentPassword() != null
-                && passwordRequestDto.newPassword() == null) {
-            if (!passwordEncoder.matches(passwordRequestDto.currentPassword(), currentPassword)) {
-                throw new CurrentPasswordNotMatchException();
-            }
-        }
-
-        // 새 비밀번호만 입력된 경우
-        if (passwordRequestDto.newPassword() != null
-                && passwordRequestDto.currentPassword() == null) {
-            if (passwordEncoder.matches(passwordRequestDto.newPassword(), currentPassword)) {
-                throw new NewPasswordSameAsOldException();
-            }
-        }
-
-        // 새 비밀번호 확인이 입력된 경우
-        if (passwordRequestDto.confirmPassword() != null) {
-            if (!passwordRequestDto.newPassword().equals(passwordRequestDto.confirmPassword())) {
-                throw new NewPasswordNotMatchException();
-            }
-        }
-    }
-
-    public Member getLoginMember(PrincipalDetails principalDetails) {
-        Member member = principalDetails.getMember();
-        return member;
     }
 }
 

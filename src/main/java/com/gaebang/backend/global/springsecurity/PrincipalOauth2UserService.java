@@ -56,9 +56,7 @@ public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
                 .authority("ROLE_USER")
                 .provider(provider)
                 .build();
-            newUser.updateProfileImage(oauth2Userinfo.getProfileImage());
             if (provider.equals("kakao")) {
-                newUser.updateProfileImage(oauth2Userinfo.getProfileImage());
             }
 
             memberRepository.save(newUser);

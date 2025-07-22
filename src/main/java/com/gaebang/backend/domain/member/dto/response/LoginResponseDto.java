@@ -7,8 +7,7 @@ public record LoginResponseDto(
         String email,
         String name,
         String token,
-        Long userId,
-        String profileImage
+        Long userId
 ) {
 
     public static LoginResponseDto fromEntity(Member member, String token) {
@@ -16,8 +15,7 @@ public record LoginResponseDto(
                 member.getMemberBase().getEmail(),
                 member.getMemberBase().getNickname(),
                 token,
-                member.getId(),
-                member.getProfileImage()
+                member.getId()
         );
     }
 }
