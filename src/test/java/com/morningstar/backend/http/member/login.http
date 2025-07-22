@@ -12,8 +12,7 @@ Content-Type: application/json
 
 {
   "email": "test1@naver.com",
-  "password": "123456",
-  "nickname": "테스트유저"
+  "password": "123456"
 }
 
 ### 구글로그인

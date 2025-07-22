@@ -1,14 +1,14 @@
 package com.gaebang.backend.domain.member.service;
 
+import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
 import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
-import com.gaebang.backend.domain.member.exception.EmailDuplicateException;
-import com.gaebang.backend.domain.member.exception.InvalidPasswordException;
-import com.gaebang.backend.domain.member.exception.NewPasswordSameAsOldException;
+import com.gaebang.backend.domain.member.exception.*;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -108,6 +108,18 @@ public class MemberService {
         String encodedNewPassword = passwordEncoder.encode(newPassword);
         member.getMemberBase().changePassword(encodedNewPassword);
         memberRepository.save(member);
+    }
+
+    public void changeNickname(PrincipalDetails principalDetails,
+                               @Valid ChangeNicknameRequestDto changeNicknameRequestDto) {
+
+        memberRepository.findByMemberBase_Nickname(changeNicknameRequestDto.nickname())
+                .ifPresent(user -> {throw new NicknameAlreadyExistsException();});
+
+        Member member = memberRepository.findById(principalDetails.getMember().getId())
+                .orElseThrow(UserNotFoundException::new);
+
+        member.getMemberBase().changeNickname(changeNicknameRequestDto.nickname());
     }
 }
 
