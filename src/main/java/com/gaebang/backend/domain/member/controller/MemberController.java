@@ -78,4 +78,15 @@ public class MemberController {
                 .status(response.getCode())
                 .body(response);
     }
+
+    @DeleteMapping("")
+    public ResponseEntity<ResponseDTO<Void>> deleteMember(
+            @AuthenticationPrincipal PrincipalDetails principalDetails) {
+
+        memberService.deleteMember(principalDetails);
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("회원탈퇴가 완료되었습니다.");
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
+    }
 }
