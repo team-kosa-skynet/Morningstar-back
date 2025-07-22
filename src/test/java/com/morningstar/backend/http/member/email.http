@@ -1,0 +1,18 @@
+### 인증메일 발송
+POST http://localhost:8080/email/confirmation
+Content-Type: application/json
+
+{
+  "email":"liyusang1@naver.com"
+}
+
+### 인증코드 테스트
+POST http://localhost:8080/email/verify
+Content-Type: application/json
+
+{
+  "email":"liyusang1@naver.com",
+  "code": "a4Unx314"
+}
+
+
