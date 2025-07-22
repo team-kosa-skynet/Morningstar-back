@@ -6,7 +6,6 @@ import com.gaebang.backend.global.util.CustomResponseUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -81,13 +80,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/reply/item/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/member/item/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/member/{memberId}")).permitAll()
-                .requestMatchers(HttpMethod.GET, "/recipe", "/recipe/**").permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/follow/follower/**")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/follow/following/**")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/restaurants-list")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/restaurants-list/info/{listId:^-?\\d+$}")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/restaurants-list/{listId:^-?\\d+$}/restaurants")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/restaurants-list/restaurant/{restaurantId:^-?\\d+$}")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/email/**")).permitAll()
                 .anyRequest().authenticated());
 
         /**
@@ -97,9 +90,9 @@ public class SpringSecurityConfig {
          * oAuth2LoginSuccessHandler에서 리디렉트 처리
          */
         http.oauth2Login(oauth2 -> oauth2
-            .userInfoEndpoint(
-                userInfoEndpoint -> userInfoEndpoint.userService(principalOauth2UserService))
-            .successHandler(oAuth2LoginSuccessHandler)
+                .userInfoEndpoint(
+                        userInfoEndpoint -> userInfoEndpoint.userService(principalOauth2UserService))
+                .successHandler(oAuth2LoginSuccessHandler)
         );
 
         http.exceptionHandling(exceptionHandling -> {
