@@ -19,3 +19,14 @@ Content-Type: application/json
 GET http://localhost:8080/member/test/jwt
 Authorization: {{authToken}}
 Content-Type: application/json
+
+### 비밀번호 변경
+PATCH http://localhost:8080/member/change-password
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "123456",
+  "newPassword": "1234567"
+}
+

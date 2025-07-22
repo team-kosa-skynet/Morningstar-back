@@ -32,7 +32,6 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         PrincipalDetails principalDetails = (PrincipalDetails) authentication.getPrincipal();
         String token = jwtProvider.createToken(principalDetails.getMember());
         Long memberId = principalDetails.getMember().getId();
-        String profileImage = principalDetails.getMember().getProfileImage();
 
 /*        String email = principalDetails.getEmail();
         String name = principalDetails.getUsername();
@@ -40,8 +39,7 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         //한국어 인코딩 설정
         String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8.toString());*/
 
-        String redirectUrl = "https://localhost:8080/auth/social?token="+token+"&memberId="+memberId
-                +"&profileImage="+profileImage;
+        String redirectUrl = "https://localhost:8080/auth/social?token="+token+"&memberId="+memberId;
         getRedirectStrategy().sendRedirect(request, response, redirectUrl);
     }
 }

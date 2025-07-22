@@ -1,6 +1,6 @@
 package com.gaebang.backend.domain.member.controller;
 
-import com.gaebang.backend.domain.member.dto.request.PasswordRequestDto;
+import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.dto.response.TestUserResponseDto;
@@ -57,22 +57,10 @@ public class MemberController {
     @PatchMapping("/change-password")
     public ResponseEntity<ResponseDTO<Void>> changePassword(
             @AuthenticationPrincipal PrincipalDetails principalDetails,
-            @Valid @RequestBody PasswordRequestDto passwordRequestDto) {
+            @Valid @RequestBody ChangePasswordRequestDto changePasswordRequestDto) {
 
-        memberService.changePassword(principalDetails, passwordRequestDto);
-        ResponseDTO<Void> response = ResponseDTO.ok();
-        return ResponseEntity
-                .status(response.getCode())
-                .body(response);
-    }
-
-    @PostMapping("/check-password")
-    public ResponseEntity<ResponseDTO<Void>> checkPassword(
-            @AuthenticationPrincipal PrincipalDetails principalDetails,
-            @Valid @RequestBody PasswordRequestDto passwordRequestDto) {
-
-        memberService.checkPassword(principalDetails, passwordRequestDto);
-        ResponseDTO<Void> response = ResponseDTO.ok();
+        memberService.changePassword(principalDetails, changePasswordRequestDto);
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("비밀번호가 성공적으로 변경되었습니다.");
         return ResponseEntity
                 .status(response.getCode())
                 .body(response);

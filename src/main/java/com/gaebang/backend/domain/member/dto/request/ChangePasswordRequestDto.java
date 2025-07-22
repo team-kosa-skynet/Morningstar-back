@@ -1,9 +1,7 @@
 package com.gaebang.backend.domain.member.dto.request;
 
-public record PasswordRequestDto(
+public record ChangePasswordRequestDto(
     String currentPassword,
 
-    String newPassword,
-
-    String confirmPassword
+    String newPassword
 ) {}

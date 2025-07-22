@@ -6,11 +6,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 public interface MemberRepository
-    extends JpaRepository<Member, Long>{
+        extends JpaRepository<Member, Long> {
 
     Optional<Member> findByMemberBaseEmail(String email);
 
     Optional<Member> findByMemberBaseEmailAndProvider(String email, String provider);
 
-    int countAllBy();
+    Optional<Member> findByMemberBase_Nickname(String memberBaseNickname);
 }
