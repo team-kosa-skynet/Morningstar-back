@@ -1,6 +1,7 @@
 package com.gaebang.backend.domain.point.entity;
 
-import com.project.stock.investory.user.entity.User;
+import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,18 +18,16 @@ import java.time.LocalDateTime;
 @Table(name = "points", uniqueConstraints = {
         @UniqueConstraint(columnNames = {"user_id", "version"})
 })
-public class Point {
+public class Point extends BaseTimeEntity {
 
     @Id
-//    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "point_seq")
-    @SequenceGenerator(name = "point_seq", sequenceName = "point_sequence", allocationSize = 1)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "point_id")
     private Long pointId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    @JoinColumn(name = "member_id", nullable = false)
+    private Member member;
 
     // 받은 포인트 금액(양수 / 음수)
     @Column(nullable = false)

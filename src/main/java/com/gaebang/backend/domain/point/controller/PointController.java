@@ -1,12 +1,12 @@
 package com.gaebang.backend.domain.point.controller;
 
-import com.project.stock.investory.point.dto.request.PointRequestDto;
-import com.project.stock.investory.point.dto.response.CurrentPointResponseDto;
-import com.project.stock.investory.point.dto.response.PointResponseDto;
-import com.project.stock.investory.point.service.PointService;
-import com.project.stock.investory.security.CustomUserDetails;
+import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
+import com.gaebang.backend.domain.point.dto.response.CurrentPointResponseDto;
+import com.gaebang.backend.domain.point.dto.response.PointResponseDto;
+import com.gaebang.backend.domain.point.service.PointService;
+import com.gaebang.backend.global.springsecurity.PrincipalDetails;
+import com.gaebang.backend.global.util.ResponseDTO;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -22,28 +22,37 @@ public class PointController {
 
     // 포익트 내역 전체 조회
     @GetMapping("/history")
-    public ResponseEntity<List<PointResponseDto>> findAll(@AuthenticationPrincipal CustomUserDetails userDetails) {
-        List<PointResponseDto> points = pointService.getAllPoint(userDetails);
-        return ResponseEntity.ok(points);
+    public ResponseEntity<ResponseDTO<List<PointResponseDto>>> findAll(@AuthenticationPrincipal PrincipalDetails principalDetails) {
+        List<PointResponseDto> pointResponseDtos = pointService.getAllPoint(principalDetails);
+        ResponseDTO<List<PointResponseDto>> response = ResponseDTO.okWithData(pointResponseDtos);
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
     }
 
     // 현재 남아 있는 포인트 조회
     @GetMapping("/current")
-    public ResponseEntity<CurrentPointResponseDto> findPoint(@AuthenticationPrincipal CustomUserDetails userDetails) {
-        CurrentPointResponseDto point = pointService.getCurrentPoint(userDetails);
-        return ResponseEntity.ok(point);
+    public ResponseEntity<ResponseDTO<CurrentPointResponseDto>> findPoint(@AuthenticationPrincipal PrincipalDetails principalDetails) {
+        CurrentPointResponseDto currentPointResponseDto = pointService.getCurrentPoint(principalDetails);
+        ResponseDTO<CurrentPointResponseDto> response = ResponseDTO.okWithData(currentPointResponseDto);
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
     }
 
 
     // test point 생성용
-    @PostMapping("/")
-    public ResponseEntity<PointResponseDto> create(
+    @PostMapping
+    public ResponseEntity<ResponseDTO<PointResponseDto>> create(
             @RequestBody PointRequestDto request,
-            @AuthenticationPrincipal CustomUserDetails userDetails
+            @AuthenticationPrincipal PrincipalDetails principalDetails
     ) {
 
-        PointResponseDto response = pointService.createPoint(request, userDetails);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        PointResponseDto pointResponseDto = pointService.createPoint(request, principalDetails);
+        ResponseDTO<PointResponseDto> response = ResponseDTO.okWithData(pointResponseDto);
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
     }
 
 }

@@ -1,19 +1,18 @@
 package com.gaebang.backend.domain.point.dto.response;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import com.gaebang.backend.domain.point.entity.Point;
 
-@Getter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
 // 현재 포인트를 조회하기 위한 responseDto
-public class CurrentPointResponseDto {
+public record CurrentPointResponseDto (
+        Long memberId,
+        Integer currentPoint
+) {
 
-    private Long pointId;
-    private Long userId;
-    private Integer currentPoint;
+    public static CurrentPointResponseDto fromEntity(Point point, Integer remainingPoint) {
+        return new CurrentPointResponseDto(
+                point.getMember().getId(),
+                remainingPoint
+        );
+    }
 
 }
