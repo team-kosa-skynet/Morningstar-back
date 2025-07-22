@@ -2,6 +2,7 @@ package com.gaebang.backend.global.springsecurity;
 
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.global.util.NicknameGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
@@ -47,11 +48,20 @@ public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
             oauth2Userinfo.getEmail().replace("GoogleOAuth2",""),
                 oauth2Userinfo.getProvider());
 
+        String generatedNickname = "";
+        while (true) {
+            generatedNickname = NicknameGenerator.generateName();
+            Optional<Member> member = memberRepository.findByMemberBase_Nickname(generatedNickname);
+            if (member.isEmpty()) {
+                break;
+            }
+        }
+
         //이미 소셜로그인을 한적이 있는지 없는지
         if (user.isEmpty()) {
             Member newUser = Member.builder()
                 .email(oauth2Userinfo.getEmail().replace("GoogleOAuth2",""))
-                .nickname(oauth2Userinfo.getName())
+                .nickname(generatedNickname)
                 .password("OAuth2")  //Oauth2로 로그인을 해서 패스워드는 의미없음.
                 .authority("ROLE_USER")
                 .provider(provider)
