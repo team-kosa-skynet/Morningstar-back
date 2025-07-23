@@ -6,6 +6,8 @@ import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.dto.response.CurrentPointResponseDto;
 import com.gaebang.backend.domain.point.dto.response.PointResponseDto;
 import com.gaebang.backend.domain.point.entity.Point;
+import com.gaebang.backend.domain.point.exception.InsufficientFundsException;
+import com.gaebang.backend.domain.point.exception.PointCreationRetryExhaustedException;
 import com.gaebang.backend.domain.point.repository.PointRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
@@ -106,6 +108,13 @@ public class PointService {
                 Integer currentDepositSum = (latestPoint == null) ? 0 : latestPoint.getDepositSum();
                 Integer currentWithdrawSum = (latestPoint == null) ? 0 : latestPoint.getWithdrawSum();
 
+                // 포인트를 차감할 때 최신 버전의 남은 포인트를 계산해서 남은 포인트보다 사용하고자 하는 포인트가
+                // 많은지 적은지 판단하는 부분
+                if (pointRequestDto.amount() + currentDepositSum + currentWithdrawSum < 0) {
+                    throw new InsufficientFundsException();
+                }
+
+
                 // 새 누적 합계 계산
                 Integer newDepositSum = pointRequestDto.amount() > 0 ? currentDepositSum + pointRequestDto.amount() : currentDepositSum;
                 Integer newWithdrawSum = pointRequestDto.amount() < 0 ? currentWithdrawSum + pointRequestDto.amount() : currentWithdrawSum;
@@ -121,18 +130,18 @@ public class PointService {
             } catch (DataIntegrityViolationException e) {
                 retryCount++;
                 if (retryCount >= maxRetries) {
-                    throw new RuntimeException("Failed after " + maxRetries + " attempts", e);
+                    throw new PointCreationRetryExhaustedException();
                 }
 
                 try {
                     Thread.sleep(100);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt(); // 인터럽트 상태 복원
-                    throw new RuntimeException("Thread was interrupted during retry", ie);
+                    throw new PointCreationRetryExhaustedException();
                 }
             }
         }
 
-        throw new RuntimeException("Failed after " + maxRetries + " attempts");
+        throw new PointCreationRetryExhaustedException();
     }
 }
