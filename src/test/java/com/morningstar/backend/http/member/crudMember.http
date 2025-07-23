@@ -44,3 +44,6 @@ DELETE http://localhost:8080/member
 Authorization: {{authToken}}
 Content-Type: application/json
 
+### 이메일 중복체크
+GET http://localhost:8080/member/check-duplicated-email?email=test1@naver.com
+

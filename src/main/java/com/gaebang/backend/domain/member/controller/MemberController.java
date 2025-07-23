@@ -49,7 +49,7 @@ public class MemberController {
     public ResponseEntity<ResponseDTO<Void>> checkDuplicateEmail(
             @RequestParam String email) {
         memberService.checkDuplicateEmail(email);
-        ResponseDTO<Void> response = ResponseDTO.ok();
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("사용가능한 이메일 입니다.");
         return ResponseEntity
                 .status(response.getCode())
                 .body(response);
