@@ -55,4 +55,8 @@ public class PointController {
                 .body(response);
     }
 
+    // 포인트 수정, 삭제 api는 만들지 않는 것을 권장
+    // 대신 차감이나 재적립 api를 만드는 것이 좋다고 함.
+    // 추후에 설계
+
 }
