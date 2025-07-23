@@ -1,17 +1,16 @@
 package com.gaebang.backend.domain.pointTier.entity;
 
 public enum TierType {
-    UNRANKED("언랭크"),
-    IRON("아이언"),
-    BRONZE("브론즈"),
-    SILVER("실버"),
-    GOLD("골드"),
-    PLATINUM("플레티넘"),
-    EMERALD("에메랄드"),
-    DIAMOND("다이아"),
-    MASTER("마스터"),
-    GRANDMASTER("그랜드마스터"),
-    CHALLENGER("챌린저");
+    MERCURY("수성"),
+    VENUS("금성"),
+    EARTH("지구"),
+    MARS("화성"),
+    JUPITER("목성"),
+    SATURN("토성"),
+    URANUS("천왕성"),
+    NEPTUNE("해왕성"),
+    SUN("태양"),
+    BLACK_HOLE("블랙홀");
 
     private final String displayName;
 

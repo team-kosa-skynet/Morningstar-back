@@ -1,6 +1,8 @@
 package com.gaebang.backend.domain.point.service;
 
 import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
+import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.dto.response.CurrentPointResponseDto;
@@ -9,11 +11,14 @@ import com.gaebang.backend.domain.point.entity.Point;
 import com.gaebang.backend.domain.point.exception.InsufficientFundsException;
 import com.gaebang.backend.domain.point.exception.PointCreationRetryExhaustedException;
 import com.gaebang.backend.domain.point.repository.PointRepository;
+import com.gaebang.backend.domain.pointTier.entity.PointTier;
+import com.gaebang.backend.domain.pointTier.service.PointTierService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,6 +30,7 @@ public class PointService {
 
     private final PointRepository pointRepository;
     private final MemberRepository memberRepository;
+    private final PointTierService pointTierService;
 
     // 포인트 내역 전체 조회
     public List<PointResponseDto> getAllPoint(PrincipalDetails principalDetails) {
@@ -32,11 +38,11 @@ public class PointService {
         Long memberId = principalDetails.getMember().getId();
 
         if (memberId == null) {
-            throw new RuntimeException(); // todo 예외처리는 0723일에 변경하자
+            throw new UserInvalidAccessException();
         }
 
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new RuntimeException()); // 예외처리는 0723일에 변경하자
+                .orElseThrow(() -> new UserNotFoundException());
 
         List<Point> points = pointRepository.findPointsByMemberId(member.getId());
 
@@ -53,11 +59,11 @@ public class PointService {
         Long memberId = principalDetails.getMember().getId();
 
         if (memberId == null) {
-            throw new RuntimeException(); // todo 예외처리는 0723일에 변경하자
+            throw new UserInvalidAccessException();
         }
 
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new RuntimeException()); // 예외처리는 0723일에 변경하자
+                .orElseThrow(() -> new UserNotFoundException());
 
         Point point = pointRepository.findLatestPointByMemberId(member.getId())
                 .orElse(null);
@@ -83,16 +89,17 @@ public class PointService {
     }
 
     // 포인트 생성
+    @Transactional
     public PointResponseDto createPoint(PointRequestDto pointRequestDto, PrincipalDetails principalDetails) {
 
         Long memberId = principalDetails.getMember().getId();
 
         if (memberId == null) {
-            throw new RuntimeException(); // todo 예외처리는 0723일에 변경하자
+            throw new UserInvalidAccessException();
         }
 
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new RuntimeException()); // 예외처리는 0723일에 변경하자
+                .orElseThrow(() -> new UserNotFoundException());
 
         // 재시도 로직
         int retryCount = 0;
@@ -123,6 +130,18 @@ public class PointService {
 
                 // 포인트 생성 후 디비에 저장
                 pointRepository.save(newPoint);
+
+                // 유저의 points 업데이트
+                member.changePoint(newDepositSum + newWithdrawSum);
+
+                // 유저의 상태 업데이트 버전 -> 이건 범위가 바뀌었을 때만 실행 될 수 있게 조정
+
+                PointTier pointTier = pointTierService.getTierByPoints(newDepositSum + newWithdrawSum);
+
+                member.changeTier(pointTier);
+
+                // 변경된 유저를 db에 저장
+                memberRepository.save(member);
 
                 // return 은 dto로
                 return PointResponseDto.fromEntity(newPoint);

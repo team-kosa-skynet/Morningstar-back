@@ -19,7 +19,8 @@ public class PointTier extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long tierId;
 
-    // 언랭, 아이언 ...
+    // 수성, 금성
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, unique = true)
     private TierType tierType;
 
