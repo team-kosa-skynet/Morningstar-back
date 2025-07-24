@@ -14,5 +14,12 @@ public record CurrentPointResponseDto (
                 remainingPoint
         );
     }
+    // 포인트가 없는 신규 사용자 - 오버라이딩
+    public static CurrentPointResponseDto fromEntity(Long memberId, Integer remainingPoint) {
+        return new CurrentPointResponseDto(
+                memberId,
+                remainingPoint
+        );
+    }
 
 }
