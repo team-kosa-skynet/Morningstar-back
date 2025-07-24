@@ -49,6 +49,19 @@ public enum ErrorCode {
     // POINT
     INSUFFICIENT_POINT(HttpStatus.BAD_REQUEST, "남은 포인트가 사용하고자 하는 포인트보다 부족합니다."),
     POINT_CREATION_RETRY_EXHAUSTED_EXCEPTION(HttpStatus.INTERNAL_SERVER_ERROR, "포인트 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
+    // restaurant
+    ACCESS_REJECT(HttpStatus.FORBIDDEN, "해당 작업에 접근 할 수 없습니다."),
+    NOT_LOGIN_STATUS(HttpStatus.FORBIDDEN, "로그인 후 사용 가능합니다."),
+    RESTAURANT_NOT_FOUND(HttpStatus.BAD_REQUEST, "요청한 식당이 존재하지 않거나 찾을 수 없습니다."),
+    RESTAURANT_LIST_NOT_FOUND(HttpStatus.BAD_REQUEST, "해당 리스트를 찾을 수 없습니다."),
+    RESTAURANT_LIST_ACCESS_DENIED(HttpStatus.FORBIDDEN, "요청한 리스트에 대해 접근 할 수 없습니다."),
+    THIS_RESTAURANT_PRIVATE(HttpStatus.BAD_REQUEST, "해당 식당정보는 비공개입니다."),
+
+    // board
+    BOARD_NOT_FOUND(HttpStatus.BAD_REQUEST, "해당 게시글을 찾을 수 없습니다."),
+
+    // comment
+    COMMENT_NOT_FOUND(HttpStatus.BAD_REQUEST, "해당 댓글을 찾을 수 없습니다."),
 
     // 5xx
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 에러");
