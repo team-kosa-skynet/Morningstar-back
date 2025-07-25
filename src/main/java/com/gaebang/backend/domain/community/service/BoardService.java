@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.community.service;
 
 import com.gaebang.backend.domain.community.dto.reqeust.BoardCreateAndEditRequestDto;
 import com.gaebang.backend.domain.community.dto.response.BoardListResponseDto;
+import com.gaebang.backend.domain.community.dto.response.BoardListProjectionDto;
 import com.gaebang.backend.domain.community.dto.response.BoardDetailResponseDto;
 import com.gaebang.backend.domain.community.dto.response.CommentResponseDto;
 import com.gaebang.backend.domain.community.entity.Board;
@@ -35,15 +36,15 @@ public class BoardService {
     private final CommentService commentService;
     private final TimeUtil timeUtil;
 
-    private Page<BoardListResponseDto> transformBoardDtos(Page<BoardListResponseDto> boardDtos) {
-        return boardDtos.map(dto ->
+    private Page<BoardListResponseDto> transformBoardDtos(Page<BoardListProjectionDto> projectionDtos) {
+        return projectionDtos.map(dto ->
                 BoardListResponseDto.builder()
                         .boardId(dto.boardId())
                         .title(dto.title())
                         .commentCount(dto.commentCount())
                         .writer(dto.writer())
                         .imageUrl(dto.imageUrl())
-                        .createdDate(timeUtil.getDisplayTimeFromString(dto.createdDate()))
+                        .createdDate(timeUtil.getDisplayTime(dto.createdDate()))
                         .viewCount(dto.viewCount())
                         .likeCount(dto.likeCount())
                         .build()
@@ -52,13 +53,13 @@ public class BoardService {
 
     // 검색 조건 있을 시 사용
     public Page<BoardListResponseDto> getBoardByCondition(String condition, Pageable pageable) {
-        Page<BoardListResponseDto> getDtos = boardRepository.findByCondition(condition, pageable);
+        Page<BoardListProjectionDto> getDtos = boardRepository.findByCondition(condition, pageable);
         return transformBoardDtos(getDtos);
     }
 
     // 마이페이지 조회 시 사용
     public Page<BoardListResponseDto> getBoardByWriter(String writer, Pageable pageable) {
-        Page<BoardListResponseDto> getDtos = boardRepository.findByWriter(writer, pageable);
+        Page<BoardListProjectionDto> getDtos = boardRepository.findByWriter(writer, pageable);
         return transformBoardDtos(getDtos);
     }
 
@@ -71,7 +72,7 @@ public class BoardService {
 
     // 검색 조건 없이 조회
     public Page<BoardListResponseDto> getBoard(Pageable pageable) {
-        Page<BoardListResponseDto> getDtos = boardRepository.findAllBoardDtos(pageable);
+        Page<BoardListProjectionDto> getDtos = boardRepository.findAllBoardDtos(pageable);
         return transformBoardDtos(getDtos);
     }
 
