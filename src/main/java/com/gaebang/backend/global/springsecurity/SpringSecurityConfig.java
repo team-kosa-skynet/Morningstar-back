@@ -71,8 +71,9 @@ public class SpringSecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/basket/**").permitAll() // OPTIONS 메서드에 대한 권한 허용
                 .requestMatchers(new AntPathRequestMatcher("role sample", HttpMethod.POST.name())).hasRole("ADMIN") */
                 .requestMatchers(new AntPathRequestMatcher("/login/**")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/member/signup")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/member/test/jwt")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/member/signup")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/member/check-duplicated-email/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/member/test/jwt")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/s3/upload")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/items/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/free-boards/**")).permitAll()
@@ -80,7 +81,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/reply/item/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/member/item/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/member/{memberId}")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/email/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/email/**")).permitAll()
                 .anyRequest().authenticated());
 
         /**

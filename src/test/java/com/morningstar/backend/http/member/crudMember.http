@@ -16,12 +16,12 @@ Content-Type: application/json
 %}
 
 ### Test JWT
-GET http://localhost:8080/member/test/jwt
+GET http://localhost:8080/api/member/test/jwt
 Authorization: {{authToken}}
 Content-Type: application/json
 
 ### 비밀번호 변경
-PATCH http://localhost:8080/member/password
+PATCH http://localhost:8080/api/member/password
 Authorization: {{authToken}}
 Content-Type: application/json
 
@@ -31,7 +31,7 @@ Content-Type: application/json
 }
 
 ### 닉네임변경
-PATCH http://localhost:8080/member/nickname
+PATCH http://localhost:8080/api/member/nickname
 Authorization: {{authToken}}
 Content-Type: application/json
 
@@ -40,13 +40,13 @@ Content-Type: application/json
 }
 
 ### 회원탈퇴
-DELETE http://localhost:8080/member
+DELETE http://localhost:8080/api/member
 Authorization: {{authToken}}
 Content-Type: application/json
 
 ### 이메일 중복체크
-GET http://localhost:8080/member/check-duplicated-email?email=test1@naver.com
+GET http://localhost:8080/api/member/check-duplicated-email?email=test1@naver.com
 
 ### 마이페이지 정보조회
-GET http://localhost:8080/member/info
+GET http://localhost:8080/api/member/info
 Authorization: {{authToken}}
