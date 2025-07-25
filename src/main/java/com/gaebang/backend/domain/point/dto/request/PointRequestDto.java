@@ -3,9 +3,11 @@ package com.gaebang.backend.domain.point.dto.request;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.point.entity.Point;
 import com.gaebang.backend.domain.point.entity.PointType;
+import lombok.Builder;
 
 import java.time.LocalDateTime;
 
+@Builder
 public record PointRequestDto (
         Integer amount,
         PointType type
