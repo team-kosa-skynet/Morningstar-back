@@ -7,7 +7,7 @@ Content-Type: application/json
 }
 
 ### 회원가입
-POST http://localhost:8080/member/signup
+POST http://localhost:8080/api/member/signup
 Content-Type: application/json
 
 {

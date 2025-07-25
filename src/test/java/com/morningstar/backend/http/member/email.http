@@ -1,5 +1,5 @@
 ### 인증메일 발송
-POST http://localhost:8080/email/confirmation
+POST http://localhost:8080/api/email/confirmation
 Content-Type: application/json
 
 {
@@ -7,7 +7,7 @@ Content-Type: application/json
 }
 
 ### 인증코드 테스트
-POST http://localhost:8080/email/verify
+POST http://localhost:8080/api/email/verify
 Content-Type: application/json
 
 {
