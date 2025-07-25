@@ -17,9 +17,9 @@ public class CommentController {
     private final CommentService commentService;
 
     // 댓글 생성
-    @PostMapping("/comment")
+    @PostMapping("/comments")
     public ResponseEntity<ResponseDTO<Void>> addComment(@RequestBody CommentRequestDto commentRequestDto,
-                                                  PrincipalDetails principalDetails) {
+                                                  @AuthenticationPrincipal PrincipalDetails principalDetails) {
         commentService.createComment(commentRequestDto, principalDetails);
 
         ResponseDTO<Void> ok = ResponseDTO.ok();
@@ -30,7 +30,7 @@ public class CommentController {
     }
 
     // 댓글 삭제
-    @DeleteMapping("/comment/{commentId}")
+    @DeleteMapping("/comments/{commentId}")
     public ResponseEntity<ResponseDTO<Void>> deleteComment(@PathVariable Long commentId,
                                                            @AuthenticationPrincipal PrincipalDetails principalDetails) {
         commentService.deleteComment(commentId, principalDetails);
@@ -43,7 +43,7 @@ public class CommentController {
     }
 
     // 댓글 수정
-    @PatchMapping("/comment/{commentId}")
+    @PatchMapping("/comments/{commentId}")
     public ResponseEntity<ResponseDTO<Void>> editComment(@PathVariable Long commentId,
                                                          @RequestBody CommentRequestDto commentRequestDto,
                                                          @AuthenticationPrincipal PrincipalDetails principalDetails) {
