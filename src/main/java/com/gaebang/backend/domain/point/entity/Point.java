@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Builder
 @Table(name = "points", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"user_id", "version"})
+        @UniqueConstraint(columnNames = {"member_id", "version"})
 })
 public class Point extends BaseTimeEntity {
 
