@@ -27,7 +27,7 @@ public class Board extends BaseTimeEntity {
     private Member member;
 
     @OneToMany(mappedBy = "board")
-    private ArrayList<BoardLike> boardLikes = new ArrayList<>();
+    private List<BoardLike> boardLikes = new ArrayList<>();
 
     @OneToMany(mappedBy = "board")
     private List<Comment> comments = new ArrayList<>();
@@ -51,7 +51,7 @@ public class Board extends BaseTimeEntity {
 
     @Builder.Default
     @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 1")
-    private Long viewCount = 1L;
+    private Long viewCount = 0L;
 
     public void updateBoard(BoardCreateAndEditRequestDto dto) {
         this.title = dto.title();

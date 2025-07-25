@@ -36,21 +36,6 @@ public class BoardService {
     private final CommentService commentService;
     private final TimeUtil timeUtil;
 
-    private Page<BoardListResponseDto> transformBoardDtos(Page<BoardListProjectionDto> projectionDtos) {
-        return projectionDtos.map(dto ->
-                BoardListResponseDto.builder()
-                        .boardId(dto.boardId())
-                        .title(dto.title())
-                        .commentCount(dto.commentCount())
-                        .writer(dto.writer())
-                        .imageUrl(dto.imageUrl())
-                        .createdDate(timeUtil.getDisplayTime(dto.createdDate()))
-                        .viewCount(dto.viewCount())
-                        .likeCount(dto.likeCount())
-                        .build()
-        );
-    }
-
     // 검색 조건 있을 시 사용
     public Page<BoardListResponseDto> getBoardByCondition(String condition, Pageable pageable) {
         Page<BoardListProjectionDto> getDtos = boardRepository.findByCondition(condition, pageable);
@@ -125,11 +110,13 @@ public class BoardService {
                 .orElseThrow(BoardNotFoundException::new);
         findBoard.plusviewCount();
 
+        String displayTime = timeUtil.getDisplayTime(findBoard.getCreatedAt());
+
         Long commentCount = commentRepository.countByBoardIdAndDeleteYn(boardId, "N");
         Long likeCount = boardLikeRepository.countByBoardId(boardId);
         Page<CommentResponseDto> comments = commentService.getCommentsByBoardId(boardId, commentPageable, principalDetails);
 
-        return BoardDetailResponseDto.fromEntity(findBoard, commentCount, likeCount, comments);
+        return BoardDetailResponseDto.fromEntity(findBoard, displayTime, commentCount, likeCount, comments);
     }
 
     // 게시글 삭제
@@ -145,4 +132,18 @@ public class BoardService {
         imageRepository.deleteByBoardId(boardId);
     }
 
+    private Page<BoardListResponseDto> transformBoardDtos(Page<BoardListProjectionDto> projectionDtos) {
+        return projectionDtos.map(dto ->
+                BoardListResponseDto.builder()
+                        .boardId(dto.boardId())
+                        .title(dto.title())
+                        .commentCount(dto.commentCount())
+                        .writer(dto.writer())
+                        .imageUrl(dto.imageUrl())
+                        .createdDate(timeUtil.getDisplayTime(dto.createdDate()))
+                        .viewCount(dto.viewCount())
+                        .likeCount(dto.likeCount())
+                        .build()
+        );
+    }
 }

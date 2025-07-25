@@ -17,7 +17,7 @@ public class BoardLikeController {
     private final BoardLikeService boardLikeService;
 
     // 게시판 좋아요(토클)
-    @PostMapping("/api/boards/{boardId}/like")
+    @PostMapping("/boards/{boardId}/like")
     public ResponseEntity<ResponseDTO<Void>> toggleBoardLike(@PathVariable Long boardId,
                                                              @AuthenticationPrincipal PrincipalDetails principalDetails) {
         boardLikeService.togglePostLike(boardId, principalDetails);
