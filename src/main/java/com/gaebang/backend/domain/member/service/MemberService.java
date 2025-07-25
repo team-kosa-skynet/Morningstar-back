@@ -3,12 +3,14 @@ package com.gaebang.backend.domain.member.service;
 import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
 import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
+import com.gaebang.backend.domain.member.dto.response.GetUserResponseDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.*;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.gaebang.backend.global.util.NicknameGenerator;
+import com.gaebang.backend.global.util.ResponseDTO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -94,6 +96,10 @@ public class MemberService {
                 .getId()).orElseThrow(UserNotFoundException::new);
 
         memberRepository.delete(member);
+    }
+
+    public ResponseDTO<GetUserResponseDto> getMemberInfo(PrincipalDetails principalDetails) {
+        return ResponseDTO.okWithData(GetUserResponseDto.fromEntity(principalDetails.getMember()));
     }
 }
 

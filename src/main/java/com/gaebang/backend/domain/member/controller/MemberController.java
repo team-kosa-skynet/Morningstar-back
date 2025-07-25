@@ -3,6 +3,7 @@ package com.gaebang.backend.domain.member.controller;
 import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
 import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
+import com.gaebang.backend.domain.member.dto.response.GetUserResponseDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.dto.response.TestUserResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
@@ -49,7 +50,7 @@ public class MemberController {
     public ResponseEntity<ResponseDTO<Void>> checkDuplicateEmail(
             @RequestParam String email) {
         memberService.checkDuplicateEmail(email);
-        ResponseDTO<Void> response = ResponseDTO.ok();
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("사용가능한 이메일 입니다.");
         return ResponseEntity
                 .status(response.getCode())
                 .body(response);
@@ -85,6 +86,16 @@ public class MemberController {
 
         memberService.deleteMember(principalDetails);
         ResponseDTO<Void> response = ResponseDTO.okWithMessage("회원탈퇴가 완료되었습니다.");
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
+    }
+
+    @GetMapping("/info")
+    public ResponseEntity<ResponseDTO<GetUserResponseDto>> getMemberInfo(
+            @AuthenticationPrincipal PrincipalDetails principalDetails) {
+
+        ResponseDTO<GetUserResponseDto> response = memberService.getMemberInfo(principalDetails);
         return ResponseEntity
                 .status(response.getCode())
                 .body(response);
