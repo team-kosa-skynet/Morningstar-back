@@ -20,8 +20,8 @@ public class BoardController {
 
     private final BoardService boardService;
 
-    // 게시판 상세 조회
-    @GetMapping("/board/search")
+    // 게시판 조회(조건 있음)
+    @GetMapping("/boards/search")
     public ResponseEntity<ResponseDTO<Page<BoardListResponseDto>>> getBoardByCondition(
             @RequestParam("condition") String condition,
             Pageable pageable) {
@@ -41,8 +41,8 @@ public class BoardController {
         return ResponseEntity.status(responseDTO.getCode()).body(responseDTO);
     }
 
-    // 게시판 조회
-    @GetMapping("/board")
+    // 게시판 조회(조건 없음)
+    @GetMapping("/boards")
     public ResponseEntity<ResponseDTO<Page<BoardListResponseDto>>> getBoard(Pageable pageable) {
         Page<BoardListResponseDto> boardDto = boardService.getBoard(pageable);
 
@@ -54,7 +54,7 @@ public class BoardController {
     }
 
     // 게시판 생성
-    @PostMapping("/board")
+    @PostMapping("/boards")
     public ResponseEntity<Void> createBoard(@RequestBody BoardCreateAndEditRequestDto boardCreateAndEditRequestDto,
                                             @AuthenticationPrincipal PrincipalDetails principalDetails) {
 
@@ -68,7 +68,7 @@ public class BoardController {
     }
 
     // 게시판 수정
-    @PatchMapping("/board/{boardId}")
+    @PatchMapping("/boards/{boardId}")
     public ResponseEntity<ResponseDTO<Void>> editBoard(@PathVariable("boardId") Long boardId,
                                                        @RequestBody BoardCreateAndEditRequestDto boardCreateAndEditRequestDto,
                                                        @AuthenticationPrincipal PrincipalDetails principalDetails) {
@@ -83,7 +83,7 @@ public class BoardController {
     }
 
     // 게시판 상세 조회
-    @GetMapping("/board/{boardId}")
+    @GetMapping("/boards/{boardId}")
     public ResponseEntity<ResponseDTO<BoardDetailResponseDto>> getBoardDetail(
             @PathVariable("boardId") Long boardId,
             Pageable commentPageable,
@@ -99,7 +99,7 @@ public class BoardController {
     }
 
     // 게시글 삭제
-    @DeleteMapping("/board/{boardId}")
+    @DeleteMapping("/boards/{boardId}")
     public ResponseEntity<ResponseDTO<Void>> deleteBoard(@PathVariable Long boardId,
                                                          @AuthenticationPrincipal PrincipalDetails principalDetails) {
 

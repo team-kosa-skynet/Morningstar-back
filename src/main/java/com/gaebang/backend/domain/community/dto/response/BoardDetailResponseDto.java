@@ -15,20 +15,20 @@ public record BoardDetailResponseDto(
         List<String> imageUrl,              // 이미지 URL
         String content,                     // 본문
         String writer,                      // 작성자(글쓴이)
-        LocalDateTime createdDate,          // 작성일
+        String createdDate,                 // 작성일
         Long viewCount,                     // 조회수
         Long likeCount,                     // 추천수
         Page<CommentResponseDto> comments   // 댓글 목록(페이징)
 ) {
 
-    public static BoardDetailResponseDto fromEntity(Board board, Long commentCount, Long likeCount, Page<CommentResponseDto> comments) {
+    public static BoardDetailResponseDto fromEntity(Board board, String displayTime, Long commentCount, Long likeCount, Page<CommentResponseDto> comments) {
         return BoardDetailResponseDto.builder()
                 .boardId(board.getId())
                 .title(board.getTitle())
                 .commentCount(commentCount)
                 .writer(board.getMember().getMemberBase().getNickname())
                 .imageUrl(board.getImages().stream().map(img -> img.getImageUrl()).toList())
-                .createdDate(board.getCreatedAt())
+                .createdDate(displayTime)
                 .viewCount(board.getViewCount())
                 .likeCount(likeCount)
                 .content(board.getContent())
