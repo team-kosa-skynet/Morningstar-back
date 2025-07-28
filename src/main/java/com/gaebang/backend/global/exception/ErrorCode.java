@@ -63,6 +63,9 @@ public enum ErrorCode {
     // comment
     COMMENT_NOT_FOUND(HttpStatus.BAD_REQUEST, "해당 댓글을 찾을 수 없습니다."),
 
+    // boardReport
+    BOARD_REPORT_NOT_FOUND(HttpStatus.BAD_REQUEST, "해당 게시글 신고를 찾을 수 없습니다."),
+
     // 5xx
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 에러");
 
