@@ -62,3 +62,6 @@ Content-Type: application/json
 {
   "currentPassword": "123456"
 }
+
+### 소셜로그인
+https://gaebang.site/oauth2/authorization/google
