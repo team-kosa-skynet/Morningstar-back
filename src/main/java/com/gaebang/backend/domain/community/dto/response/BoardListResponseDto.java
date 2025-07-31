@@ -14,7 +14,7 @@ public record BoardListResponseDto(
         Long boardId,               // 게시글 ID
         String title,               // 제목
         Long commentCount,          // 댓글 수
-        String writer,              // 작성자(글쓴이)
+        String writer,              // 작성자(글쓴이)\
         int writerLevel,            // 작성자 레벨
         String imageUrl,            // 이미지 URL
         String createdDate,         // 작성일

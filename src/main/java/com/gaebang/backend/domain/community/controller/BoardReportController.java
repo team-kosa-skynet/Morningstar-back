@@ -19,7 +19,7 @@ public class BoardReportController {
 
     private final BoardReportService boardReportService;
 
-    @PostMapping("/boards/report")
+    @PostMapping("/boards/reports")
     public ResponseEntity<ResponseDTO<Void>> createBoardReport(@RequestBody BoardReportRequestDto boardReportRequestDto,
                                                             @AuthenticationPrincipal PrincipalDetails principalDetails) {
 
@@ -31,7 +31,7 @@ public class BoardReportController {
                 .build();
     }
 
-    @GetMapping("/boards/report")
+    @GetMapping("/boards/reports")
     public ResponseEntity<ResponseDTO<Page<BoardReportResponseDto>>> getBoardReports(Pageable pageable) {
 
         Page<BoardReportResponseDto> boardReportsDto = boardReportService.getBoardReports(pageable);
@@ -42,7 +42,7 @@ public class BoardReportController {
                 .body(response);
     }
 
-    @DeleteMapping("/boards/report/{reportId}")
+    @DeleteMapping("/boards/reports/{reportId}")
     public ResponseEntity<ResponseDTO<Void>> deleteBoardReport(@PathVariable Long reportId) {
         boardReportService.deleteBoardReport(reportId);
 

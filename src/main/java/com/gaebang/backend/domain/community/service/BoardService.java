@@ -142,7 +142,7 @@ public class BoardService {
                         .title(dto.title())
                         .commentCount(dto.commentCount())
                         .writer(dto.writer())
-                        .writerLevel(memberService.getMemberTierOrder(dto.writerLevel()))
+                        .writerLevel(memberService.getMemberTierOrder(dto.writerPoint()))
                         .imageUrl(dto.imageUrl())
                         .createdDate(timeUtil.getDisplayTime(dto.createdDate()))
                         .viewCount(dto.viewCount())
