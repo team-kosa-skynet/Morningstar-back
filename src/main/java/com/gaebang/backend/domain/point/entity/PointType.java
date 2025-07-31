@@ -4,7 +4,7 @@ public enum PointType {
 
     SPONSORSHIP("후원"),
     ATTENDANCE("출석"),
-    POST("게시글"),
+    BOARD("게시글"),
     COMMENT("댓글"),
     FEEDBACK("피드백");
 
