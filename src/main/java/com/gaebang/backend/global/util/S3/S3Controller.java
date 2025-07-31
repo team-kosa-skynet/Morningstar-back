@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 @RestController
-@RequestMapping("/s3")
+@RequestMapping("/api/s3")
 @RequiredArgsConstructor
 public class S3Controller {
 
