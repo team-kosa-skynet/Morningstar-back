@@ -16,6 +16,12 @@ public interface PointTierRepository extends JpaRepository<PointTier, Long> {
             "ORDER BY t.tierOrder DESC LIMIT 1")
     Optional<PointTier> findTierByPoints(@Param("points") int points);
 
+    // 포인트에 해당하는 등급 찾기
+    @Query("SELECT t.tierOrder FROM PointTier t WHERE :points >= t.minPoint AND " +
+            "(:points <= t.maxPoint OR t.maxPoint IS NULL) " +
+            "ORDER BY t.tierOrder DESC LIMIT 1")
+    int findTierOrderByPoints(@Param("points") int points);
+
     // 등급 순서로 정렬하여 모든 등급 조회
     List<PointTier> findAllByOrderByTierOrderAsc();
 

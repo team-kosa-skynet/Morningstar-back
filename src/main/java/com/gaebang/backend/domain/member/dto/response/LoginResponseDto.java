@@ -7,15 +7,21 @@ public record LoginResponseDto(
         String email,
         String name,
         String token,
-        Long userId
+        Long userId,
+        String role,
+        int point,
+        int level
 ) {
 
-    public static LoginResponseDto fromEntity(Member member, String token) {
+    public static LoginResponseDto fromEntity(Member member, String token, int level) {
         return new LoginResponseDto(
                 member.getMemberBase().getEmail(),
                 member.getMemberBase().getNickname(),
                 token,
-                member.getId()
+                member.getId(),
+                member.getMemberBase().getAuthority(),
+                member.getPoints(),
+                level
         );
     }
 }
