@@ -46,7 +46,7 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         //한국어 인코딩 설정
         String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
 
-        String redirectUrl = "https://gaebang.site/auth/social?email=" + email + "&name=" + encodedName
+        String redirectUrl = "http://www.gaebang.site/auth/social?email=" + email + "&name=" + encodedName
                 + "&token=" + token + "&userId=" + memberId + "&role=" + role + "&point=" + point+ "&level=" + level;
         getRedirectStrategy().sendRedirect(request, response, redirectUrl);
     }

@@ -43,6 +43,8 @@ public class SpringSecurityConfig {
                     configuration.addAllowedOriginPattern("http://localhost:3000");
                     configuration.addAllowedOriginPattern("https://gaebang.site");
                     configuration.addAllowedOriginPattern("http://gaebang.site");
+                    configuration.addAllowedOriginPattern("https://www.gaebang.site");
+                    configuration.addAllowedOriginPattern("http://www.gaebang.site");
                     configuration.setAllowedMethods(
                             Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"));
 
