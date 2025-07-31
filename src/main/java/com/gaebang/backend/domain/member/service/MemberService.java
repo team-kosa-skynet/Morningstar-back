@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.member.service;
 
 import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
 import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
+import com.gaebang.backend.domain.member.dto.request.CheckPasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
 import com.gaebang.backend.domain.member.dto.response.GetUserResponseDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
@@ -58,6 +59,12 @@ public class MemberService {
         });
     }
 
+    public void checkDuplicateNickname(String nickname) {
+        memberRepository.findByMemberBase_Nickname(nickname).ifPresent(user -> {
+            throw new NicknameAlreadyExistsException();
+        });
+    }
+
     public void changePassword(
             PrincipalDetails principalDetails, ChangePasswordRequestDto changePasswordRequestDto) {
         Member member = principalDetails.getMember();
@@ -109,9 +116,20 @@ public class MemberService {
     public int getMemberTierOrder(Member member) {
         return pointTierRepository.findTierOrderByPoints(member.getPoints());
     }
-
+ 
     public int getMemberTierOrder(int memberPoints) {
         return pointTierRepository.findTierOrderByPoints(memberPoints);
     }
+
+    public void checkPassword(PrincipalDetails principalDetails,
+                              @Valid CheckPasswordRequestDto checkPasswordRequestDto) {
+        Member member = principalDetails.getMember();
+        String currentPassword = member.getMemberBase().getPassword();
+
+        if (!passwordEncoder.matches(checkPasswordRequestDto.currentPassword(), currentPassword)) {
+            throw new InvalidPasswordException();
+        }
+    }
+
 }
 

@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.member.controller;
 
 import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
 import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
+import com.gaebang.backend.domain.member.dto.request.CheckPasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
 import com.gaebang.backend.domain.member.dto.response.GetUserResponseDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
@@ -96,6 +97,28 @@ public class MemberController {
             @AuthenticationPrincipal PrincipalDetails principalDetails) {
 
         ResponseDTO<GetUserResponseDto> response = memberService.getMemberInfo(principalDetails);
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
+    }
+
+    @GetMapping("/check-duplicated-nickname")
+    public ResponseEntity<ResponseDTO<Void>> checkDuplicateNickname(
+            @RequestParam String nickname) {
+        memberService.checkDuplicateNickname(nickname);
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("사용가능한 닉네임입니다.");
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
+    }
+
+    @PostMapping("/check-password")
+    public ResponseEntity<ResponseDTO<Void>> checkPassword(
+            @AuthenticationPrincipal PrincipalDetails principalDetails,
+            @Valid @RequestBody CheckPasswordRequestDto checkPasswordRequestDto) {
+
+        memberService.checkPassword(principalDetails, checkPasswordRequestDto);
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("현재 비밀번호가 일치합니다.");
         return ResponseEntity
                 .status(response.getCode())
                 .body(response);

@@ -14,7 +14,7 @@ spring:
             scope:
               - email
               - profile
-            redirect-uri: "http://localhost:8080/login/oauth2/code/google"
+            redirect-uri: "https://gaebang.site/login/oauth2/code/google"
   servlet:
     multipart:
       max-file-size: 5MB
