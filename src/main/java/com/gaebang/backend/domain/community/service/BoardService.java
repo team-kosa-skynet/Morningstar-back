@@ -16,6 +16,10 @@ import com.gaebang.backend.domain.community.util.TimeUtil;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.member.service.MemberService;
+import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
+import com.gaebang.backend.domain.point.entity.PointType;
+import com.gaebang.backend.domain.point.repository.PointRepository;
+import com.gaebang.backend.domain.point.service.PointService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -37,6 +41,7 @@ public class BoardService {
     private final BoardLikeRepository boardLikeRepository;
     private final CommentService commentService;
     private final MemberService memberService;
+    private final PointService pointService;
     private final TimeUtil timeUtil;
 
     // 검색 조건 있을 시 사용
@@ -79,6 +84,12 @@ public class BoardService {
                     .build();
             imageRepository.save(saveImageEntity);
         });
+
+        PointRequestDto pointRequestDto = PointRequestDto.builder()
+                .type(PointType.BOARD)
+                .amount(10)
+                .build();
+        pointService.createPoint(pointRequestDto, principalDetails);
     }
 
     // 게시판 수정
