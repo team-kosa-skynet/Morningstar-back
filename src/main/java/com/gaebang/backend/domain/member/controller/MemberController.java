@@ -1,9 +1,7 @@
 package com.gaebang.backend.domain.member.controller;
 
-import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
-import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
-import com.gaebang.backend.domain.member.dto.request.CheckPasswordRequestDto;
-import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
+import com.gaebang.backend.domain.member.dto.request.*;
+import com.gaebang.backend.domain.member.dto.response.GetUserIdByEmailResponseDto;
 import com.gaebang.backend.domain.member.dto.response.GetUserResponseDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.dto.response.TestUserResponseDto;
@@ -119,6 +117,28 @@ public class MemberController {
 
         memberService.checkPassword(principalDetails, checkPasswordRequestDto);
         ResponseDTO<Void> response = ResponseDTO.okWithMessage("현재 비밀번호가 일치합니다.");
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
+    }
+
+    @PatchMapping("/password/user/{userId}")
+    public ResponseEntity<ResponseDTO<Void>> changePassword(
+            @PathVariable Long userId,
+            @Valid @RequestBody ChangePasswordByUserIdRequestDto changePasswordByUserIdRequestDto) {
+
+        memberService.changePasswordByUserId(userId,changePasswordByUserIdRequestDto);
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("비밀번호가 성공적으로 재설정 되었습니다.");
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
+    }
+
+    @GetMapping("/id")
+    public ResponseEntity<ResponseDTO<GetUserIdByEmailResponseDto>> getUserIdByEmail(
+            @RequestParam String email) {
+
+        ResponseDTO<GetUserIdByEmailResponseDto> response = memberService.getUserIdByEmail(email);
         return ResponseEntity
                 .status(response.getCode())
                 .body(response);

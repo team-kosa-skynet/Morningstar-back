@@ -1,9 +1,7 @@
 package com.gaebang.backend.domain.member.service;
 
-import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
-import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
-import com.gaebang.backend.domain.member.dto.request.CheckPasswordRequestDto;
-import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
+import com.gaebang.backend.domain.member.dto.request.*;
+import com.gaebang.backend.domain.member.dto.response.GetUserIdByEmailResponseDto;
 import com.gaebang.backend.domain.member.dto.response.GetUserResponseDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
@@ -116,7 +114,7 @@ public class MemberService {
     public int getMemberTierOrder(Member member) {
         return pointTierRepository.findTierOrderByPoints(member.getPoints());
     }
- 
+
     public int getMemberTierOrder(int memberPoints) {
         return pointTierRepository.findTierOrderByPoints(memberPoints);
     }
@@ -131,5 +129,20 @@ public class MemberService {
         }
     }
 
+    public void changePasswordByUserId(Long userId,
+                                       @Valid ChangePasswordByUserIdRequestDto changePasswordByUserIdRequestDto) {
+
+        Member member = memberRepository.findById(userId).orElseThrow(UserNotFoundException::new);
+
+        String encodedNewPassword = passwordEncoder.encode(changePasswordByUserIdRequestDto.newPassword());
+        member.getMemberBase().changePassword(encodedNewPassword);
+        memberRepository.save(member);
+    }
+
+    public ResponseDTO<GetUserIdByEmailResponseDto> getUserIdByEmail(String email) {
+
+        Member member = memberRepository.findByMemberBaseEmail(email).orElseThrow(UserNotFoundException::new);
+        return ResponseDTO.okWithData(GetUserIdByEmailResponseDto.fromEntity(member));
+    }
 }
 
