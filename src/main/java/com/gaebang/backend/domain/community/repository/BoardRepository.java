@@ -1,6 +1,5 @@
 package com.gaebang.backend.domain.community.repository;
 
-import com.gaebang.backend.domain.community.dto.response.BoardListResponseDto;
 import com.gaebang.backend.domain.community.dto.response.BoardListProjectionDto;
 import com.gaebang.backend.domain.community.entity.Board;
 import org.springframework.data.domain.Page;
@@ -22,6 +21,7 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
             "(SELECT MIN(img2.id) FROM Image img2 WHERE img2.board = b))," +
             "b.createdAt," +
             "b.viewCount, " +
+            "b.member.points, " +
             "COUNT(distinct bl)) FROM Board b " +
             "LEFT JOIN b.comments c " +
             "LEFT JOIN b.boardLikes bl " +
@@ -46,6 +46,7 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
             "(SELECT MIN(img2.id) FROM Image img2 WHERE img2.board = b))," +
             "b.createdAt," +
             "b.viewCount, " +
+            "b.member.points, " +
             "COUNT(distinct bl)) FROM Board b " +
             "LEFT JOIN b.comments c " +
             "LEFT JOIN b.boardLikes bl " +
@@ -79,6 +80,7 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
             "(SELECT MIN(img2.id) FROM Image img2 WHERE img2.board = b))," +
             "b.createdAt," +
             "b.viewCount, " +
+            "b.member.points, " +
             "COUNT(distinct bl)) FROM Board b " +
             "LEFT JOIN b.comments c " +
             "LEFT JOIN b.boardLikes bl " +

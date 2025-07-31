@@ -116,6 +116,10 @@ public class MemberService {
     public int getMemberTierOrder(Member member) {
         return pointTierRepository.findTierOrderByPoints(member.getPoints());
     }
+ 
+    public int getMemberTierOrder(int memberPoints) {
+        return pointTierRepository.findTierOrderByPoints(memberPoints);
+    }
 
     public void checkPassword(PrincipalDetails principalDetails,
                               @Valid CheckPasswordRequestDto checkPasswordRequestDto) {
@@ -126,5 +130,6 @@ public class MemberService {
             throw new InvalidPasswordException();
         }
     }
+
 }
 
