@@ -6,6 +6,7 @@ import com.gaebang.backend.domain.member.dto.request.LoginRequestDto;
 import com.gaebang.backend.domain.member.dto.response.LoginResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.member.service.MemberService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.gaebang.backend.global.util.ResponseDTO;
 import jakarta.servlet.FilterChain;
@@ -35,15 +36,18 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
 
     private final JwtProvider jwtProvider;
     MemberRepository memberRepository;
+    MemberService memberService;
 
     public JwtAuthenticationFilter(
-        AuthenticationManager authenticationManager,
-        JwtProvider jwtProvider,
-        MemberRepository memberRepository
+            AuthenticationManager authenticationManager,
+            JwtProvider jwtProvider,
+            MemberRepository memberRepository,
+            MemberService memberService
     ) {
         super.setAuthenticationManager(authenticationManager);
         this.jwtProvider = jwtProvider;
         this.memberRepository = memberRepository;
+        this.memberService = memberService;
     }
 
     /**
@@ -51,20 +55,20 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
      */
     @Override
     public Authentication attemptAuthentication(
-        HttpServletRequest request,
-        HttpServletResponse response
+            HttpServletRequest request,
+            HttpServletResponse response
     ) throws AuthenticationException {
         try {
             // 요청된 JSON 데이터를 객체로 파싱
             ObjectMapper objectMapper = new ObjectMapper();
             LoginRequestDto loginRequest = objectMapper.readValue(request.getInputStream(),
-                LoginRequestDto.class);
+                    LoginRequestDto.class);
 
             // 로그인할 때 입력한 email과 password를 가지고 authenticationToken를 생성
             UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(
-                loginRequest.email(),
-                loginRequest.password(),
-                new ArrayList<>(List.of(new SimpleGrantedAuthority("ROLE_USER")))
+                    loginRequest.email(),
+                    loginRequest.password(),
+                    new ArrayList<>(List.of(new SimpleGrantedAuthority("ROLE_USER")))
             );
 
             return this.getAuthenticationManager().authenticate(authenticationToken);
@@ -85,15 +89,16 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
      */
     @Override
     protected void successfulAuthentication(
-        HttpServletRequest request,
-        HttpServletResponse response,
-        FilterChain chain,
-        Authentication authResult
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain chain,
+            Authentication authResult
     ) throws IOException {
         Member member = ((PrincipalDetails) authResult.getPrincipal()).getMember();
         String token = jwtProvider.createToken(member);
 
-        LoginResponseDto loginResponseDto = LoginResponseDto.fromEntity(member, token);
+        int level = memberService.getMemberTierOrder(member);
+        LoginResponseDto loginResponseDto = LoginResponseDto.fromEntity(member, token, level);
         ResponseDTO<LoginResponseDto> loginResponse = ResponseDTO.okWithData(loginResponseDto);
 
         sendJsonResponse(response, loginResponse, HttpStatus.OK);
@@ -104,19 +109,19 @@ public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilte
      */
     @Override
     protected void unsuccessfulAuthentication(
-        HttpServletRequest request,
-        HttpServletResponse response,
-        AuthenticationException exception
+            HttpServletRequest request,
+            HttpServletResponse response,
+            AuthenticationException exception
     ) throws IOException, ServletException {
         String authenticationErrorMessage = getAuthenticationErrorMessage(exception);
 
         ResponseDTO<Void> errorResponse = ResponseDTO.errorWithMessage(HttpStatus.BAD_REQUEST,
-            authenticationErrorMessage);
+                authenticationErrorMessage);
         sendJsonResponse(response, errorResponse, HttpStatus.BAD_REQUEST);
     }
 
     private void sendJsonResponse(HttpServletResponse response, Object responseData,
-        HttpStatus httpStatus) throws IOException {
+                                  HttpStatus httpStatus) throws IOException {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
 

@@ -40,8 +40,9 @@ public class SpringSecurityConfig {
                     configuration.setAllowCredentials(true);
                     configuration.addAllowedOriginPattern("");
                     configuration.addAllowedOriginPattern("http://localhost:8081");
-                    configuration.addAllowedOriginPattern("http://192.168.230.30:8081");
-                    configuration.addAllowedOriginPattern("https://4b32-115-90-99-121.ngrok-free.app");
+                    configuration.addAllowedOriginPattern("http://localhost:3000");
+                    configuration.addAllowedOriginPattern("https://gaebang.site");
+                    configuration.addAllowedOriginPattern("http://gaebang.site");
                     configuration.setAllowedMethods(
                             Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"));
 
@@ -74,7 +75,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/member/signup")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/member/check-duplicated-email/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/member/test/jwt")).permitAll()
-                .requestMatchers(new AntPathRequestMatcher("/s3/upload")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/s3/upload/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/items/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/free-boards/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/reply/free-board/**")).permitAll()

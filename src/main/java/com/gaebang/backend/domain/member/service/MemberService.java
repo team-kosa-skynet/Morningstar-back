@@ -8,6 +8,8 @@ import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.*;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.pointTier.entity.PointTier;
+import com.gaebang.backend.domain.pointTier.repository.PointTierRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.gaebang.backend.global.util.NicknameGenerator;
 import com.gaebang.backend.global.util.ResponseDTO;
@@ -26,6 +28,7 @@ public class MemberService {
 
     private final MemberRepository memberRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+    private final PointTierRepository pointTierRepository;
 
     public SignUpResponseDto signup(SignUpRequestDto signUpRequestDto) {
 
@@ -100,6 +103,10 @@ public class MemberService {
 
     public ResponseDTO<GetUserResponseDto> getMemberInfo(PrincipalDetails principalDetails) {
         return ResponseDTO.okWithData(GetUserResponseDto.fromEntity(principalDetails.getMember()));
+    }
+
+    public int getMemberTierOrder(Member member) {
+        return pointTierRepository.findTierOrderByPoints(member.getPoints());
     }
 }
 
