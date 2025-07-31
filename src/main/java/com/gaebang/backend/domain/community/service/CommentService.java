@@ -9,6 +9,10 @@ import com.gaebang.backend.domain.community.exception.CommentNotFoundException;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.repository.CommentRepository;
 import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
+import com.gaebang.backend.domain.point.entity.PointType;
+import com.gaebang.backend.domain.point.service.PointService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -23,6 +27,7 @@ public class CommentService {
 
     private final CommentRepository commentRepository;
     private final BoardRepository boardRepository;
+    private final PointService pointService;
 
     // 게시판에 엮인 댓글 조회
     public Page<CommentResponseDto> getCommentsByBoardId(Long boardId, Pageable pageable, PrincipalDetails principalDetails) {
@@ -52,6 +57,12 @@ public class CommentService {
         Comment createComment = commentRequestDto.toEntity(loginMember, findBoard);
 
         commentRepository.save(createComment);
+
+        PointRequestDto pointRequestDto = PointRequestDto.builder()
+                .type(PointType.COMMENT)
+                .amount(5)
+                .build();
+        pointService.createPoint(pointRequestDto, principalDetails);
     }
 
     // 댓글 삭제
