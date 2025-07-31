@@ -50,3 +50,15 @@ GET http://localhost:8080/api/member/check-duplicated-email?email=test1@naver.co
 ### 마이페이지 정보조회
 GET http://localhost:8080/api/member/info
 Authorization: {{authToken}}
+
+### 닉네임 중복체크
+GET http://localhost:8080/api/member/check-duplicated-nickname?nickname=변경된닉네임
+
+### 현재비밀번호체크
+POST http://localhost:8080/api/member/check-password
+Authorization: {{authToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "123456"
+}

@@ -74,6 +74,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/login/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/member/signup")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/member/check-duplicated-email/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/member/check-duplicated-nickname/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/member/test/jwt")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/s3/upload/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/items/**")).permitAll()

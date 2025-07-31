@@ -2,13 +2,13 @@ package com.gaebang.backend.domain.member.service;
 
 import com.gaebang.backend.domain.member.dto.request.ChangeNicknameRequestDto;
 import com.gaebang.backend.domain.member.dto.request.ChangePasswordRequestDto;
+import com.gaebang.backend.domain.member.dto.request.CheckPasswordRequestDto;
 import com.gaebang.backend.domain.member.dto.request.SignUpRequestDto;
 import com.gaebang.backend.domain.member.dto.response.GetUserResponseDto;
 import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.*;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
-import com.gaebang.backend.domain.pointTier.entity.PointTier;
 import com.gaebang.backend.domain.pointTier.repository.PointTierRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.gaebang.backend.global.util.NicknameGenerator;
@@ -48,7 +48,7 @@ public class MemberService {
             }
         }
 
-        Member newMember = signUpRequestDto.toEntity(encodedPassword,generatedNickname);
+        Member newMember = signUpRequestDto.toEntity(encodedPassword, generatedNickname);
         memberRepository.save(newMember);
         return SignUpResponseDto.fromEntity(newMember);
     }
@@ -56,6 +56,12 @@ public class MemberService {
     public void checkDuplicateEmail(String email) {
         memberRepository.findByMemberBaseEmail(email).ifPresent(user -> {
             throw new EmailDuplicateException();
+        });
+    }
+
+    public void checkDuplicateNickname(String nickname) {
+        memberRepository.findByMemberBase_Nickname(nickname).ifPresent(user -> {
+            throw new NicknameAlreadyExistsException();
         });
     }
 
@@ -85,7 +91,9 @@ public class MemberService {
                                @Valid ChangeNicknameRequestDto changeNicknameRequestDto) {
 
         memberRepository.findByMemberBase_Nickname(changeNicknameRequestDto.nickname())
-                .ifPresent(user -> {throw new NicknameAlreadyExistsException();});
+                .ifPresent(user -> {
+                    throw new NicknameAlreadyExistsException();
+                });
 
         Member member = memberRepository.findById(principalDetails.getMember().getId())
                 .orElseThrow(UserNotFoundException::new);
@@ -107,6 +115,16 @@ public class MemberService {
 
     public int getMemberTierOrder(Member member) {
         return pointTierRepository.findTierOrderByPoints(member.getPoints());
+    }
+
+    public void checkPassword(PrincipalDetails principalDetails,
+                              @Valid CheckPasswordRequestDto checkPasswordRequestDto) {
+        Member member = principalDetails.getMember();
+        String currentPassword = member.getMemberBase().getPassword();
+
+        if (!passwordEncoder.matches(checkPasswordRequestDto.currentPassword(), currentPassword)) {
+            throw new InvalidPasswordException();
+        }
     }
 }
 
