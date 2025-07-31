@@ -14,6 +14,8 @@ import com.gaebang.backend.domain.community.repository.CommentRepository;
 import com.gaebang.backend.domain.community.repository.ImageRepository;
 import com.gaebang.backend.domain.community.util.TimeUtil;
 import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.member.service.MemberService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -34,6 +36,7 @@ public class BoardService {
     private final CommentRepository commentRepository;
     private final BoardLikeRepository boardLikeRepository;
     private final CommentService commentService;
+    private final MemberService memberService;
     private final TimeUtil timeUtil;
 
     // 검색 조건 있을 시 사용
@@ -139,6 +142,7 @@ public class BoardService {
                         .title(dto.title())
                         .commentCount(dto.commentCount())
                         .writer(dto.writer())
+                        .writerLevel(memberService.getMemberTierOrder(dto.writerLevel()))
                         .imageUrl(dto.imageUrl())
                         .createdDate(timeUtil.getDisplayTime(dto.createdDate()))
                         .viewCount(dto.viewCount())

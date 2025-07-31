@@ -25,15 +25,6 @@ public class BoardController {
     public ResponseEntity<ResponseDTO<Page<BoardListResponseDto>>> getBoardByCondition(
             @RequestParam("condition") String condition,
             Pageable pageable) {
-        /*List<BoardResponseDto> boardDto;*/
-
-        /*if (!condition.title().isBlank()) {
-            boardDto = communityService.getBoardByCondition(condition.title(), pageable);
-        } else if (!condition.writer().isBlank()) {
-            boardDto = communityService.getBoardByWriter(condition.writer(), pageable);
-        } else {
-            boardDto = communityService.getBoardByContent(condition.content(), pageable);
-        }*/
 
         Page<BoardListResponseDto> boardDto = boardService.getBoardByCondition(condition, pageable);
 
@@ -51,6 +42,22 @@ public class BoardController {
         return ResponseEntity
                 .status(listResponseDTO.getCode())
                 .body(listResponseDTO);
+    }
+
+    // 게시판 상세 조회
+    @GetMapping("/boards/{boardId}")
+    public ResponseEntity<ResponseDTO<BoardDetailResponseDto>> getBoardDetail(
+            @PathVariable("boardId") Long boardId,
+            Pageable commentPageable,
+            @AuthenticationPrincipal PrincipalDetails principalDetails) {
+
+        BoardDetailResponseDto boardDetail = boardService.getBoardDetail(boardId, commentPageable, principalDetails);
+
+        ResponseDTO<BoardDetailResponseDto> dto = ResponseDTO.okWithData(boardDetail);
+
+        return ResponseEntity
+                .status(dto.getCode())
+                .body(dto);
     }
 
     // 게시판 생성
@@ -80,22 +87,6 @@ public class BoardController {
         return ResponseEntity
                 .status(ok.getCode())
                 .build();
-    }
-
-    // 게시판 상세 조회
-    @GetMapping("/boards/{boardId}")
-    public ResponseEntity<ResponseDTO<BoardDetailResponseDto>> getBoardDetail(
-            @PathVariable("boardId") Long boardId,
-            Pageable commentPageable,
-            @AuthenticationPrincipal PrincipalDetails principalDetails) {
-
-        BoardDetailResponseDto boardDetail = boardService.getBoardDetail(boardId, commentPageable, principalDetails);
-
-        ResponseDTO<BoardDetailResponseDto> dto = ResponseDTO.okWithData(boardDetail);
-
-        return ResponseEntity
-                .status(dto.getCode())
-                .body(dto);
     }
 
     // 게시글 삭제

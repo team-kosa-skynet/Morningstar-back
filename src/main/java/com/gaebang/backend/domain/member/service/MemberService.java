@@ -8,7 +8,6 @@ import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.*;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
-import com.gaebang.backend.domain.pointTier.entity.PointTier;
 import com.gaebang.backend.domain.pointTier.repository.PointTierRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.gaebang.backend.global.util.NicknameGenerator;
@@ -48,7 +47,7 @@ public class MemberService {
             }
         }
 
-        Member newMember = signUpRequestDto.toEntity(encodedPassword,generatedNickname);
+        Member newMember = signUpRequestDto.toEntity(encodedPassword, generatedNickname);
         memberRepository.save(newMember);
         return SignUpResponseDto.fromEntity(newMember);
     }
@@ -85,7 +84,9 @@ public class MemberService {
                                @Valid ChangeNicknameRequestDto changeNicknameRequestDto) {
 
         memberRepository.findByMemberBase_Nickname(changeNicknameRequestDto.nickname())
-                .ifPresent(user -> {throw new NicknameAlreadyExistsException();});
+                .ifPresent(user -> {
+                    throw new NicknameAlreadyExistsException();
+                });
 
         Member member = memberRepository.findById(principalDetails.getMember().getId())
                 .orElseThrow(UserNotFoundException::new);
@@ -107,6 +108,10 @@ public class MemberService {
 
     public int getMemberTierOrder(Member member) {
         return pointTierRepository.findTierOrderByPoints(member.getPoints());
+    }
+
+    public int getMemberTierOrder(int memberPoints) {
+        return pointTierRepository.findTierOrderByPoints(memberPoints);
     }
 }
 
