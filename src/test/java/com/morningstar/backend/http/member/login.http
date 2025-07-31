@@ -16,8 +16,6 @@ Content-Type: application/json
 }
 
 ### 구글로그인
-http://localhost:8080/oauth2/authorization/google
-###
-https://gaebang.site/oauth2/authorization/google
+GET http://localhost:8080/oauth2/authorization/google
 //http://192.168.230.30:8080/oauth2/authorization/google
 //https://8f98-115-90-99-121.ngrok-free.app/oauth2/authorization/google

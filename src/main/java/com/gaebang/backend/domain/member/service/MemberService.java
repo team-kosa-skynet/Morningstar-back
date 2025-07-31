@@ -108,7 +108,8 @@ public class MemberService {
     }
 
     public ResponseDTO<GetUserResponseDto> getMemberInfo(PrincipalDetails principalDetails) {
-        return ResponseDTO.okWithData(GetUserResponseDto.fromEntity(principalDetails.getMember()));
+        int level = getMemberTierOrder(principalDetails.getMember());
+        return ResponseDTO.okWithData(GetUserResponseDto.fromEntity(principalDetails.getMember(),level));
     }
 
     public int getMemberTierOrder(Member member) {
