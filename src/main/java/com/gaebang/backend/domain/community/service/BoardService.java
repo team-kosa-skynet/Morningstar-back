@@ -124,13 +124,16 @@ public class BoardService {
                 .orElseThrow(BoardNotFoundException::new);
         findBoard.plusviewCount();
 
+        Member findBoardMember = findBoard.getMember();
+        int memberLevel = memberService.getMemberTierOrder(findBoardMember);
+
         String displayTime = timeUtil.getDisplayTime(findBoard.getCreatedAt());
 
         Long commentCount = commentRepository.countByBoardIdAndDeleteYn(boardId, "N");
         Long likeCount = boardLikeRepository.countByBoardId(boardId);
         Page<CommentResponseDto> comments = commentService.getCommentsByBoardId(boardId, commentPageable, principalDetails);
 
-        return BoardDetailResponseDto.fromEntity(findBoard, displayTime, commentCount, likeCount, comments);
+        return BoardDetailResponseDto.fromEntity(findBoard, displayTime, memberLevel, commentCount, likeCount, comments);
     }
 
     // 게시글 삭제

@@ -9,7 +9,7 @@ import com.gaebang.backend.domain.community.exception.CommentNotFoundException;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.repository.CommentRepository;
 import com.gaebang.backend.domain.member.entity.Member;
-import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.member.service.MemberService;
 import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.entity.PointType;
 import com.gaebang.backend.domain.point.service.PointService;
@@ -28,22 +28,24 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final BoardRepository boardRepository;
     private final PointService pointService;
+    private final MemberService memberService;
 
     // 게시판에 엮인 댓글 조회
     public Page<CommentResponseDto> getCommentsByBoardId(Long boardId, Pageable pageable, PrincipalDetails principalDetails) {
         Board findBoard = boardRepository.findById(boardId)
-                .orElseThrow(() -> new BoardNotFoundException());
+                .orElseThrow(BoardNotFoundException::new);
 
         return commentRepository.findByBoardIdAndDeleteYnOrderByCreatedAtDesc(findBoard.getId(), "N", pageable)
-                .map(CommentResponseDto::fromEntity);
+                .map(comment -> CommentResponseDto.fromEntity(comment,
+                        memberService.getMemberTierOrder(comment.getMember())));
     }
 
     // 댓글 수정
     public void editComment(Long commentId, CommentRequestDto commentRequestDto, PrincipalDetails principalDetails) {
         Long findMemberId = principalDetails.getMember().getId();
-        
+
         Comment editComment = commentRepository.findByIdAndMemberIdAndDeleteYn(commentId, findMemberId, "N")
-                .orElseThrow(() -> new CommentNotFoundException());
+                .orElseThrow(CommentNotFoundException::new);
 
         editComment.update(commentRequestDto.content());
     }
@@ -52,7 +54,7 @@ public class CommentService {
     public void createComment(CommentRequestDto commentRequestDto, PrincipalDetails principalDetails) {
         Member loginMember = principalDetails.getMember();
         Board findBoard = boardRepository.findById(commentRequestDto.boardId())
-                .orElseThrow(() -> new BoardNotFoundException());
+                .orElseThrow(BoardNotFoundException::new);
 
         Comment createComment = commentRequestDto.toEntity(loginMember, findBoard);
 
