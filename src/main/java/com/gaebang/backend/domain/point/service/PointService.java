@@ -40,7 +40,7 @@ public class PointService {
             throw new UserInvalidAccessException();
         }
 
-        List<Point> points = pointRepository.findPointsByMemberId(memberId);
+        List<Point> points = pointRepository.findPointsByMemberIdOrderByVersionDesc(memberId);
 
         return points.stream()
                 .map(point -> PointResponseDto.fromEntity(point))
