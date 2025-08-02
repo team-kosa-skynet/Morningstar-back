@@ -10,7 +10,7 @@ import java.util.Optional;
 
 public interface PointRepository extends JpaRepository<Point, Long> {
 
-    List<Point> findPointsByMemberId(Long memberId);
+    List<Point> findPointsByMemberIdOrderByVersionDesc(Long memberId);
 
     @Query("SELECT p FROM Point p WHERE p.member.id = :memberId ORDER BY p.version DESC LIMIT 1")
     Optional<Point> findLatestPointByMemberId(@Param("memberId") Long memberId);

@@ -18,7 +18,7 @@ public record AttendanceResponseDto (
                 attendance.getMember().getId(),
                 attendance.getAttendanceDate().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")),
                 isNew,
-                isNew ? 50 : 0
+                isNew ? 100 : 0
         );
     }
 }
