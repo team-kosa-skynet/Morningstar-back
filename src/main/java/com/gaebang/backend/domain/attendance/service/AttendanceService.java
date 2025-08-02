@@ -55,7 +55,7 @@ public class AttendanceService {
 
                 // 포인트 지급
                 PointRequestDto pointRequestDto = PointRequestDto.builder()
-                        .amount(50)
+                        .amount(100)
                         .type(PointType.ATTENDANCE)
                         .build();
                 pointService.createPoint(pointRequestDto, principalDetails);
