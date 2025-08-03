@@ -1,6 +1,7 @@
 package com.gaebang.backend.domain.member.dto.request;
 
 import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.domain.pointTier.entity.PointTier;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 
@@ -13,12 +14,13 @@ public record SignUpRequestDto(
         @NotNull(message = "password는 필수값입니다")
         String password
 ) {
-    public Member toEntity(String encodedPassword, String generatedNickname) {
+    public Member toEntity(String encodedPassword, String generatedNickname, PointTier pointTier) {
         return Member.builder()
                 .email(email)
                 .nickname(generatedNickname)
                 .password(encodedPassword)
                 .authority("ROLE_USER")
+                .currentTier(pointTier)
                 .build();
     }
 }

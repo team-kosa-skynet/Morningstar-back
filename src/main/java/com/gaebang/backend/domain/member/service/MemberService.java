@@ -7,6 +7,7 @@ import com.gaebang.backend.domain.member.dto.response.SignUpResponseDto;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.*;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.pointTier.entity.PointTier;
 import com.gaebang.backend.domain.pointTier.repository.PointTierRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.gaebang.backend.global.util.NicknameGenerator;
@@ -46,7 +47,10 @@ public class MemberService {
             }
         }
 
-        Member newMember = signUpRequestDto.toEntity(encodedPassword, generatedNickname);
+        PointTier pointTier =
+        pointTierRepository.findById(1L).orElseThrow(PointTierIsNotExistException::new);
+
+        Member newMember = signUpRequestDto.toEntity(encodedPassword, generatedNickname, pointTier);
         memberRepository.save(newMember);
         return SignUpResponseDto.fromEntity(newMember);
     }

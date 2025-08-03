@@ -31,10 +31,11 @@ public class Member extends BaseTimeEntity {
 
     @Builder
     private Member(String email, String nickname, String password, String authority,
-                   String provider) {
+                   String provider,PointTier currentTier) {
         this.memberBase = new MemberBase(email, nickname, password, authority);
         this.provider = provider;
         this.points = 0;
+        this.currentTier = currentTier;
     }
 
     public void changePoint(int points){
