@@ -25,6 +25,7 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.BAD_REQUEST, "존재하지 않는 회원입니다."),
     USER_ALREADY_REGISTERED(HttpStatus.BAD_REQUEST, "이미 가입된 회원입니다."),
     USER_INVALID_ACCESS(HttpStatus.BAD_REQUEST, "잘못된 유저의 접근입니다."),
+    POINT_TIER_IS_NOT_EXIST(HttpStatus.BAD_REQUEST, "포인트 티어 정보가 DB에 초기화 되지 않았습니다."),
 
     // REPORT
     DUPLICATE_REPORT(HttpStatus.BAD_REQUEST, "이미 신고한 게시글 입니다."),
