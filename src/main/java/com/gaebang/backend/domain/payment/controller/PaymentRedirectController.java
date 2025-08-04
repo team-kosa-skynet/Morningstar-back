@@ -25,10 +25,10 @@ public class PaymentRedirectController {
         try {
             paymentService.paymentApproveByPgToken(pgToken, partnerOrderId);
             log.info("결제 승인 완료 - pg_token: {}, partner_order_id: {}", pgToken, partnerOrderId);
-            return "redirect:http://localhost:8081/payment/success";
+            return "redirect:http://localhost:3000/payment/success";
         } catch (Exception e) {
             log.error("결제 승인 실패 - pg_token: {}, partner_order_id: {}, 오류: {}", pgToken, partnerOrderId, e.getMessage());
-            return "redirect:http://localhost:8081/payment/fail";
+            return "redirect:http://localhost:3000/payment/fail";
         }
     }
 
@@ -36,13 +36,13 @@ public class PaymentRedirectController {
     @GetMapping("/fail")
     public String handlePaymentFail() {
         log.info("카카오페이 결제 실패 리디렉션");
-        return "redirect:http://localhost:8081/payment/fail";
+        return "redirect:http://localhost:3000/payment/fail";
     }
 
     @GetMapping("/cancel")
     public String handlePaymentCancel() {
         log.info("카카오페이 결제 취소 리디렉션");
-        return "redirect:http://localhost:8081/payment/cancel";
+        return "redirect:http://localhost:3000/payment/cancel";
     }
 }
 
