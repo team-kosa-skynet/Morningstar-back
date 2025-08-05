@@ -6,7 +6,6 @@ import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.question.claude.dto.request.ClaudeMessage;
 import com.gaebang.backend.domain.question.claude.dto.request.ClaudeQuestionRequestDto;
-import com.gaebang.backend.domain.question.claude.dto.response.ClaudeQuestionResponseDto;
 import com.gaebang.backend.domain.question.claude.util.ClaudeQuestionProperties;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -34,47 +33,6 @@ public class ClaudeQuestionService {
     private final RestClient restClient;
     private final MemberRepository memberRepository;
     private final ObjectMapper objectMapper;
-
-    public ClaudeQuestionResponseDto createQuestion(
-            ClaudeQuestionRequestDto claudeQuestionRequestDto,
-            PrincipalDetails principalDetails
-    ) {
-        Member member = validateAndGetMember(principalDetails);
-
-        ClaudeMessage userMessage = ClaudeMessage.builder()
-                .role("user")
-                .content(claudeQuestionRequestDto.content())
-                .build();
-
-        Map<String, Object> parameters = createRequestParameters(userMessage, false);
-
-        try {
-            String claudeUrl = claudeQuestionProperties.getResponseUrl();
-            ClaudeQuestionResponseDto responseDto = restClient.post()
-                    .uri(claudeUrl)
-                    .header("x-api-key", claudeQuestionProperties.getApiKey())
-                    .header("anthropic-version", "2023-06-01")
-                    .header("Content-Type", "application/json")
-                    .body(parameters)
-                    .retrieve()
-                    .body(ClaudeQuestionResponseDto.class);
-
-            if (responseDto == null) {
-                throw new RuntimeException("Claude API 응답이 null입니다.");
-            }
-
-            log.info("Claude API 호출 성공 - 모델: {}, 사용 토큰: input={}, output={}",
-                    responseDto.model(),
-                    responseDto.usage().input_tokens(),
-                    responseDto.usage().output_tokens());
-
-            return responseDto;
-
-        } catch (Exception e) {
-            log.error("Claude API 호출 실패: ", e);
-            throw new RuntimeException("AI 응답 생성 중 오류가 발생했습니다.");
-        }
-    }
 
     public SseEmitter createQuestionStream(
             ClaudeQuestionRequestDto claudeQuestionRequestDto,

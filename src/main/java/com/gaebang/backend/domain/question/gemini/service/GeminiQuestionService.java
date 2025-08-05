@@ -6,7 +6,6 @@ import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.question.gemini.dto.request.GeminiMessage;
 import com.gaebang.backend.domain.question.gemini.dto.request.GeminiQuestionRequestDto;
-import com.gaebang.backend.domain.question.gemini.dto.response.GeminiQuestionResponseDto;
 import com.gaebang.backend.domain.question.gemini.util.GeminiQuestionProperties;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -34,46 +33,6 @@ public class GeminiQuestionService {
     private final RestClient restClient;
     private final MemberRepository memberRepository;
     private final ObjectMapper objectMapper;
-
-    public GeminiQuestionResponseDto createQuestion(
-            GeminiQuestionRequestDto geminiQuestionRequestDto,
-            PrincipalDetails principalDetails
-    ) {
-        Member member = validateAndGetMember(principalDetails);
-
-        GeminiMessage userMessage = GeminiMessage.builder()
-                .parts(List.of(Map.of("text", geminiQuestionRequestDto.content())))
-                .build();
-
-        Map<String, Object> parameters = createRequestParameters(userMessage);
-
-        try {
-            String geminiUrl = geminiQuestionProperties.getResponseUrl();
-            GeminiQuestionResponseDto responseDto = restClient.post()
-                    .uri(geminiUrl)
-                    .header("x-goog-api-key", geminiQuestionProperties.getApiKey())
-                    .header("Content-Type", "application/json")
-                    .body(parameters)
-                    .retrieve()
-                    .body(GeminiQuestionResponseDto.class);
-
-            if (responseDto == null) {
-                throw new RuntimeException("Gemini API 응답이 null입니다.");
-            }
-
-            log.info("Gemini API 호출 성공 - 모델: {}, 사용 토큰: prompt={}, candidates={}, total={}",
-                    geminiQuestionProperties.getModel(),
-                    responseDto.usageMetadata().promptTokenCount(),
-                    responseDto.usageMetadata().candidatesTokenCount(),
-                    responseDto.usageMetadata().totalTokenCount());
-
-            return responseDto;
-
-        } catch (Exception e) {
-            log.error("Gemini API 호출 실패: ", e);
-            throw new RuntimeException("AI 응답 생성 중 오류가 발생했습니다.");
-        }
-    }
 
     public SseEmitter createQuestionStream(
             GeminiQuestionRequestDto geminiQuestionRequestDto,

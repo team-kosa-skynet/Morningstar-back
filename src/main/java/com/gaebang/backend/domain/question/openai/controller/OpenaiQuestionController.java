@@ -1,7 +1,6 @@
 package com.gaebang.backend.domain.question.openai.controller;
 
 import com.gaebang.backend.domain.question.openai.dto.request.OpenaiQuestionRequestDto;
-import com.gaebang.backend.domain.question.openai.dto.response.OpenaiQuestionResponseDto;
 import com.gaebang.backend.domain.question.openai.service.OpenaiQuestionService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.gaebang.backend.global.util.ResponseDTO;
@@ -19,19 +18,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 public class OpenaiQuestionController {
 
     private final OpenaiQuestionService openaiQuestionService;
-
-    // 질문 생성
-    @PostMapping
-    public ResponseEntity<ResponseDTO<OpenaiQuestionResponseDto>> addQuestion(
-            @RequestBody @Valid OpenaiQuestionRequestDto openaiQuestionRequestDto,
-            @AuthenticationPrincipal PrincipalDetails principalDetails
-    ) {
-        OpenaiQuestionResponseDto response = openaiQuestionService.createQuestion(openaiQuestionRequestDto, principalDetails);
-        ResponseDTO<OpenaiQuestionResponseDto> responseDTO = ResponseDTO.okWithData(response);
-        return ResponseEntity
-                .status(responseDTO.getCode())
-                .body(responseDTO);
-    }
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamQuestion(
