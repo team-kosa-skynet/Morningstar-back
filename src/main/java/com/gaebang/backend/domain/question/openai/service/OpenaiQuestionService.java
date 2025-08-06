@@ -5,18 +5,13 @@ import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.question.openai.dto.request.OpenaiQuestionRequestDto;
-import com.gaebang.backend.domain.question.openai.entity.QuestionSession;
-import com.gaebang.backend.domain.question.openai.repository.QuestionRepository;
 import com.gaebang.backend.domain.question.openai.util.OpenaiQuestionProperties;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -24,7 +19,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
@@ -36,15 +30,7 @@ public class OpenaiQuestionService {
     private final MemberRepository memberRepository;
     private final OpenaiQuestionProperties openaiQuestionProperties;
     private final RestClient restClient;
-    private final QuestionRepository questionRepository;
     private final ObjectMapper objectMapper;
-    private final TransactionTemplate transactionTemplate;
-
-    @Transactional
-    public void startNewConversation(PrincipalDetails principalDetails) {
-        Member member = validateAndGetMember(principalDetails);
-        questionRepository.deactivateAllByMember(member);
-    }
 
     public SseEmitter createQuestionStream(
             OpenaiQuestionRequestDto openaiQuestionRequestDto,
@@ -53,36 +39,28 @@ public class OpenaiQuestionService {
         Member member = validateAndGetMember(principalDetails);
         SseEmitter emitter = new SseEmitter(300000L); // 5분 타임아웃
 
-        // 1. 활성 세션 확인 (24시간 이내)
-        LocalDateTime cutoffTime = LocalDateTime.now().minusHours(24);
-        Optional<QuestionSession> activeSession = questionRepository
-                .findByMemberAndIsActiveTrueAndLastUsedAtAfter(member, cutoffTime);
-
-        // CompletableFuture 참조 저장 및 취소 처리
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-            performApiCall(emitter, openaiQuestionRequestDto, member, activeSession);
+            performApiCall(emitter, openaiQuestionRequestDto, member);
         });
 
-        setupEmitterCallbacksWithCancellation(emitter, future, "OpenAI");
+        setupEmitterCallbacks(emitter, future, "OpenAI");
         return emitter;
     }
 
-    private void performApiCall(SseEmitter emitter,
-                                OpenaiQuestionRequestDto requestDto,
-                                Member member,
-                                Optional<QuestionSession> activeSession) {
+    private void performApiCall(SseEmitter emitter, OpenaiQuestionRequestDto requestDto, Member member) {
         try {
-            // OpenAI Responses API 스트리밍 요청 데이터 준비
+            // Chat Completions API 스트리밍 요청 데이터 준비
             Map<String, Object> parameters = new HashMap<>();
             parameters.put("model", openaiQuestionProperties.getModel());
-            parameters.put("input", requestDto.input());
-            parameters.put("instructions", "너는 AI에 최적화된 전문가야");
             parameters.put("stream", true);
 
-            // 2. 이전 세션이 있으면 previous_response_id 추가 (대화 맥락 연결)
-            if (activeSession.isPresent()) {
-                parameters.put("previous_response_id", activeSession.get().getOpenaiSessionId());
-            }
+            // messages 배열 생성 (Chat Completions API 형식)
+            List<Map<String, Object>> messages = new ArrayList<>();
+            Map<String, Object> message = new HashMap<>();
+            message.put("role", "user");
+            message.put("content", requestDto.content());
+            messages.add(message);
+            parameters.put("messages", messages);
 
             String openaiUrl = openaiQuestionProperties.getResponseUrl();
 
@@ -94,13 +72,13 @@ public class OpenaiQuestionService {
                     .exchange((request, response) -> {
                         // 취소 신호 확인
                         if (Thread.currentThread().isInterrupted()) {
-                            log.info("OpenAI Responses API 스레드 인터럽트 감지 - API 호출 중단");
+                            log.info("OpenAI Chat Completions API 스레드 인터럽트 감지 - API 호출 중단");
                             return null;
                         }
 
                         // HTTP 상태 코드 검증
                         if (!response.getStatusCode().is2xxSuccessful()) {
-                            String errorMessage = String.format("OpenAI Responses API 호출 실패: %s", response.getStatusCode());
+                            String errorMessage = String.format("OpenAI Chat Completions API 호출 실패: %s", response.getStatusCode());
                             log.error(errorMessage);
                             handleStreamError(emitter, new RuntimeException(errorMessage));
                             return null;
@@ -110,46 +88,38 @@ public class OpenaiQuestionService {
                                 new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
 
                             String line;
-                            String responseId = null;
 
                             while ((line = reader.readLine()) != null) {
                                 // 주기적으로 취소 신호 확인
                                 if (Thread.currentThread().isInterrupted()) {
-                                    log.info("OpenAI Responses API 스레드 인터럽트 감지 - 스트리밍 중단");
+                                    log.info("OpenAI Chat Completions API 스레드 인터럽트 감지 - 스트리밍 중단");
                                     break;
                                 }
 
-                                if (line.startsWith("event: ")) {
-                                    // 이벤트 타입 라인 건너뛰기
-                                    continue;
-                                }
+                                line = line.trim();
+                                if (line.isEmpty()) continue;
 
+                                // SSE 스트리밍 데이터 파싱: "data: {json}"
                                 if (line.startsWith("data: ")) {
                                     String data = line.substring(6);
-                                    if (!data.trim().isEmpty()) {
-                                        String content = parseResponsesStreamResponse(data);
-                                        if (content != null && !content.isEmpty()) {
-                                            try {
-                                                emitter.send(SseEmitter.event()
-                                                        .name("message")
-                                                        .data(content));
-                                            } catch (IOException e) {
-                                                log.warn("OpenAI Responses API 클라이언트 연결 종료됨 - 스트리밍 중단");
-                                                return null;
-                                            }
-                                        }
 
-                                        // response ID 추출 (세션 관리용)
-                                        if (responseId == null) {
-                                            responseId = extractResponseId(data);
+                                    // [DONE] 신호 확인
+                                    if ("[DONE]".equals(data.trim())) {
+                                        break;
+                                    }
+
+                                    String content = parseChatCompletionsStreamResponse(data);
+                                    if (content != null && !content.isEmpty()) {
+                                        try {
+                                            emitter.send(SseEmitter.event()
+                                                    .name("message")
+                                                    .data(content));
+                                        } catch (IOException e) {
+                                            log.warn("OpenAI Chat Completions API 클라이언트 연결 종료됨 - 스트리밍 중단");
+                                            return null;
                                         }
                                     }
                                 }
-                            }
-
-                            // 세션 관리 (대화 맥락 저장)
-                            if (!Thread.currentThread().isInterrupted() && responseId != null) {
-                                manageSessionForStream(member, activeSession, responseId);
                             }
 
                             if (!Thread.currentThread().isInterrupted()) {
@@ -161,7 +131,7 @@ public class OpenaiQuestionService {
 
                         } catch (IOException e) {
                             if (!Thread.currentThread().isInterrupted()) {
-                                log.error("OpenAI Responses API 스트리밍 중 네트워크 오류", e);
+                                log.error("OpenAI Chat Completions API 스트리밍 중 네트워크 오류", e);
                                 handleStreamError(emitter, e);
                             }
                         }
@@ -170,15 +140,13 @@ public class OpenaiQuestionService {
 
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
-                log.error("OpenAI Responses API 스트리밍 호출 실패: ", e);
+                log.error("OpenAI Chat Completions API 스트리밍 호출 실패: ", e);
                 handleStreamError(emitter, e);
             }
         }
     }
 
-    private void setupEmitterCallbacksWithCancellation(SseEmitter emitter,
-                                                       CompletableFuture<Void> future,
-                                                       String serviceName) {
+    private void setupEmitterCallbacks(SseEmitter emitter, CompletableFuture<Void> future, String serviceName) {
         emitter.onTimeout(() -> {
             log.warn("{} 스트리밍 타임아웃 - CompletableFuture 취소", serviceName);
             future.cancel(true);
@@ -207,72 +175,24 @@ public class OpenaiQuestionService {
                 .orElseThrow(() -> new UserNotFoundException());
     }
 
-    private String parseResponsesStreamResponse(String data) {
+    private String parseChatCompletionsStreamResponse(String data) {
         try {
             JsonNode jsonNode = objectMapper.readTree(data);
-            String eventType = jsonNode.get("type").asText();
 
-            // 실시간 텍스트 델타만 처리 (Responses API 전용)
-            if ("response.output_text.delta".equals(eventType)) {
-                JsonNode delta = jsonNode.get("delta");
-                if (delta != null) {
-                    return delta.asText();
+            // Chat Completions API 스트리밍 응답 구조
+            JsonNode choices = jsonNode.get("choices");
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                JsonNode firstChoice = choices.get(0);
+                JsonNode delta = firstChoice.get("delta");
+                if (delta != null && delta.has("content")) {
+                    return delta.get("content").asText();
                 }
             }
 
             return null;
         } catch (Exception e) {
-            log.warn("OpenAI Responses API 스트리밍 응답 파싱 실패: {}", e.getMessage());
+            log.warn("OpenAI Chat Completions API 스트리밍 응답 파싱 실패: {}", e.getMessage());
             return null;
-        }
-    }
-
-    private String extractResponseId(String data) {
-        try {
-            JsonNode jsonNode = objectMapper.readTree(data);
-            String eventType = jsonNode.get("type").asText();
-
-            // response.created 이벤트에서 ID 추출 (세션 관리용)
-            if ("response.created".equals(eventType)) {
-                JsonNode response = jsonNode.get("response");
-                if (response != null && response.has("id")) {
-                    return response.get("id").asText();
-                }
-            }
-
-            return null;
-        } catch (Exception e) {
-            log.warn("OpenAI Response ID 추출 실패: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    @Transactional
-    public void manageSession(Member member, Optional<QuestionSession> activeSession, String responseId) {
-        manageSessionWithoutTransaction(member, activeSession, responseId);
-    }
-
-    public void manageSessionForStream(Member member, Optional<QuestionSession> activeSession, String responseId) {
-        // 스트리밍용 세션 관리 (비동기 컨텍스트에서 호출)
-        transactionTemplate.executeWithoutResult(status -> {
-            manageSessionWithoutTransaction(member, activeSession, responseId);
-        });
-    }
-
-    private void manageSessionWithoutTransaction(Member member, Optional<QuestionSession> activeSession, String responseId) {
-        if (activeSession.isPresent()) {
-            QuestionSession session = activeSession.get();
-            session.updateLastUsed();
-            questionRepository.save(session);
-            log.info("기존 OpenAI 세션 업데이트 - 사용자: {}, 세션ID: {}", member.getId(), responseId);
-        } else {
-            questionRepository.deactivateAllByMember(member);
-            QuestionSession newSession = QuestionSession.builder()
-                    .member(member)
-                    .openaiSessionId(responseId)
-                    .build();
-            questionRepository.save(newSession);
-            log.info("새 OpenAI 세션 생성 - 사용자: {}, 세션ID: {}", member.getId(), responseId);
         }
     }
 

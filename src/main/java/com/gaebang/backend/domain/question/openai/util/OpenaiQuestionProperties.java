@@ -11,7 +11,7 @@ public class OpenaiQuestionProperties {
 
         private static Dotenv dotenv = Dotenv.load();
         private final String apiKey = dotenv.get("OPENAI-API-KEY");
-        private final String model = "gpt-4.1-nano";
-        private final String responseUrl = "https://api.openai.com/v1/responses";
+        private final String model = "gpt-4o-mini";
+        private final String responseUrl = "https://api.openai.com/v1/chat/completions";
 
 }

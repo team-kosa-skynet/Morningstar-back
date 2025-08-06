@@ -26,13 +26,4 @@ public class OpenaiQuestionController {
     ) {
         return openaiQuestionService.createQuestionStream(openaiQuestionRequestDto, principalDetails);
     }
-
-    @PostMapping("/new")
-    public ResponseEntity<ResponseDTO<Void>> startNewConversation(@AuthenticationPrincipal PrincipalDetails principalDetails) {
-        openaiQuestionService.startNewConversation(principalDetails);
-        ResponseDTO<Void> responseDTO = ResponseDTO.ok();
-        return ResponseEntity
-                .status(responseDTO.getCode())
-                .body(responseDTO);
-    }
 }
