@@ -15,6 +15,8 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -36,6 +38,7 @@ public class OpenaiQuestionService {
     private final RestClient restClient;
     private final QuestionRepository questionRepository;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
     @Transactional
     public void startNewConversation(PrincipalDetails principalDetails) {
@@ -246,16 +249,24 @@ public class OpenaiQuestionService {
 
     @Transactional
     public void manageSession(Member member, Optional<QuestionSession> activeSession, String responseId) {
+        manageSessionWithoutTransaction(member, activeSession, responseId);
+    }
+
+    public void manageSessionForStream(Member member, Optional<QuestionSession> activeSession, String responseId) {
+        // 스트리밍용 세션 관리 (비동기 컨텍스트에서 호출)
+        transactionTemplate.executeWithoutResult(status -> {
+            manageSessionWithoutTransaction(member, activeSession, responseId);
+        });
+    }
+
+    private void manageSessionWithoutTransaction(Member member, Optional<QuestionSession> activeSession, String responseId) {
         if (activeSession.isPresent()) {
-            // 기존 세션 업데이트 (대화 맥락 유지)
             QuestionSession session = activeSession.get();
             session.updateLastUsed();
             questionRepository.save(session);
             log.info("기존 OpenAI 세션 업데이트 - 사용자: {}, 세션ID: {}", member.getId(), responseId);
         } else {
-            // 새 세션 생성 (기존 세션들 비활성화)
             questionRepository.deactivateAllByMember(member);
-
             QuestionSession newSession = QuestionSession.builder()
                     .member(member)
                     .openaiSessionId(responseId)
@@ -263,12 +274,6 @@ public class OpenaiQuestionService {
             questionRepository.save(newSession);
             log.info("새 OpenAI 세션 생성 - 사용자: {}, 세션ID: {}", member.getId(), responseId);
         }
-    }
-
-    @Transactional
-    public void manageSessionForStream(Member member, Optional<QuestionSession> activeSession, String responseId) {
-        // 스트리밍용 세션 관리 (비동기 컨텍스트에서 호출)
-        manageSession(member, activeSession, responseId);
     }
 
     private void handleStreamError(SseEmitter emitter, Exception e) {
