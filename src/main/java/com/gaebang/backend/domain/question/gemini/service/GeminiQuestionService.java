@@ -58,8 +58,9 @@ public class GeminiQuestionService {
                     .build();
 
             Map<String, Object> parameters = createRequestParameters(userMessage);
-            String geminiStreamUrl = geminiQuestionProperties.getResponseUrl()
-                    .replace("generateContent", "streamGenerateContent");
+
+            // URL 중복 수정 제거
+            String geminiStreamUrl = geminiQuestionProperties.getResponseUrl();
 
             restClient.post()
                     .uri(geminiStreamUrl)
@@ -85,9 +86,6 @@ public class GeminiQuestionService {
                                 new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
 
                             String line;
-                            StringBuilder jsonBuilder = new StringBuilder();
-                            boolean inJsonObject = false;
-
                             while ((line = reader.readLine()) != null) {
                                 // 주기적으로 취소 신호 확인
                                 if (Thread.currentThread().isInterrupted()) {
@@ -98,15 +96,11 @@ public class GeminiQuestionService {
                                 line = line.trim();
                                 if (line.isEmpty()) continue;
 
-                                if (line.startsWith("{")) {
-                                    inJsonObject = true;
-                                    jsonBuilder = new StringBuilder();
-                                }
-
-                                if (inJsonObject) {
-                                    jsonBuilder.append(line);
-                                    if (line.endsWith("}")) {
-                                        String content = parseGeminiJsonResponse(jsonBuilder.toString());
+                                // SSE 형태로 오는 데이터 파싱: "data: {json}"
+                                if (line.startsWith("data: ")) {
+                                    String jsonData = line.substring(6); // "data: " 제거
+                                    if (!jsonData.equals("[DONE]")) {
+                                        String content = parseGeminiJsonResponse(jsonData);
                                         if (content != null && !content.isEmpty()) {
                                             try {
                                                 emitter.send(SseEmitter.event()
@@ -117,7 +111,6 @@ public class GeminiQuestionService {
                                                 return null;
                                             }
                                         }
-                                        inJsonObject = false;
                                     }
                                 }
                             }
