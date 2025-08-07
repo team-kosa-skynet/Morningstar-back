@@ -2,6 +2,10 @@ package com.gaebang.backend.domain.question.gemini.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gaebang.backend.domain.conversation.dto.request.AddAnswerRequestDto;
+import com.gaebang.backend.domain.conversation.dto.request.AddQuestionRequestDto;
+import com.gaebang.backend.domain.conversation.dto.response.ConversationHistoryDto;
+import com.gaebang.backend.domain.conversation.service.ConversationService;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
@@ -20,10 +24,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -35,32 +36,83 @@ public class GeminiQuestionService {
     private final RestClient restClient;
     private final MemberRepository memberRepository;
     private final ObjectMapper objectMapper;
+    private final ConversationService conversationService; // ConversationService 주입 추가
 
+    /**
+     * 특정 대화방에서 Gemini 질문 스트리밍을 생성합니다
+     * 이전 대화 히스토리를 포함하여 연속적인 대화가 가능합니다
+     */
     public SseEmitter createQuestionStream(
+            Long conversationId,
+            String model, // 쿼리 파라미터로 받은 모델
             GeminiQuestionRequestDto geminiQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
         Member member = validateAndGetMember(principalDetails);
         SseEmitter emitter = new SseEmitter(300000L); // 5분
 
+        // 사용자 질문을 대화방에 먼저 저장
+        AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(geminiQuestionRequestDto.content());
+        conversationService.addQuestion(conversationId, member.getId(), questionRequest);
+
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-            performApiCall(emitter, geminiQuestionRequestDto);
+            performApiCall(emitter, conversationId, model, geminiQuestionRequestDto, member); // 모델 파라미터 추가
         });
 
         setupEmitterCallbacksWithCancellation(emitter, future, "Gemini");
         return emitter;
     }
 
-    private void performApiCall(SseEmitter emitter, GeminiQuestionRequestDto requestDto) {
+    /**
+     * Gemini API를 호출하고 스트리밍 응답을 처리합니다
+     * 대화 히스토리를 포함하여 이전 맥락을 유지합니다
+     */
+    private void performApiCall(SseEmitter emitter, Long conversationId, String requestModel,
+                                GeminiQuestionRequestDto requestDto, Member member) {
+        StringBuilder fullResponse = new StringBuilder(); // 전체 응답 저장용
+
         try {
-            GeminiMessage userMessage = GeminiMessage.builder()
-                    .parts(List.of(Map.of("text", requestDto.content())))
-                    .build();
+            // 사용할 모델 결정 (쿼리 파라미터로 받은 모델 또는 기본값)
+            String modelToUse = geminiQuestionProperties.getModelToUse(requestModel);
+            log.info("Gemini API 호출 - 사용 모델: {} (요청 모델: {})", modelToUse, requestModel);
 
-            Map<String, Object> parameters = createRequestParameters(userMessage);
+            // 대화 히스토리 조회 (이전 대화 맥락 포함)
+            ConversationHistoryDto historyDto = conversationService.getConversationHistory(
+                    conversationId,
+                    member.getId(),
+                    null // 전체 히스토리 사용 (토큰 제한 고려시 숫자 설정)
+            );
 
-            // URL 중복 수정 제거
-            String geminiStreamUrl = geminiQuestionProperties.getResponseUrl();
+            // Gemini API용 contents 배열 생성
+            List<Map<String, Object>> contents = new ArrayList<>();
+
+            // 히스토리에서 메시지들을 Gemini 형식으로 변환
+            for (Map<String, Object> historyMessage : historyDto.messages()) {
+                String role = (String) historyMessage.get("role");
+                String content = (String) historyMessage.get("content");
+
+                // Gemini API는 role을 다르게 매핑 (user: user, assistant: model)
+                String geminiRole = "user".equals(role) ? "user" : "model";
+
+                Map<String, Object> geminiContent = new HashMap<>();
+                geminiContent.put("role", geminiRole);
+                geminiContent.put("parts", List.of(Map.of("text", content)));
+                contents.add(geminiContent);
+            }
+
+            // 현재 질문이 히스토리에 없으면 추가 (안전장치)
+            if (contents.isEmpty() ||
+                    !isLastMessageEqual(contents, requestDto.content())) {
+                Map<String, Object> currentContent = new HashMap<>();
+                currentContent.put("role", "user");
+                currentContent.put("parts", List.of(Map.of("text", requestDto.content())));
+                contents.add(currentContent);
+            }
+
+            Map<String, Object> parameters = createRequestParameters(contents);
+
+            // 선택된 모델에 대한 URL 생성
+            String geminiStreamUrl = geminiQuestionProperties.getResponseUrl(modelToUse);
 
             restClient.post()
                     .uri(geminiStreamUrl)
@@ -102,6 +154,8 @@ public class GeminiQuestionService {
                                     if (!jsonData.equals("[DONE]")) {
                                         String content = parseGeminiJsonResponse(jsonData);
                                         if (content != null && !content.isEmpty()) {
+                                            fullResponse.append(content); // 전체 응답에 추가
+
                                             try {
                                                 emitter.send(SseEmitter.event()
                                                         .name("message")
@@ -116,6 +170,16 @@ public class GeminiQuestionService {
                             }
 
                             if (!Thread.currentThread().isInterrupted()) {
+                                // 스트리밍 완료 후 전체 응답을 대화방에 저장 (실제 사용된 모델명으로)
+                                if (fullResponse.length() > 0) {
+                                    AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
+                                            fullResponse.toString(),
+                                            modelToUse // 실제 사용된 모델명 저장
+                                    );
+                                    conversationService.addAnswer(conversationId, member.getId(), answerRequest);
+                                    log.info("Gemini 답변 저장 완료 - 모델: {}", modelToUse);
+                                }
+
                                 emitter.send(SseEmitter.event()
                                         .name("done")
                                         .data("스트리밍 완료"));
@@ -138,6 +202,7 @@ public class GeminiQuestionService {
             }
         }
     }
+
 
     private void setupEmitterCallbacksWithCancellation(SseEmitter emitter,
                                                        CompletableFuture<Void> future,
@@ -170,10 +235,33 @@ public class GeminiQuestionService {
                 .orElseThrow(() -> new UserNotFoundException());
     }
 
-    private Map<String, Object> createRequestParameters(GeminiMessage userMessage) {
+    /**
+     * Gemini API 요청 파라미터 생성 (히스토리 포함)
+     */
+    private Map<String, Object> createRequestParameters(List<Map<String, Object>> contents) {
         Map<String, Object> parameters = new HashMap<>();
-        parameters.put("contents", List.of(userMessage));
+        parameters.put("contents", contents); // 전체 히스토리 포함
         return parameters;
+    }
+
+    /**
+     * 마지막 메시지가 현재 질문과 같은지 확인하는 헬퍼 메서드
+     */
+    private boolean isLastMessageEqual(List<Map<String, Object>> contents, String currentQuestion) {
+        if (contents.isEmpty()) {
+            return false;
+        }
+
+        Map<String, Object> lastContent = contents.get(contents.size() - 1);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> parts = (List<Map<String, Object>>) lastContent.get("parts");
+
+        if (parts == null || parts.isEmpty()) {
+            return false;
+        }
+
+        String lastText = (String) parts.get(0).get("text");
+        return currentQuestion.equals(lastText);
     }
 
     private String parseGeminiJsonResponse(String jsonResponse) {

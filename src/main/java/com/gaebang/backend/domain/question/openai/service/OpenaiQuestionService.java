@@ -1,5 +1,9 @@
 package com.gaebang.backend.domain.question.openai.service;
 
+import com.gaebang.backend.domain.conversation.dto.request.AddAnswerRequestDto;
+import com.gaebang.backend.domain.conversation.dto.request.AddQuestionRequestDto;
+import com.gaebang.backend.domain.conversation.dto.response.ConversationHistoryDto;
+import com.gaebang.backend.domain.conversation.service.ConversationService;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
@@ -31,35 +35,72 @@ public class OpenaiQuestionService {
     private final OpenaiQuestionProperties openaiQuestionProperties;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
+    private final ConversationService conversationService; // ConversationService 주입 추가
 
+    /**
+     * 특정 대화방에서 OpenAI 질문 스트리밍을 생성합니다
+     * 이전 대화 히스토리를 포함하여 연속적인 대화가 가능합니다
+     */
     public SseEmitter createQuestionStream(
+            Long conversationId,
+            String model, // 쿼리 파라미터로 받은 모델
             OpenaiQuestionRequestDto openaiQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
         Member member = validateAndGetMember(principalDetails);
         SseEmitter emitter = new SseEmitter(300000L); // 5분 타임아웃
 
+        // 사용자 질문을 대화방에 먼저 저장
+        AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(openaiQuestionRequestDto.content());
+        conversationService.addQuestion(conversationId, member.getId(), questionRequest);
+
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-            performApiCall(emitter, openaiQuestionRequestDto, member);
+            performApiCall(emitter, conversationId, model, openaiQuestionRequestDto, member); // 모델 파라미터 추가
         });
 
         setupEmitterCallbacks(emitter, future, "OpenAI");
         return emitter;
     }
 
-    private void performApiCall(SseEmitter emitter, OpenaiQuestionRequestDto requestDto, Member member) {
+
+    /**
+     * OpenAI API를 호출하고 스트리밍 응답을 처리합니다
+     * 대화 히스토리를 포함하여 이전 맥락을 유지합니다
+     */
+    private void performApiCall(SseEmitter emitter, Long conversationId, String requestModel,
+                                OpenaiQuestionRequestDto requestDto, Member member) {
+        StringBuilder fullResponse = new StringBuilder(); // 전체 응답 저장용
+
         try {
+            // 사용할 모델 결정 (쿼리 파라미터로 받은 모델 또는 기본값)
+            String modelToUse = openaiQuestionProperties.getModelToUse(requestModel);
+            log.info("OpenAI API 호출 - 사용 모델: {} (요청 모델: {})", modelToUse, requestModel);
+
+            // 대화 히스토리 조회 (이전 대화 맥락 포함)
+            ConversationHistoryDto historyDto = conversationService.getConversationHistory(
+                    conversationId,
+                    member.getId(),
+                    null // 전체 히스토리 사용 (토큰 제한 고려시 숫자 설정)
+            );
+
             // Chat Completions API 스트리밍 요청 데이터 준비
             Map<String, Object> parameters = new HashMap<>();
-            parameters.put("model", openaiQuestionProperties.getModel());
+            parameters.put("model", modelToUse); // 동적으로 결정된 모델 사용
             parameters.put("stream", true);
 
-            // messages 배열 생성 (Chat Completions API 형식)
-            List<Map<String, Object>> messages = new ArrayList<>();
-            Map<String, Object> message = new HashMap<>();
-            message.put("role", "user");
-            message.put("content", requestDto.content());
-            messages.add(message);
+            // 히스토리에서 messages 가져오기 (이미 LLM API 형태로 변환됨)
+            List<Map<String, Object>> messages = new ArrayList<>(historyDto.messages());
+
+            // 현재 질문 추가 (이미 ConversationService에 저장했으므로 히스토리에 포함되어 있음)
+            // 하지만 혹시 누락될 경우를 대비해 마지막 메시지가 현재 질문인지 확인
+            if (messages.isEmpty() ||
+                    !requestDto.content().equals(messages.get(messages.size() - 1).get("content"))) {
+                Map<String, Object> currentMessage = new HashMap<>();
+                currentMessage.put("role", "user");
+                currentMessage.put("content", requestDto.content());
+                messages.add(currentMessage);
+            }
+
             parameters.put("messages", messages);
 
             String openaiUrl = openaiQuestionProperties.getResponseUrl();
@@ -110,6 +151,8 @@ public class OpenaiQuestionService {
 
                                     String content = parseChatCompletionsStreamResponse(data);
                                     if (content != null && !content.isEmpty()) {
+                                        fullResponse.append(content); // 전체 응답에 추가
+
                                         try {
                                             emitter.send(SseEmitter.event()
                                                     .name("message")
@@ -123,6 +166,16 @@ public class OpenaiQuestionService {
                             }
 
                             if (!Thread.currentThread().isInterrupted()) {
+                                // 스트리밍 완료 후 전체 응답을 대화방에 저장 (실제 사용된 모델명으로)
+                                if (fullResponse.length() > 0) {
+                                    AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
+                                            fullResponse.toString(),
+                                            modelToUse // 실제 사용된 모델명 저장
+                                    );
+                                    conversationService.addAnswer(conversationId, member.getId(), answerRequest);
+                                    log.info("OpenAI 답변 저장 완료 - 모델: {}", modelToUse);
+                                }
+
                                 emitter.send(SseEmitter.event()
                                         .name("done")
                                         .data("스트리밍 완료"));
@@ -146,6 +199,8 @@ public class OpenaiQuestionService {
         }
     }
 
+
+    // 기존 메서드들은 그대로 유지
     private void setupEmitterCallbacks(SseEmitter emitter, CompletableFuture<Void> future, String serviceName) {
         emitter.onTimeout(() -> {
             log.warn("{} 스트리밍 타임아웃 - CompletableFuture 취소", serviceName);
