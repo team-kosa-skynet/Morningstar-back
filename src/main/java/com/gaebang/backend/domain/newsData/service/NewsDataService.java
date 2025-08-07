@@ -36,7 +36,7 @@ public class NewsDataService {
     private String clientSecret = dotenv.get("X-Naver-Client-Secret");
 
     private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json?query=AI";
-    private static final int DEFAULT_DISPLAY_COUNT = 10;
+    private static final int DEFAULT_DISPLAY_COUNT = 100;
 
 
     public List<NewsDataResponseDTO> getNewsData() {
