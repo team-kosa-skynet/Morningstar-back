@@ -36,7 +36,7 @@ public class ClaudeQuestionService {
     private final RestClient restClient;
     private final MemberRepository memberRepository;
     private final ObjectMapper objectMapper;
-    private final ConversationService conversationService; // ConversationService 주입 추가
+    private final ConversationService conversationService;
 
     /**
      * 특정 대화방에서 Claude 질문 스트리밍을 생성합니다
@@ -62,7 +62,6 @@ public class ClaudeQuestionService {
         setupEmitterCallbacksWithCancellation(emitter, future, "Claude");
         return emitter;
     }
-
 
     /**
      * Claude API를 호출하고 스트리밍 응답을 처리합니다
@@ -109,6 +108,7 @@ public class ClaudeQuestionService {
                 messages.add(currentMessage);
             }
 
+            // 🔧 수정된 부분: 모델 파라미터 추가
             Map<String, Object> parameters = createRequestParameters(messages, modelToUse, true);
             String claudeUrl = claudeQuestionProperties.getResponseUrl();
 
@@ -228,11 +228,11 @@ public class ClaudeQuestionService {
     }
 
     /**
-     * Claude API 요청 파라미터 생성 (히스토리 포함)
+     * 🔧 수정된 부분: Claude API 요청 파라미터 생성 (히스토리 포함, 모델 동적 설정)
      */
-    private Map<String, Object> createRequestParameters(List<ClaudeMessage> messages, boolean stream) {
+    private Map<String, Object> createRequestParameters(List<ClaudeMessage> messages, String model, boolean stream) {
         Map<String, Object> parameters = new HashMap<>();
-        parameters.put("model", claudeQuestionProperties.getModel());
+        parameters.put("model", model); // 동적으로 전달받은 모델 사용
         parameters.put("max_tokens", 1000);
         parameters.put("temperature", 0);
         parameters.put("system", "너는 AI에 최적화된 전문가야");
