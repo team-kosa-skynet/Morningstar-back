@@ -92,6 +92,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/member/{memberId}")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/email/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/payment/redirect/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/news/**")).permitAll()
                 .anyRequest().authenticated());
 
         /**
