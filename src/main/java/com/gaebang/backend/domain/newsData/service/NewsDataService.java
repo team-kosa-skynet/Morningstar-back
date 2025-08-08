@@ -36,7 +36,7 @@ public class NewsDataService {
     private String clientSecret = dotenv.get("X-Naver-Client-Secret");
 
     private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json?query=AI";
-    private static final int DEFAULT_DISPLAY_COUNT = 10;
+    private static final int DEFAULT_DISPLAY_COUNT = 100;
 
 
     public List<NewsDataResponseDTO> getNewsData() {
@@ -58,9 +58,8 @@ public class NewsDataService {
 
 
     // 뉴스 데이터를 조회하고 DB에 저장
-//     @Scheduled(cron = "*/30 * * * * *", zone = "Asia/Seoul") // 30초마다 저장
-    // 매일 오전 9시 디비에 데이터 저장.
-    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
+//    @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul") // 10분마다 실행
     @Transactional
     public void fetchAndSaveNews() {
         try {
