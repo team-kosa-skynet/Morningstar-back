@@ -35,3 +35,25 @@ spring:
             token-uri: https://kauth.kakao.com/oauth/token
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
+  # 캐시 활성화 (성능상 필요)
+  cache:
+    type: simple
+    cache-names:
+      - "ai-responses"
+      - "vector-search-results"
+
+  # 배치 자동 실행 방지 (필수)
+  batch:
+    job:
+      enabled: false
+
+# ChromaDB 벡터 데이터베이스 (필수)
+chroma:
+  base-url: http://localhost:8000
+
+# WebSocket 실시간 통신 (필수)
+websocket:
+  endpoint: "/ws/interview"
+  allowed-origins:
+    - "http://localhost:3000"
+    - "http://localhost:8080"

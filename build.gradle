@@ -68,6 +68,27 @@ dependencies {
 
 	//mail
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
+
+	// langChain4j starter
+	implementation 'dev.langchain4j:langchain4j-spring-boot-starter:1.3.0-beta9'
+
+	// langChain4j openAI API
+	implementation 'dev.langchain4j:langchain4j-open-ai-spring-boot-starter:1.3.0-beta9'
+
+	// chromaDB 벡터 데이터베이스-
+	implementation 'dev.langchain4j:langchain4j-chroma:1.3.0-beta9'
+
+	// 문서 처리 라이브러리
+	implementation 'dev.langchain4j:langchain4j-document-parser-apache-tika:1.3.0-beta9'
+
+	// websocket
+	implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+	// cache
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+	// batch
+	implementation 'org.springframework.boot:spring-boot-starter-batch'
 }
 
 tasks.named('test') {
