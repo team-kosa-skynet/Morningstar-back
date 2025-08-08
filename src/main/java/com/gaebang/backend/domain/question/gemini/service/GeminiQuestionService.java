@@ -10,7 +10,6 @@ import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
-import com.gaebang.backend.domain.question.gemini.dto.request.GeminiMessage;
 import com.gaebang.backend.domain.question.gemini.dto.request.GeminiQuestionRequestDto;
 import com.gaebang.backend.domain.question.gemini.util.GeminiQuestionProperties;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
@@ -25,7 +24,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -55,11 +53,9 @@ public class GeminiQuestionService {
         AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(geminiQuestionRequestDto.content());
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             performApiCall(emitter, conversationId, model, geminiQuestionRequestDto, member); // 모델 파라미터 추가
-        });
 
-        setupEmitterCallbacksWithCancellation(emitter, future, "Gemini");
+        setupEmitterCallbacksWithCancellation(emitter, "Gemini");
         return emitter;
     }
 
@@ -205,24 +201,18 @@ public class GeminiQuestionService {
 
 
     private void setupEmitterCallbacksWithCancellation(SseEmitter emitter,
-                                                       CompletableFuture<Void> future,
                                                        String serviceName) {
         emitter.onTimeout(() -> {
-            log.warn("{} 스트리밍 타임아웃 - CompletableFuture 취소", serviceName);
-            future.cancel(true);
+            log.warn("{} 스트리밍 타임아웃", serviceName);
             emitter.complete();
         });
 
         emitter.onCompletion(() -> {
             log.info("{} 스트리밍 완료", serviceName);
-            if (!future.isDone()) {
-                future.cancel(true);
-            }
         });
 
         emitter.onError((throwable) -> {
-            log.error("{} 스트리밍 에러 - CompletableFuture 취소", serviceName, throwable);
-            future.cancel(true);
+            log.error("{} 스트리밍 에러", serviceName, throwable);
         });
     }
 

@@ -15,7 +15,7 @@ public class OpenaiQuestionProperties {
          * OpenAI API 키 (.env 파일에서 가져옴)
          */
         private static Dotenv dotenv = Dotenv.load();
-        private final String apiKey = dotenv.get("OPENAI-API-KEY");
+        private final String apiKey = dotenv.get("OPENAI_API_KEY");
 
         /**
          * OpenAI API 응답 URL (하드코딩)

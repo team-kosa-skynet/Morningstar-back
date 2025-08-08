@@ -15,7 +15,7 @@ public class ClaudeQuestionProperties {
      * Claude API 키 (.env 파일에서 가져옴)
      */
     private static Dotenv dotenv = Dotenv.load();
-    private final String apiKey = dotenv.get("CLAUDE-API-KEY");
+    private final String apiKey = dotenv.get("CLAUDE_API_KEY");
 
     /**
      * Claude API 응답 URL (하드코딩)
@@ -25,16 +25,16 @@ public class ClaudeQuestionProperties {
     /**
      * 기본 모델 (하드코딩)
      */
-    private final String defaultModel = "claude-3-haiku";
+    private final String defaultModel = "claude-3-haiku-20240307";
 
     /**
      * 지원하는 Claude 모델 목록 (하드코딩)
      */
     private final List<String> supportedModels = List.of(
-            "claude-3-haiku",
-            "claude-3-sonnet",
-            "claude-3-opus",
-            "claude-3-5-sonnet"
+            "claude-3-haiku-20240307",
+            "claude-3-sonnet-20240229",
+            "claude-3-opus-20240229",
+            "claude-3-5-sonnet-20241022"
     );
 
     /**

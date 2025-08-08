@@ -25,7 +25,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -55,11 +54,9 @@ public class ClaudeQuestionService {
         AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(claudeQuestionRequestDto.content());
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             performApiCall(emitter, conversationId, model, claudeQuestionRequestDto, member); // 모델 파라미터 추가
-        });
 
-        setupEmitterCallbacksWithCancellation(emitter, future, "Claude");
+        setupEmitterCallbacksWithCancellation(emitter, "Claude");
         return emitter;
     }
 
@@ -197,24 +194,18 @@ public class ClaudeQuestionService {
     }
 
     private void setupEmitterCallbacksWithCancellation(SseEmitter emitter,
-                                                       CompletableFuture<Void> future,
                                                        String serviceName) {
         emitter.onTimeout(() -> {
-            log.warn("{} 스트리밍 타임아웃 - CompletableFuture 취소", serviceName);
-            future.cancel(true);
+            log.warn("{} 스트리밍 타임아웃", serviceName);
             emitter.complete();
         });
 
         emitter.onCompletion(() -> {
             log.info("{} 스트리밍 완료", serviceName);
-            if (!future.isDone()) {
-                future.cancel(true);
-            }
         });
 
         emitter.onError((throwable) -> {
-            log.error("{} 스트리밍 에러 - CompletableFuture 취소", serviceName, throwable);
-            future.cancel(true);
+            log.error("{} 스트리밍 에러", serviceName, throwable);
         });
     }
 

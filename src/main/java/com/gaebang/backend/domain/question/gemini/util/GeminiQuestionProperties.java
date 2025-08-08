@@ -15,7 +15,7 @@ public class GeminiQuestionProperties {
      * Gemini API 키 (.env 파일에서 가져옴)
      */
     private static Dotenv dotenv = Dotenv.load();
-    private final String apiKey = dotenv.get("GEMINI-API-KEY");
+    private final String apiKey = dotenv.get("GEMINI_API_KEY");
 
     /**
      * Gemini API 기본 URL (하드코딩)
@@ -25,23 +25,22 @@ public class GeminiQuestionProperties {
     /**
      * 기본 모델 (하드코딩)
      */
-    private final String defaultModel = "gemini-pro";
+    private final String defaultModel = "gemini-2.5-flash";
 
     /**
      * 지원하는 Gemini 모델 목록 (하드코딩)
      */
     private final List<String> supportedModels = List.of(
-            "gemini-pro",
-            "gemini-1.5-pro",
             "gemini-1.5-flash",
-            "gemini-1.5-flash-8b"
+            "gemini-1.5-pro",
+            "gemini-1.0-pro"
     );
 
     /**
      * 특정 모델에 대한 스트리밍 URL 생성
      */
     public String getResponseUrl(String model) {
-        return baseUrl + "/" + model + ":streamGenerateContent";
+        return baseUrl + "/" + model + ":streamGenerateContent?alt=sse";
     }
 
     /**
