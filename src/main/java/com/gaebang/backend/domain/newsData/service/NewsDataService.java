@@ -35,13 +35,13 @@ public class NewsDataService {
     private String clientId = dotenv.get("X-Naver-Client-Id");
     private String clientSecret = dotenv.get("X-Naver-Client-Secret");
 
-    private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json?query=AI";
+    private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json?query=it";
     private static final int DEFAULT_DISPLAY_COUNT = 100;
 
 
     public List<NewsDataResponseDTO> getNewsData() {
 
-        List<NewsData> newsData = newsRepository.findTop10ByOrderByPubDateDesc();
+        List<NewsData> newsData = newsRepository.findTop100ByOrderByPubDateDesc();
 
         return newsData.stream()
                 .map(news -> NewsDataResponseDTO.builder()
@@ -90,11 +90,11 @@ public class NewsDataService {
 
     // API 응답 조회
     private String getNewsApiResponse() throws Exception {
-        String encodedQuery = URLEncoder.encode("AI", StandardCharsets.UTF_8);
+        String encodedQuery = URLEncoder.encode("it", StandardCharsets.UTF_8);
         String apiUrl = buildApiUrl(encodedQuery, DEFAULT_DISPLAY_COUNT, 1, "sim");
         Map<String, String> headers = buildHeaders();
 
-        log.info("네이버 뉴스 API 호출 - 키워드: {}, 개수: {}, 시작: {}, 정렬: {}", "AI", DEFAULT_DISPLAY_COUNT, 1, "sim");
+        log.info("네이버 뉴스 API 호출 - 키워드: {}, 개수: {}, 시작: {}, 정렬: {}", "it", DEFAULT_DISPLAY_COUNT, 1, "sim");
 
         String response = httpClient.get(apiUrl, headers);
         log.info("네이버 뉴스 API 응답 수신 완료");

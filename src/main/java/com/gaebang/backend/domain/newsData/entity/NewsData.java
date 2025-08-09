@@ -35,7 +35,7 @@ public class NewsData {
     @Column(name = "link")
     private String link;
 
-    @Column(name = "description")
+    @Column(name = "description" , columnDefinition = "TEXT")
     private String description;
 
     @Column(name = "pub_date")

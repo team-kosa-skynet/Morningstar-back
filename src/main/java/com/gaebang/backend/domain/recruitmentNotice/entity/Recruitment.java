@@ -34,7 +34,7 @@ public class Recruitment {
     @Column(name = "title")
     private String title;
 
-    @Column(name = "technology_stack", length = 1000)
+    @Column(name = "technology_stack" , columnDefinition = "TEXT")
     private String technologyStack;
 
     @Column(name = "pub_date")
