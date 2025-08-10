@@ -45,6 +45,8 @@ public class SpringSecurityConfig {
                     configuration.addAllowedOriginPattern("http://gaebang.site");
                     configuration.addAllowedOriginPattern("https://www.gaebang.site");
                     configuration.addAllowedOriginPattern("http://www.gaebang.site");
+                    configuration.addAllowedOriginPattern("http://localhost:5727");
+                    configuration.addAllowedOriginPattern("http://127.0.0.1:5727");
                     configuration.setAllowedMethods(
                             Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"));
 
@@ -94,6 +96,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/payment/redirect/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/news/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/interview/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/realtime/**")).permitAll()
                 .anyRequest().authenticated());
 
         /**
