@@ -35,7 +35,7 @@ public class NewsDataService {
     private String clientId = dotenv.get("X-Naver-Client-Id");
     private String clientSecret = dotenv.get("X-Naver-Client-Secret");
 
-    private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json?query=it";
+    private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json";
     private static final int DEFAULT_DISPLAY_COUNT = 100;
 
 
@@ -60,6 +60,7 @@ public class NewsDataService {
     // 뉴스 데이터를 조회하고 DB에 저장
     @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
 //    @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul") // 10분마다 실행
+//    @Scheduled(cron = "*/30 * * * * *", zone = "Asia/Seoul") // 30초마다 실행
     @Transactional
     public void fetchAndSaveNews() {
         try {
@@ -90,7 +91,7 @@ public class NewsDataService {
 
     // API 응답 조회
     private String getNewsApiResponse() throws Exception {
-        String encodedQuery = URLEncoder.encode("it", StandardCharsets.UTF_8);
+        String encodedQuery = URLEncoder.encode("it+기술", StandardCharsets.UTF_8);
         String apiUrl = buildApiUrl(encodedQuery, DEFAULT_DISPLAY_COUNT, 1, "sim");
         Map<String, String> headers = buildHeaders();
 
