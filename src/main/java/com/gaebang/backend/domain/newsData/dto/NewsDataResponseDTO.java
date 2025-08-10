@@ -1,5 +1,6 @@
 package com.gaebang.backend.domain.newsData.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -18,6 +19,8 @@ public class NewsDataResponseDTO {
     private String originalLink;
     private String link;
     private String description;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime pubDate;
 
 }
