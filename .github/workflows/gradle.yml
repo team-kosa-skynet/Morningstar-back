@@ -80,28 +80,6 @@ jobs:
             # 기존 java 프로세스 종료
             pgrep java && pgrep java | xargs -r kill -9
 
-            # 📄 .env 파일 공백 값 자동 처리 + CRLF -> LF 변환
-            if [ -f .env ]; then
-              echo "📄 .env 파일 처리 시작"
-              sed -i 's/\r$//' .env
-
-              awk -F= '{
-                if ($0 ~ /^[^#].*=[^"]* [^"]*$/) {
-                  key=$1
-                  sub(/^[^=]+=/,"")
-                  val=$0
-                  print key "=\"" val "\""
-                } else {
-                  print $0
-                }
-              }' .env > .env.tmp && mv .env.tmp .env
-
-              set -a
-              source .env
-              set +a
-              echo "✅ .env 로드 완료"
-            fi
-
             # 로그 디렉터리 생성
             mkdir -p log
 
