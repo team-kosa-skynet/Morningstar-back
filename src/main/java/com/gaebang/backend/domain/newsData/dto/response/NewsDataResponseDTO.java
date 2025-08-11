@@ -1,26 +1,29 @@
 package com.gaebang.backend.domain.newsData.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import com.gaebang.backend.domain.newsData.entity.NewsData;
 
 import java.time.LocalDateTime;
 
-@Getter
-@AllArgsConstructor
-@NoArgsConstructor
-@Builder
-public class NewsDataResponseDTO {
-
-    private Long newsId;
-    private String title;
-    private String originalLink;
-    private String link;
-    private String description;
-
+public record NewsDataResponseDTO (
+    Long newsId,
+    String title,
+    String originalLink,
+    String link,
+    String description,
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    private LocalDateTime pubDate;
+    LocalDateTime pubDate
+) {
+
+    public static NewsDataResponseDTO fromEntity(NewsData newsData) {
+        return new NewsDataResponseDTO(
+            newsData.getNewsId(),
+            newsData.getTitle(),
+            newsData.getOriginalLink(),
+            newsData.getLink(),
+            newsData.getDescription(),
+            newsData.getPubDate()
+        );
+    }
 
 }

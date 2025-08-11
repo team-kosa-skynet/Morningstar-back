@@ -43,16 +43,8 @@ public class NewsDataService {
         List<NewsData> newsData = newsRepository.findTop100ByOrderByPubDateDesc();
 
         return newsData.stream()
-                .map(news -> NewsDataResponseDTO.builder()
-                        .newsId(news.getNewsId())
-                        .originalLink(news.getOriginalLink())
-                        .link(news.getLink())
-                        .title(news.getTitle())
-                        .description(news.getDescription())
-                        .pubDate(news.getPubDate())
-                        .build())
+                .map(news -> NewsDataResponseDTO.fromEntity(news))
                 .collect(Collectors.toList());
-
     }
 
 
