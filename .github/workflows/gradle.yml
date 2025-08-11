@@ -73,9 +73,19 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # 기존 java 프로세스 종료
             pgrep java && pgrep java | xargs -r kill -9
+            
+            # 환경 변수 로드
             export $(grep -v '^#' /home/${{ secrets.EC2_USERNAME }}/project/.env | xargs)
-            nohup java -jar /home/${{ secrets.EC2_USERNAME }}/Project.jar > /home/${{ secrets.EC2_USERNAME }}/log/app_log.out 2>&1 &
+            
+            # 애플리케이션 실행 (세션 종료 후에도 유지)
+            nohup java -jar /home/${{ secrets.EC2_USERNAME }}/Project.jar \
+              > /home/${{ secrets.EC2_USERNAME }}/log/app_log.out 2>&1 & disown
+            
+            # 실행 확인
+            sleep 3
+            pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
 
       - name: Remove private key file
         run: rm -f private_key.pem
