@@ -68,6 +68,9 @@ dependencies {
 
 	//mail
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
+
+	// RAG
+	implementation 'org.apache.poi:poi-ooxml:5.2.3' // Excel 처리용
 }
 
 tasks.named('test') {

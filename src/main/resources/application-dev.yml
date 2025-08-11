@@ -18,6 +18,11 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
+qdrant:
+  base-url: "http://localhost:6333"
+  collection-name: "excel_collection"
+  vector-size: 1536
+
 logging:
   level:
     "[org.springframework.security]": DEBUG

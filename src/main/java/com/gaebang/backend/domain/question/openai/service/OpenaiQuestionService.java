@@ -84,6 +84,7 @@ public class OpenaiQuestionService {
             Map<String, Object> parameters = new HashMap<>();
             parameters.put("model", modelToUse); // 동적으로 결정된 모델 사용
             parameters.put("stream", true);
+            parameters.put("temperature", 0);
 
             // 히스토리에서 messages 가져오기 (이미 LLM API 형태로 변환됨)
             List<Map<String, Object>> messages = new ArrayList<>(historyDto.messages());
