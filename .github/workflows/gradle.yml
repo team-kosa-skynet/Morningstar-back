@@ -59,9 +59,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Project
-          # 업로드할 파일의 경로를 지정 (build/libs에 Project jar 파일을 업로드한다.)
-          # 빌드 단계에서 생성된 jar파일
-          path: build/libs/Project-0.0.1-SNAPSHOT.jar
+          # jar 파일 이름이 바뀌어도 모든 jar를 업로드하도록 변경
+          path: build/libs/*.jar
 
 
   deploy:
@@ -77,9 +76,8 @@ jobs:
 
     steps:
       # CI 단계에서 업로드한 artifact를 다운로드 한다.
-      # CI 단계에서 artifact를 업로드했으면 그냥 그거 쓰면 되는거 아닌가?
       # -> CI에서 생성된 artifact를 CD단계에서 동일한 artifact를 사용하여 배포의 일관성을 유지
-      # -> CI에서 생성된 결과물을 바로 사용하기때문에 시간 절약
+      # -> CI에서 생성된 결과물을 바로 사용하기 때문에 시간 절약
       # -> CI에서 검증한 코드를 CD에서 사용하므로 배포 안정성 높일 수 있음
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -102,9 +100,11 @@ jobs:
           chmod 600 private_key.pem
 
       # scp 명령을 통해 ec2에 jar 파일을 전송한다.
+      # jar 이름이 바뀌어도 자동으로 전송되도록 *.jar로 변경
       - name: Upload JAR to EC2
         run: |
-          scp -i private_key.pem build/libs/Project-0.0.1-SNAPSHOT.jar ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USERNAME }}/Project.jar
+          scp -i private_key.pem build/libs/*.jar \
+            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USERNAME }}/Project.jar
 
       # ec2에 이미 실행 중인 자바 프로세스를 강제종료한다. (-9는 강제종료, -15는 안전하게 종료)
       # 프로젝트 내 application.yml에 들어갈 private 데이터에 대해서 .env의 환경 변수들을 읽어와 셀 환경에 설정한다.
