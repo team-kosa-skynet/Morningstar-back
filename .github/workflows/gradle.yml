@@ -75,14 +75,19 @@ jobs:
           script: |
             # 기존 java 프로세스 종료
             pgrep java && pgrep java | xargs -r kill -9
-            
-            # 환경 변수 로드
-            export $(grep -v '^#' /home/${{ secrets.EC2_USERNAME }}/project/.env | xargs)
-            
+
+            # 환경 변수 로드 (파일이 있는 경우만)
+            if [ -f /home/${{ secrets.EC2_USERNAME }}/project/.env ]; then
+              export $(grep -v '^#' /home/${{ secrets.EC2_USERNAME }}/project/.env | xargs)
+            fi
+
+            # 로그 디렉터리 생성
+            mkdir -p /home/${{ secrets.EC2_USERNAME }}/log
+
             # 애플리케이션 실행 (세션 종료 후에도 유지)
             nohup java -jar /home/${{ secrets.EC2_USERNAME }}/Project.jar \
               > /home/${{ secrets.EC2_USERNAME }}/log/app_log.out 2>&1 & disown
-            
+
             # 실행 확인
             sleep 3
             pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
