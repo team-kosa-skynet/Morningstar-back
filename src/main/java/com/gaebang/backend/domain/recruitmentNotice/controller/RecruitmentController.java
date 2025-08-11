@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.recruitmentNotice.controller;
 
 import com.gaebang.backend.domain.recruitmentNotice.dto.response.RecruitmentResponseDto;
 import com.gaebang.backend.domain.recruitmentNotice.service.RecruitmentService;
+import com.gaebang.backend.global.util.ResponseDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -20,9 +21,11 @@ public class RecruitmentController {
     private final RecruitmentService recruitmentService;
 
     @GetMapping("")
-    public ResponseEntity<List<RecruitmentResponseDto>> getRecruitmentData() {
+    public ResponseEntity<ResponseDTO<List<RecruitmentResponseDto>>> getRecruitmentData() {
         List<RecruitmentResponseDto> recruitments = recruitmentService.getRecruitmentData();
-        return ResponseEntity.ok(recruitments);
+        ResponseDTO<List<RecruitmentResponseDto>> response = ResponseDTO.okWithData(recruitments);
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
     }
-
 }

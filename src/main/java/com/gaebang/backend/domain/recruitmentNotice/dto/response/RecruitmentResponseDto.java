@@ -1,27 +1,39 @@
 package com.gaebang.backend.domain.recruitmentNotice.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-
+import com.gaebang.backend.domain.recruitmentNotice.entity.Recruitment;
 import java.time.LocalDateTime;
 
-@Getter
-@AllArgsConstructor
-@NoArgsConstructor
-@Builder
-public class RecruitmentResponseDto {
+public record RecruitmentResponseDto(
+    Long recruitmentId,
+    String companyName,
+    String title,
+    String technologyStack,
+    String workLocation,
+    String careerLevel,
+    String workType,
+    String educationLevel,
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    LocalDateTime pubDate,
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    LocalDateTime expirationDate,
+    String link
+) {
 
-    private Long recruitmentId;
-    private String link;
-    private String companyName;
-    private String title;
-    private String technologyStack;
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    private LocalDateTime pubDate;
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    private LocalDateTime expirationDate;
+    public static RecruitmentResponseDto fromEntity(Recruitment recruitment) {
+        return new RecruitmentResponseDto(
+                recruitment.getRecruitmentId(),
+                recruitment.getCompanyName(),
+                recruitment.getTitle(),
+                recruitment.getTechnologyStack(),
+                recruitment.getWorkLocation(),
+                recruitment.getCareerLevel(),
+                recruitment.getWorkType(),
+                recruitment.getEducationLevel(),
+                recruitment.getPubDate(),
+                recruitment.getExpirationDate(),
+                recruitment.getLink()
+        );
+    }
 
 }

@@ -1,6 +1,6 @@
 package com.gaebang.backend.domain.newsData.service;
 
-import com.gaebang.backend.domain.newsData.dto.NewsDataResponseDTO;
+import com.gaebang.backend.domain.newsData.dto.response.NewsDataResponseDTO;
 import com.gaebang.backend.domain.newsData.entity.NewsData;
 import com.gaebang.backend.domain.newsData.repository.NewsRepository;
 import com.gaebang.backend.domain.newsData.util.HtmlUtils;
@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.cdimascio.dotenv.Dotenv;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,16 +43,8 @@ public class NewsDataService {
         List<NewsData> newsData = newsRepository.findTop100ByOrderByPubDateDesc();
 
         return newsData.stream()
-                .map(news -> NewsDataResponseDTO.builder()
-                        .newsId(news.getNewsId())
-                        .originalLink(news.getOriginalLink())
-                        .link(news.getLink())
-                        .title(news.getTitle())
-                        .description(news.getDescription())
-                        .pubDate(news.getPubDate())
-                        .build())
+                .map(news -> NewsDataResponseDTO.fromEntity(news))
                 .collect(Collectors.toList());
-
     }
 
 
