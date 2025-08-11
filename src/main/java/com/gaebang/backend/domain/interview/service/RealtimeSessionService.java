@@ -7,10 +7,12 @@ import com.gaebang.backend.domain.interview.dto.response.CreateRealtimeSessionRe
 import com.gaebang.backend.domain.interview.entity.InterviewSession;
 import com.gaebang.backend.domain.interview.repository.InterviewSessionRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RealtimeSessionService {
@@ -59,6 +61,8 @@ public class RealtimeSessionService {
                 || oa.clientSecret().expiresAt() == null) {
             throw new IllegalStateException("OpenAI가 유효한 에페메랄 키를 반환하지 않았습니다.");
         }
+
+        log.info("TICKET sessionId={}", session.getId());
 
         // 5) API 응답
         return new CreateRealtimeSessionResponseDto(

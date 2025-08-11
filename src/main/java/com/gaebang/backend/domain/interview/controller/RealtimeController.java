@@ -15,17 +15,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class RealtimeController {
 
-    private final RealtimeSessionService service;
+    private final RealtimeSessionService realtimeSessionService;
 
     @PostMapping("/session")
     public ResponseEntity<CreateRealtimeSessionResponseDto> createSession(
             @RequestBody CreateRealtimeSessionRequestDto req
     ) {
-        CreateRealtimeSessionResponseDto res = service.createEphemeral(
+
+        CreateRealtimeSessionResponseDto res = realtimeSessionService.createEphemeral(
                 req.jobPosition(),
                 req.userId(),
                 req.instructions()
         );
+
         return ResponseEntity.ok(res);
     }
 

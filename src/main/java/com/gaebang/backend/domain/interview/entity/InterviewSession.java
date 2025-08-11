@@ -19,7 +19,7 @@ public class InterviewSession extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(length = 36)
+    @Column(columnDefinition = "BINARY(16)")
     private UUID id;
 
     private Long userId;
@@ -103,5 +103,16 @@ public class InterviewSession extends BaseTimeEntity {
 
     public void moveToStage(InterviewStage stage) {
         this.stage = stage;
+    }
+
+    // 포지션을 바꾸고 싶을 때 사용할 의도 있는 메서드
+    public void updateJobPosition(String jobPosition) {
+        this.jobPosition = jobPosition;
+    }
+
+    public void ensureStartState() {
+        if (this.questionNo <= 0) this.questionNo = 1;
+        if (this.stage == null) this.stage = InterviewStage.ICEBREAK;
+        if (this.status == null) this.status = InterviewStatus.ACTIVE;
     }
 }
