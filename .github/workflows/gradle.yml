@@ -72,25 +72,34 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            ENV_PATH="/home/ec2-user/Morningstar-back/.env"
+
             # 기존 java 프로세스 종료
             pgrep java && pgrep java | xargs -r kill -9
-
-            ENV_PATH="/home/ec2-user/Morningstar-back/.env"
 
             # .env 파일 처리
             if [ -f "$ENV_PATH" ]; then
               echo "📄 .env 파일 처리 시작"
-              # CRLF -> LF 변환
+
+              # 1) CRLF -> LF 변환
               sed -i 's/\r$//' "$ENV_PATH"
-              # 하이픈(-)을 언더스코어(_)로 변환
+
+              # 2) 변수명 하이픈(-) → 언더스코어(_) 변환
+              sed -i 's/^\([A-Za-z0-9_-]*\)-/\1_/g' "$ENV_PATH"
               sed -i 's/-/_/g' "$ENV_PATH"
-              # 환경변수 로드
+
+              # 3) 잘못된 줄 제거 (KEY=VALUE 형식만 남김)
+              grep -E '^[A-Za-z_][A-Za-z0-9_]*=.*' "$ENV_PATH" > "${ENV_PATH}.tmp" \
+                && mv "${ENV_PATH}.tmp" "$ENV_PATH"
+
+              # 4) 환경변수 로드
               set -a
               source "$ENV_PATH"
               set +a
+
               echo "✅ .env 로드 완료"
             else
-              echo "⚠️ .env 파일이 없습니다."
+              echo "⚠️ .env 파일이 존재하지 않음"
             fi
 
             # 로그 디렉터리 생성
@@ -103,5 +112,6 @@ jobs:
             # 실행 확인
             sleep 3
             pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
+      
       
     
