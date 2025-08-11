@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -31,7 +31,24 @@ jobs:
           arguments: clean build -x test
 
       - name: Check build/libs content
-        run: ls -lh build/libs
+        run: ls -l build/libs
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Project
+          path: build/libs/*.jar
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Project
+          path: build/libs/
 
       - name: Create .ssh directory and add EC2 host key
         run: |
@@ -46,33 +63,32 @@ jobs:
       - name: Upload JAR to EC2
         run: |
           scp -i private_key.pem build/libs/*.jar \
-            ${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/home/${{ secrets.EC2_USERNAME }}/Project.jar
+            ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/Morningstar-back/Project.jar
 
       - name: Deploy to EC2
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
+          username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             # 기존 java 프로세스 종료
             pgrep java && pgrep java | xargs -r kill -9
 
-            # 환경 변수 로드 (파일이 있는 경우만)
-            if [ -f /home/${{ secrets.EC2_USERNAME }}/project/.env ]; then
-              export $(grep -v '^#' /home/${{ secrets.EC2_USERNAME }}/project/.env | xargs)
+            # 환경 변수 로드 (있을 때만)
+            if [ -f /home/ec2-user/Morningstar-back/.env ]; then
+              set -a
+              source /home/ec2-user/Morningstar-back/.env
+              set +a
             fi
 
             # 로그 디렉터리 생성
-            mkdir -p /home/${{ secrets.EC2_USERNAME }}/log
+            mkdir -p /home/ec2-user/Morningstar-back/log
 
             # 애플리케이션 실행
-            nohup java -jar /home/${{ secrets.EC2_USERNAME }}/Project.jar \
-              > /home/${{ secrets.EC2_USERNAME }}/log/app_log.out 2>&1 & disown
+            nohup java -jar /home/ec2-user/Morningstar-back/Project.jar \
+              > /home/ec2-user/Morningstar-back/log/app_log.out 2>&1 & disown
 
             # 실행 확인
             sleep 3
             pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
-
-      - name: Remove private key file
-        run: rm -f private_key.pem
