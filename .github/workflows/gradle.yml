@@ -103,8 +103,10 @@ jobs:
 
             # 애플리케이션 실행
             nohup java -jar /home/ec2-user/Morningstar-back/Project.jar \
-              > /home/ec2-user/Morningstar-back/log/app_log.out 2>&1 & disown
-
-            # 실행 확인
+            > /home/ec2-user/Morningstar-back/log/app_log.out 2>&1 & disown
+  
             sleep 3
+            echo "📄 애플리케이션 로그 미리보기:"
+            head -n 30 /home/ec2-user/Morningstar-back/log/app_log.out
+  
             pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
