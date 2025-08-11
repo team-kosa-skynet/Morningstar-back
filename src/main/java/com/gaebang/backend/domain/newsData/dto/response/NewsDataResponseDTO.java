@@ -1,4 +1,4 @@
-package com.gaebang.backend.domain.newsData.dto;
+package com.gaebang.backend.domain.newsData.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.AllArgsConstructor;

@@ -1,6 +1,6 @@
 package com.gaebang.backend.domain.newsData.controller;
 
-import com.gaebang.backend.domain.newsData.dto.NewsDataResponseDTO;
+import com.gaebang.backend.domain.newsData.dto.response.NewsDataResponseDTO;
 import com.gaebang.backend.domain.newsData.service.NewsDataService;
 import com.gaebang.backend.global.util.ResponseDTO;
 import lombok.RequiredArgsConstructor;
