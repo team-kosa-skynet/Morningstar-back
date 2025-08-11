@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.newsData.controller;
 
 import com.gaebang.backend.domain.newsData.dto.NewsDataResponseDTO;
 import com.gaebang.backend.domain.newsData.service.NewsDataService;
+import com.gaebang.backend.global.util.ResponseDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -20,16 +21,11 @@ public class NewsDataController {
     private final NewsDataService newsDataService;
 
     @GetMapping("")
-    public ResponseEntity<List<NewsDataResponseDTO>> getNewsData() {  // void -> String으로 변경
+    public ResponseEntity<ResponseDTO<List<NewsDataResponseDTO>>> getNewsData() {  // void -> String으로 변경
         List<NewsDataResponseDTO> newsData = newsDataService.getNewsData();
-        return ResponseEntity.ok(newsData);
+        ResponseDTO<List<NewsDataResponseDTO>> response = ResponseDTO.okWithData(newsData);
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
     }
-
-//    // api로 데이터를 잘 받고 db에 저장하는지 확인하는 컨트롤러
-//    @GetMapping("/test")
-//    public String getNewsDataApi() {  // void -> String으로 변경
-//        System.out.println("Controller 호출됨!");
-//        newsDataService.fetchAndSaveNews();
-//        return "response";
-//    }
 }
