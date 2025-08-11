@@ -1,5 +1,4 @@
 name: Project CI/CD
-##
 
 on:
   push:
@@ -11,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -32,24 +31,7 @@ jobs:
           arguments: clean build -x test
 
       - name: Check build/libs content
-        run: ls -l build/libs
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Project
-          path: build/libs/*.jar
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: Project
-          path: build/libs/
+        run: ls -lh build/libs
 
       - name: Create .ssh directory and add EC2 host key
         run: |
@@ -84,19 +66,13 @@ jobs:
             # 로그 디렉터리 생성
             mkdir -p /home/${{ secrets.EC2_USERNAME }}/log
 
-            # 애플리케이션 실행 (백그라운드)
+            # 애플리케이션 실행
             nohup java -jar /home/${{ secrets.EC2_USERNAME }}/Project.jar \
               > /home/${{ secrets.EC2_USERNAME }}/log/app_log.out 2>&1 & disown
 
             # 실행 확인
             sleep 3
-            if pgrep java > /dev/null; then
-              echo "✅ 애플리케이션 실행됨"
-            else
-              echo "❌ 실행 실패 — 최근 로그 확인:"
-              tail -n 50 /home/${{ secrets.EC2_USERNAME }}/log/app_log.out
-            fi
-      
+            pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
 
       - name: Remove private key file
         run: rm -f private_key.pem
