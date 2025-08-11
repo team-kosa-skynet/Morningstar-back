@@ -30,14 +30,17 @@ jobs:
         with:
           arguments: clean build -x test
 
-      - name: Check build/libs content
-        run: ls -l build/libs
+      - name: Rename JAR file to Project.jar
+        run: |
+          JAR_FILE=$(ls build/libs | grep -E '\.jar$' | grep -v plain | head -n 1)
+          mv "build/libs/$JAR_FILE" build/libs/Project.jar
+          ls -l build/libs
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Project
-          path: build/libs/*.jar
+          path: build/libs/Project.jar
 
   deploy:
     needs: build
@@ -62,7 +65,7 @@ jobs:
 
       - name: Upload JAR to EC2
         run: |
-          scp -i private_key.pem build/libs/*.jar \
+          scp -i private_key.pem build/libs/Project.jar \
             ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/Morningstar-back/Project.jar
 
       - name: Deploy to EC2
@@ -80,7 +83,6 @@ jobs:
               echo "📄 .env 파일 처리 시작"
               sed -i 's/\r$//' /home/ec2-user/Morningstar-back/.env
 
-              # 공백이 있는 값 자동으로 감싸기
               awk -F= '{
                 if ($0 ~ /^[^#].*=[^"]* [^"]*$/) {
                   key=$1
@@ -104,9 +106,9 @@ jobs:
             # 애플리케이션 실행
             nohup java -jar /home/ec2-user/Morningstar-back/Project.jar \
             > /home/ec2-user/Morningstar-back/log/app_log.out 2>&1 & disown
-  
+            
             sleep 3
             echo "📄 애플리케이션 로그 미리보기:"
             head -n 30 /home/ec2-user/Morningstar-back/log/app_log.out
-  
+            
             pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
