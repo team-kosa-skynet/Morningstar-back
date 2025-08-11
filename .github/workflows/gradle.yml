@@ -81,7 +81,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           # Project 이름으로 업로드된 artifact를 build/libs 경로에 다운로드
-          name: Morningstar-back
+          name: Project
           path: build/libs/
 
       - name: Create .ssh directory and add EC2 host key
