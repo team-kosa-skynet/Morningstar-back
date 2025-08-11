@@ -1,0 +1,107 @@
+name: Project CI/CD
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: 17
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v2.6.0
+        with:
+          arguments: clean build -x test
+
+      - name: Check build/libs content
+        run: ls -l build/libs
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Project
+          path: build/libs/*.jar
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Project
+          path: build/libs/
+
+      - name: Create .ssh directory and add EC2 host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create private key file
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" | sed 's/\\n/\n/g' > private_key.pem
+          chmod 600 private_key.pem
+
+      - name: Upload JAR to EC2
+        run: |
+          scp -i private_key.pem build/libs/*.jar \
+            ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/Morningstar-back/Project.jar
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # 기존 java 프로세스 종료
+            pgrep java && pgrep java | xargs -r kill -9
+
+            ENV_PATH="/home/ec2-user/Morningstar-back/.env"
+
+            # .env 파일 처리
+            if [ -f "$ENV_PATH" ]; then
+              echo "📄 .env 파일 처리 시작"
+              # CRLF -> LF 변환
+              sed -i 's/\r$//' "$ENV_PATH"
+              # 하이픈(-)을 언더스코어(_)로 변환
+              sed -i 's/-/_/g' "$ENV_PATH"
+              # 환경변수 로드
+              set -a
+              source "$ENV_PATH"
+              set +a
+              echo "✅ .env 로드 완료"
+            else
+              echo "⚠️ .env 파일이 없습니다."
+            fi
+
+            # 로그 디렉터리 생성
+            mkdir -p /home/ec2-user/Morningstar-back/log
+
+            # 애플리케이션 실행
+            nohup java -jar /home/ec2-user/Morningstar-back/Project.jar \
+              > /home/ec2-user/Morningstar-back/log/app_log.out 2>&1 & disown
+
+            # 실행 확인
+            sleep 3
+            pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
+      
+    
