@@ -31,8 +31,8 @@ public class NewsDataService {
     private final NewsRepository newsRepository;
     private static Dotenv dotenv = Dotenv.load();
 
-    private String clientId = dotenv.get("X-Naver-Client-Id");
-    private String clientSecret = dotenv.get("X-Naver-Client-Secret");
+    private String clientId = dotenv.get("X_Naver_Client_Id");
+    private String clientSecret = dotenv.get("X_Naver_Client_Secret");
 
     private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json";
     private static final int DEFAULT_DISPLAY_COUNT = 100;
