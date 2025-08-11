@@ -42,12 +42,16 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      # gradle build (-x test는 테스트를 생략하고 빌드하겠다는 명렁어 옵션)
+      # gradle build (-x test는 테스트를 생략하고 빌드하겠다는 명령어 옵션)
       - name: Build with Gradle
         # github에서 제공하는 gradle 빌드 Action
         uses: gradle/gradle-build-action@v2.6.0
         with:
           arguments: clean build -x test
+
+      # 빌드 결과물 확인 (추가)
+      - name: Check build/libs content
+        run: ls -l build/libs
 
       # 파일을 업로드하여 나중에 다운로드에 사용되도록 한다.
       # Artifact를 통해 작업을 완료한 후 데이터를 보관하고 동일한 Workflow의 다른 작업에서 공유할 수 있다.
