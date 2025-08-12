@@ -41,21 +41,14 @@ public class RecruitmentService {
         List<Recruitment> recruitments = recruitmentRepository.findTop100ByOrderByPubDateDesc();
 
         return recruitments.stream()
-                .map(recruitment -> RecruitmentResponseDto.builder()
-                        .recruitmentId(recruitment.getRecruitmentId())
-                        .link(recruitment.getLink())
-                        .companyName(recruitment.getCompanyName())
-                        .title(recruitment.getTitle())
-                        .pubDate(recruitment.getPubDate())
-                        .expirationDate(recruitment.getExpirationDate())
-                        .build())
+                .map(recruitment -> RecruitmentResponseDto.fromEntity(recruitment))
                 .collect(Collectors.toList());
-
     }
 
     // 채용정보 데이터를 조회하고 DB에 저장
 //    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
     @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul") // 10분마다 실행
+//    @Scheduled(cron = "*/30 * * * * *", zone = "Asia/Seoul") // 30초마다 실행
     @Transactional
     public void fetchAndSaveRecruitment() {
         try {
@@ -125,6 +118,10 @@ public class RecruitmentService {
                 .companyName(HtmlUtils.cleanText(job.get("company").get("detail").get("name").asText()))
                 .title(HtmlUtils.cleanText(job.get("position").get("title").asText()))
                 .technologyStack(HtmlUtils.cleanText(job.get("position").get("job-code").get("name").asText()))
+                .workLocation(HtmlUtils.cleanText(job.get("position").get("location").get("name").asText()))
+                .careerLevel(HtmlUtils.cleanText(job.get("position").get("experience-level").get("name").asText()))
+                .workType(HtmlUtils.cleanText(job.get("position").get("job-type").get("name").asText()))
+                .educationLevel(HtmlUtils.cleanText(job.get("position").get("required-education-level").get("name").asText()))
                 .build();
 
         // pubDate 설정
@@ -152,7 +149,7 @@ public class RecruitmentService {
                 .collect(Collectors.toList());
     }
 
-    // 이미 DB에 존재하는 뉴스 필터링
+    // 이미 DB에 존재하는 채용정보 필터링
     private List<Recruitment> filterExistingRecruitment(List<Recruitment> recruitmentList) {
         return recruitmentList.stream()
                 .filter(recruitment -> {

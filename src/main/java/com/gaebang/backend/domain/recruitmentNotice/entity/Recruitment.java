@@ -34,8 +34,20 @@ public class Recruitment {
     @Column(name = "title")
     private String title;
 
-    @Column(name = "technology_stack", length = 1000)
+    @Column(name = "technology_stack" , columnDefinition = "TEXT")
     private String technologyStack;
+
+    @Column(name = "work_location")
+    private String workLocation;
+
+    @Column(name = "career_level")
+    private String careerLevel;
+
+    @Column(name = "work_type")
+    private String workType;
+
+    @Column(name = "education_level")
+    private String educationLevel;
 
     @Column(name = "pub_date")
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

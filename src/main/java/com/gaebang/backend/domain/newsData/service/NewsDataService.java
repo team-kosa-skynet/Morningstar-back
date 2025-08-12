@@ -1,6 +1,6 @@
 package com.gaebang.backend.domain.newsData.service;
 
-import com.gaebang.backend.domain.newsData.dto.NewsDataResponseDTO;
+import com.gaebang.backend.domain.newsData.dto.response.NewsDataResponseDTO;
 import com.gaebang.backend.domain.newsData.entity.NewsData;
 import com.gaebang.backend.domain.newsData.repository.NewsRepository;
 import com.gaebang.backend.domain.newsData.util.HtmlUtils;
@@ -10,7 +10,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.cdimascio.dotenv.Dotenv;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,34 +31,27 @@ public class NewsDataService {
     private final NewsRepository newsRepository;
     private static Dotenv dotenv = Dotenv.load();
 
-    private String clientId = dotenv.get("X-Naver-Client-Id");
-    private String clientSecret = dotenv.get("X-Naver-Client-Secret");
+    private String clientId = dotenv.get("X_Naver_Client_Id");
+    private String clientSecret = dotenv.get("X_Naver_Client_Secret");
 
-    private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json?query=AI";
+    private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json";
     private static final int DEFAULT_DISPLAY_COUNT = 100;
 
 
     public List<NewsDataResponseDTO> getNewsData() {
 
-        List<NewsData> newsData = newsRepository.findTop10ByOrderByPubDateDesc();
+        List<NewsData> newsData = newsRepository.findTop100ByOrderByPubDateDesc();
 
         return newsData.stream()
-                .map(news -> NewsDataResponseDTO.builder()
-                        .newsId(news.getNewsId())
-                        .originalLink(news.getOriginalLink())
-                        .link(news.getLink())
-                        .title(news.getTitle())
-                        .description(news.getDescription())
-                        .pubDate(news.getPubDate())
-                        .build())
+                .map(news -> NewsDataResponseDTO.fromEntity(news))
                 .collect(Collectors.toList());
-
     }
 
 
     // 뉴스 데이터를 조회하고 DB에 저장
     @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
 //    @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul") // 10분마다 실행
+//    @Scheduled(cron = "*/30 * * * * *", zone = "Asia/Seoul") // 30초마다 실행
     @Transactional
     public void fetchAndSaveNews() {
         try {
@@ -90,11 +82,11 @@ public class NewsDataService {
 
     // API 응답 조회
     private String getNewsApiResponse() throws Exception {
-        String encodedQuery = URLEncoder.encode("AI", StandardCharsets.UTF_8);
+        String encodedQuery = URLEncoder.encode("it+기술", StandardCharsets.UTF_8);
         String apiUrl = buildApiUrl(encodedQuery, DEFAULT_DISPLAY_COUNT, 1, "sim");
         Map<String, String> headers = buildHeaders();
 
-        log.info("네이버 뉴스 API 호출 - 키워드: {}, 개수: {}, 시작: {}, 정렬: {}", "AI", DEFAULT_DISPLAY_COUNT, 1, "sim");
+        log.info("네이버 뉴스 API 호출 - 키워드: {}, 개수: {}, 시작: {}, 정렬: {}", "it", DEFAULT_DISPLAY_COUNT, 1, "sim");
 
         String response = httpClient.get(apiUrl, headers);
         log.info("네이버 뉴스 API 응답 수신 완료");
