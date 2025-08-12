@@ -41,6 +41,14 @@ public class NewsData {
     @Column(name = "pub_date")
     private LocalDateTime pubDate;
 
+    @Column(name = "is_popular", columnDefinition = "TINYINT DEFAULT 0")
+    @Builder.Default
+    private Integer isPopular = 0;
+
+    @Column(name = "is_active", columnDefinition = "TINYINT DEFAULT 1")
+    @Builder.Default
+    private Integer isActive = 1;
+
     // API 응답 문자열을 LocalDateTime으로 변환하는 메서드
     public void setPubDateFromString(String pubDateStr) {
         // "Mon, 07 Jul 2025 11:00:00 +0900" 형식 파싱
