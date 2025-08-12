@@ -14,6 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,8 @@ public class RecruitmentService {
     // DB에서 채용정보 조회
     public List<RecruitmentResponseDto> getRecruitmentData() {
 
-        List<Recruitment> recruitments = recruitmentRepository.findTop100ByOrderByPubDateDesc();
+        LocalDateTime now = LocalDateTime.now();
+        List<Recruitment> recruitments = recruitmentRepository.findTop100ByExpirationDateAfterOrderByPubDateDesc(now);
 
         return recruitments.stream()
                 .map(recruitment -> RecruitmentResponseDto.fromEntity(recruitment))

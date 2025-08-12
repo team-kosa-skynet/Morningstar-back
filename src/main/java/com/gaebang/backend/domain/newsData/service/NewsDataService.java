@@ -40,7 +40,8 @@ public class NewsDataService {
 
     public List<NewsDataResponseDTO> getNewsData() {
 
-        List<NewsData> newsData = newsRepository.findTop100ByOrderByPubDateDesc();
+//        List<NewsData> newsData = newsRepository.findTop100ByOrderByPubDateDesc();
+        List<NewsData> newsData = newsRepository.findAll();
 
         return newsData.stream()
                 .map(news -> NewsDataResponseDTO.fromEntity(news))
