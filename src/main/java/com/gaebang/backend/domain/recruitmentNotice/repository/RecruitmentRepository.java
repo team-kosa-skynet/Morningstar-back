@@ -17,5 +17,5 @@ public interface RecruitmentRepository extends JpaRepository<Recruitment, Long> 
     Long countExistingByLink(String link);
 
     // 만료일이 오늘 이후인 채용공고만 조회 (최신순 100개)
-    List<Recruitment> findTop100ByExpirationDateAfterOrderByPubDateDesc(LocalDateTime currentDate);
+    List<Recruitment> findByExpirationDateAfterOrderByPubDateDesc(LocalDateTime currentDate);
 }

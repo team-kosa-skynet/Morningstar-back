@@ -40,7 +40,7 @@ public class RecruitmentService {
     public List<RecruitmentResponseDto> getRecruitmentData() {
 
         LocalDateTime now = LocalDateTime.now();
-        List<Recruitment> recruitments = recruitmentRepository.findTop100ByExpirationDateAfterOrderByPubDateDesc(now);
+        List<Recruitment> recruitments = recruitmentRepository.findByExpirationDateAfterOrderByPubDateDesc(now);
 
         return recruitments.stream()
                 .map(recruitment -> RecruitmentResponseDto.fromEntity(recruitment))
