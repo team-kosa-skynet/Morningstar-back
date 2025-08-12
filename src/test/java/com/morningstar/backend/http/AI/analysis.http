@@ -1,2 +1,6 @@
 POST http://localhost:8080/api/analysis/default-data
 Content-Type: application/json
+
+### 종합지능순 조회
+GET http://localhost:8080/api/analysis/by-intelligence
+

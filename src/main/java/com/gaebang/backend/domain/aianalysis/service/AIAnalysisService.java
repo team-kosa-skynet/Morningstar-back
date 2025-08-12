@@ -1,8 +1,10 @@
 package com.gaebang.backend.domain.aianalysis.service;
 
-import com.gaebang.backend.domain.aianalysis.dto.AIAnalysisDto; // 수정한 통합 DTO를 import
+import com.gaebang.backend.domain.aianalysis.dto.AIAnalysisDto;
+import com.gaebang.backend.domain.aianalysis.dto.AIModelListResponseDto;
 import com.gaebang.backend.domain.aianalysis.entity.AIModelIntegrated;
 import com.gaebang.backend.domain.aianalysis.repository.AIAnalysisRepository;
+import com.gaebang.backend.global.util.ResponseDTO;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,5 +112,16 @@ public class AIAnalysisService {
         entity.setMedianTimeToFirstTokenSeconds(dto.medianTimeToFirstTokenSeconds());
 
         return entity;
+    }
+
+    public ResponseDTO<AIModelListResponseDto> getAIListByIntelligence() {
+
+        List<AIModelIntegrated> aiModelIntegratedList =
+                aiAnalysisRepository.findTop100ByOrderByArtificialAnalysisIntelligenceIndexDesc();
+
+        AIModelListResponseDto responseData = AIModelListResponseDto.from(aiModelIntegratedList);
+
+        return ResponseDTO.okWithData(responseData,
+                "종합 지능순이 높은 순으로 AI리스트 조회에 성공했습니다");
     }
 }

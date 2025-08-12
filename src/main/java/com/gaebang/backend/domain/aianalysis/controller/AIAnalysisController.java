@@ -1,9 +1,11 @@
 package com.gaebang.backend.domain.aianalysis.controller;
 
+import com.gaebang.backend.domain.aianalysis.dto.AIModelListResponseDto;
 import com.gaebang.backend.domain.aianalysis.service.AIAnalysisService;
 import com.gaebang.backend.global.util.ResponseDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,5 +28,15 @@ public class AIAnalysisController {
                             .status(response.getCode())
                             .body(response);
                 }));
+    }
+
+    @GetMapping("/by-intelligence")
+    public ResponseEntity<ResponseDTO<AIModelListResponseDto>> getAIListByIntelligence() {
+
+        ResponseDTO<AIModelListResponseDto> response
+                = aiAnalysisService.getAIListByIntelligence();
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
     }
 }
