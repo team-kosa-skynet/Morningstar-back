@@ -36,6 +36,7 @@ spring:
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
   ai:
+    provider: openai
     openai:
       api-key: ${OPENAI_API_KEY}
       chat:
@@ -43,14 +44,14 @@ spring:
           model: gpt-4o-mini
           temperature: 0.3
           voice: verse
-    vectorstore:
-      chroma:
-        #client:
-          #host: http://localhost
-          #port: 8100
-        #collection-name: interview-rag
-        #initialize-schema: true
+
 app:
   realtime:
     model: gpt-4o-realtime-preview
     voice: verse
+
+interview:
+  default-mode: TURN_TEXT
+  features:
+    realtime-enabled: false
+    server-stt-enabled: false

@@ -98,6 +98,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/interview/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/realtime/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/internal/openai/ping")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/interviews/**")).permitAll()
                 .anyRequest().authenticated());
 
         /**

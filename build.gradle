@@ -70,13 +70,18 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
 
 	// 1) Spring AI
-	implementation platform("org.springframework.ai:spring-ai-bom:1.0.1")
+	implementation 'org.springframework.ai:spring-ai-starter-model-openai:1.0.1'
+	implementation 'com.openai:openai-java:3.0.2'
+	implementation 'org.apache.tika:tika-core:2.9.2'
+	implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
 
 	// OpenAI 모델 스타터(챗/임베딩/오디오)
 	implementation "org.springframework.ai:spring-ai-starter-model-openai"
 
 	// 벡터DB: Chroma
 //	implementation "org.springframework.ai:spring-ai-starter-vector-store-chroma"
+
+
 
 	// websocket
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'
