@@ -22,7 +22,8 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     List<NewsData> findByPubDateBetween(LocalDateTime start, LocalDateTime end);
 
     // 최신 뉴스 조회
-    List<NewsData> findAllByOrderByPubDateDesc();
+    @Query("SELECT n FROM NewsData n WHERE n.isActive = 1 ORDER BY n.pubDate DESC")
+    List<NewsData> findAllActiveNewsOrderByPubDateDesc();
 
     // 또는 더 정확하게 24시간 이내
     @Query("SELECT n FROM NewsData n WHERE n.pubDate >= :startDate AND n.pubDate < :endDate ORDER BY n.pubDate DESC")
