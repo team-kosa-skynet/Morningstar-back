@@ -22,6 +22,9 @@ public class OpenaiQuestionProperties {
          */
         private final String responseUrl = "https://api.openai.com/v1/chat/completions";
 
+        // 이미지 생성 url
+        private final String createImageUrl = "https://api.openai.com/v1/images/generations";
+
         /**
          * 기본 모델 (하드코딩)
          */
