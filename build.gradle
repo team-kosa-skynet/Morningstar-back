@@ -71,6 +71,10 @@ dependencies {
 
 	//webclient
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	//MockMultipartFile
+	implementation 'org.springframework:spring-test'
+
 }
 
 tasks.named('test') {
