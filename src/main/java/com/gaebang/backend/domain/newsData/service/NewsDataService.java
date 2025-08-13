@@ -2,7 +2,7 @@ package com.gaebang.backend.domain.newsData.service;
 
 import com.gaebang.backend.domain.newsData.dto.response.NewsDataResponseDTO;
 import com.gaebang.backend.domain.newsData.entity.NewsData;
-import com.gaebang.backend.domain.newsData.repository.NewsRepository;
+import com.gaebang.backend.domain.newsData.repository.NewsDataRepository;
 import com.gaebang.backend.domain.newsData.util.HtmlUtils;
 import com.gaebang.backend.domain.newsData.util.HttpClientUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,8 +27,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class NewsDataService {
 
+    private final PopularNewsDataService popularNewsDataService;
     private final HttpClientUtil httpClient;
-    private final NewsRepository newsRepository;
+    private final NewsDataRepository newsRepository;
     private static Dotenv dotenv = Dotenv.load();
 
     private String clientId = dotenv.get("X_Naver_Client_Id");
@@ -37,17 +38,16 @@ public class NewsDataService {
     private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json";
     private static final int DEFAULT_DISPLAY_COUNT = 100;
 
-
+    // 뉴스 전체 조회
     public List<NewsDataResponseDTO> getNewsData() {
 
 //        List<NewsData> newsData = newsRepository.findTop100ByOrderByPubDateDesc();
-        List<NewsData> newsData = newsRepository.findAllByOrderByPubDateDesc();
+        List<NewsData> newsData = newsRepository.findAllActiveNewsOrderByPubDateDesc();
 
         return newsData.stream()
                 .map(news -> NewsDataResponseDTO.fromEntity(news))
                 .collect(Collectors.toList());
     }
-
 
     // 뉴스 데이터를 조회하고 DB에 저장
     @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
@@ -71,6 +71,9 @@ public class NewsDataService {
                 // 배치 저장
                 newsRepository.saveAll(newsDataList);
                 log.info("뉴스 데이터 {}건 저장 완료", newsDataList.size());
+                
+                // 인기글과 중복글 가려내는 메서드 실행
+                popularNewsDataService.getDuplatedNews();
             } else {
                 log.info("저장할 새로운 뉴스가 없습니다.");
             }

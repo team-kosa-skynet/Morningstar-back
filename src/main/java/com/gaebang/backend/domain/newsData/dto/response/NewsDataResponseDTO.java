@@ -11,6 +11,8 @@ public record NewsDataResponseDTO (
     String originalLink,
     String link,
     String description,
+    Integer isPopular,
+    Integer isActive,
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     LocalDateTime pubDate
 ) {
@@ -22,6 +24,8 @@ public record NewsDataResponseDTO (
             newsData.getOriginalLink(),
             newsData.getLink(),
             newsData.getDescription(),
+            newsData.getIsPopular(),
+            newsData.getIsActive(),
             newsData.getPubDate()
         );
     }
