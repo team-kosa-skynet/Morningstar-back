@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -14,7 +15,6 @@ import java.util.List;
 public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
 
     // 중복 체크용 (서비스에서 사용)
-    // boolean existsByLink(String link);
     @Query(value = "SELECT COUNT(*) FROM news WHERE link = ?1", nativeQuery = true)
     Long countExistingByLink(String link);
 
@@ -25,7 +25,7 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     @Query("SELECT n FROM NewsData n WHERE n.isActive = 1 ORDER BY n.pubDate DESC")
     List<NewsData> findAllActiveNewsOrderByPubDateDesc();
 
-    // 또는 더 정확하게 24시간 이내
+    // 특정 날짜 범위 뉴스 조회
     @Query("SELECT n FROM NewsData n WHERE n.pubDate >= :startDate AND n.pubDate < :endDate ORDER BY n.pubDate DESC")
     List<NewsData> findNewsByDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
@@ -38,4 +38,15 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     @Modifying
     @Query("UPDATE NewsData n SET n.isActive = 0 WHERE n.newsId = :newsId")
     void markAsActive(@Param("newsId") Long newsId);
+
+    // imageUrl 업데이트 메서드
+    @Modifying
+    @Transactional
+    @Query("UPDATE NewsData n SET n.imageUrl = :imageUrl WHERE n.newsId = :newsId")
+    void updateImageUrl(@Param("newsId") Long newsId, @Param("imageUrl") String imageUrl);
+
+
+    // 이미지가 없는 활성 뉴스 조회 메서드
+    @Query("SELECT n FROM NewsData n WHERE (n.imageUrl IS NULL OR n.imageUrl = '') AND n.isActive = 1 ORDER BY n.pubDate DESC")
+    List<NewsData> findAllByImageUrlIsNullOrEmpty();
 }
