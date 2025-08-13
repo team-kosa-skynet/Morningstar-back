@@ -36,7 +36,6 @@ spring:
             user-info-uri: https://kapi.kakao.com/v2/user/me
             user-name-attribute: id
   ai:
-    provider: openai
     openai:
       api-key: ${OPENAI_API_KEY}
       chat:
@@ -44,6 +43,9 @@ spring:
           model: gpt-4o-mini
           temperature: 0.3
           voice: verse
+
+ai:
+  provider: openai
 
 app:
   realtime:

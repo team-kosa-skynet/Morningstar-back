@@ -10,6 +10,5 @@ public interface InterviewerAiGateway {
     String generateGreeting(String displayName);
     Map<String, Object> generatePlan(String role, String profileSnapshotJson, List<Map<String, Object>> candidates);
     AiTurnFeedbackDto nextTurn(String planJson, int questionIndex, String transcript, String recentSummaryJson, String previousResponseId) throws Exception;
-    Map<String, Object> finalizeReport(String sessionJson);
-
+    Map<String, Object> finalizeReport(String sessionJson, String previousResponseId);
 }

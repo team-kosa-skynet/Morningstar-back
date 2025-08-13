@@ -15,9 +15,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.servlet.handler.HandlerMappingIntrospector;
 
 import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @RequiredArgsConstructor
@@ -49,9 +51,15 @@ public class SpringSecurityConfig {
                     configuration.addAllowedOriginPattern("http://127.0.0.1:5500");
                     configuration.setAllowedMethods(
                             Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"));
+                    configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept"));
+                    configuration.setExposedHeaders(List.of("Content-Disposition", "Content-Type", "Content-Length"));
 
                     // 다른 도메인도 필요에 따라 추가
                     configuration.setAllowCredentials(true); // 쿠키를 포함한 크로스 도메인 요청을 허용
+                    UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
+
+                    src.registerCorsConfiguration("/api/interview/tts/**", configuration);
+
                     return configuration;
                 }));
 
@@ -99,6 +107,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/realtime/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/internal/openai/ping")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/interviews/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/interview/tts/**")).permitAll()
                 .anyRequest().authenticated());
 
         /**

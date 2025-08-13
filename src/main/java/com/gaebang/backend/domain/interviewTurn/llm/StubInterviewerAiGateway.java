@@ -3,6 +3,7 @@ package com.gaebang.backend.domain.interviewTurn.llm;
 import com.gaebang.backend.domain.interviewTurn.dto.internal.AiTurnFeedbackDto;
 import com.gaebang.backend.domain.interviewTurn.dto.internal.PlanQuestionDto;
 import com.gaebang.backend.domain.interviewTurn.util.PlanParser;
+import jakarta.annotation.PostConstruct;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
@@ -19,6 +20,9 @@ public class StubInterviewerAiGateway implements InterviewerAiGateway {
     public StubInterviewerAiGateway(PlanParser planParser) {
         this.planParser = planParser;
     }
+
+    @PostConstruct
+    void log() { System.out.println("[AI] Using StubInterviewerAiGateway"); }
 
     @Override
     public String generateGreeting(String displayName) {
@@ -73,13 +77,12 @@ public class StubInterviewerAiGateway implements InterviewerAiGateway {
     }
 
     @Override
-    public Map<String, Object> finalizeReport(String sessionJson) {
+    public Map<String, Object> finalizeReport(String sessionJson, String previousResponseId) {
         return Map.of(
-                "overallScore", 3.8,
-                "subscores", Map.of("communication", 4, "tech_depth", 4),
                 "strengths", "원인분석이 빠름",
                 "areasToImprove", "테스트 전략 구체화",
-                "recommendedQuestions", "장애 전파 차단 전략 학습"
+                "nextSteps", "장애 전파 차단 전략을 사례로 정리"  // ← recommendedQuestions 대신 nextSteps
         );
     }
+
 }

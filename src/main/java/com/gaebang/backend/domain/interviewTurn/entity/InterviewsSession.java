@@ -54,7 +54,6 @@ public class InterviewsSession extends BaseTimeEntity {
 
     private OffsetDateTime finishedAt;
 
-    // --- 생성/변경 메서드(의미 있는 동작만 노출) ---
     public static InterviewsSession create(UUID id,
                                            Member member,
                                            String displayName,
@@ -87,5 +86,9 @@ public class InterviewsSession extends BaseTimeEntity {
 
     public void updateLastResponseId(String lastResponseId) {
         this.lastResponseId = lastResponseId;
+    }
+
+    public void updateProfileSnapshotJson(String json) {
+        this.profileSnapshotJson = json;
     }
 }

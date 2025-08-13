@@ -81,7 +81,9 @@ dependencies {
 	// 벡터DB: Chroma
 //	implementation "org.springframework.ai:spring-ai-starter-vector-store-chroma"
 
-
+	// tts
+	implementation(platform("com.google.cloud:libraries-bom:26.50.0"))
+	implementation("com.google.cloud:google-cloud-texttospeech")
 
 	// websocket
 	implementation 'org.springframework.boot:spring-boot-starter-websocket'

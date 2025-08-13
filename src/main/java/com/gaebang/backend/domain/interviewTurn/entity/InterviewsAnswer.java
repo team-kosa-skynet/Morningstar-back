@@ -46,13 +46,17 @@ public class InterviewsAnswer extends BaseTimeEntity {
     @Column(name = "llm_response_id", length = 128)
     private String llmResponseId;
 
+    @Column(name = "prev_response_id", length = 128)
+    private String prevResponseId;
+
     public static InterviewsAnswer create(InterviewsSession session,
                                           int questionIndex,
                                           String questionType,
                                           String questionText,
                                           String transcript,
                                           String metricsJson,
-                                          String llmResponseId) {
+                                          String llmResponseId,
+                                          String prevResponseId) {   // ★ 추가
         InterviewsAnswer answer = new InterviewsAnswer();
         answer.session = session;
         answer.questionIndex = questionIndex;
@@ -61,6 +65,7 @@ public class InterviewsAnswer extends BaseTimeEntity {
         answer.transcript = transcript;
         answer.metricsJson = metricsJson;
         answer.llmResponseId = llmResponseId;
+        answer.prevResponseId = prevResponseId;     // ★ 추가
         return answer;
     }
 }
