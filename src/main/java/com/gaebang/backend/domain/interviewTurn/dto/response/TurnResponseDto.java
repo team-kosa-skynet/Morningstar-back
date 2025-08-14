@@ -1,11 +1,11 @@
 package com.gaebang.backend.domain.interviewTurn.dto.response;
 
-import java.util.Map;
+import java.util.List;
 
-public record NextTurnResponseDto(
+public record TurnResponseDto(
         String nextQuestion,
-        String coachingTips,
-        Map<String, Integer> scoreDelta,
+        List<String> coachingTips,
+        int scoreDelta,
         boolean done,
         TtsPayloadDto tts
 ) {

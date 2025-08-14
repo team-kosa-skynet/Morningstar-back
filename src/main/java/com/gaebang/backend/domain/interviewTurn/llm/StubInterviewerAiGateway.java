@@ -7,9 +7,7 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @ConditionalOnProperty(name = "ai.provider", havingValue = "stub", matchIfMissing = true)
@@ -72,7 +70,7 @@ public class StubInterviewerAiGateway implements InterviewerAiGateway {
             scoreDelta.put("clarity", 2);
         }
 
-        String fakeResponseId = "resp_stub_" + questionIndex + "_" + java.util.UUID.randomUUID();
+        String fakeResponseId = "resp_stub_" + questionIndex + "_" + UUID.randomUUID();
         return new AiTurnFeedbackDto(coachingTips, scoreDelta, fakeResponseId); // ★ responseId=null
     }
 

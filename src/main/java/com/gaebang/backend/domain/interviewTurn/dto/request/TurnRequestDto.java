@@ -7,8 +7,8 @@ import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 public record TurnRequestDto(
-        @NotNull UUID sessionId,
-        @Min(0) int questionIndex,
-        @NotBlank String transcript // 클라 STT 결과
+        UUID sessionId,
+        int questionIndex,
+        String transcript
 ) {
 }

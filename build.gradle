@@ -72,8 +72,12 @@ dependencies {
 	// 1) Spring AI
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai:1.0.1'
 	implementation 'com.openai:openai-java:3.0.2'
-	implementation 'org.apache.tika:tika-core:2.9.2'
-	implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
+	
+	// Document parsing libraries
+	implementation 'org.apache.pdfbox:pdfbox:3.0.1'
+	implementation 'org.apache.poi:poi:5.2.4'
+	implementation 'org.apache.poi:poi-ooxml:5.2.4'
+	implementation 'org.apache.poi:poi-scratchpad:5.2.4'
 
 	// OpenAI 모델 스타터(챗/임베딩/오디오)
 	implementation "org.springframework.ai:spring-ai-starter-model-openai"

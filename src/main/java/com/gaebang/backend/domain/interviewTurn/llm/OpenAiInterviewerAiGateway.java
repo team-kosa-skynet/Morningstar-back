@@ -14,9 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 @ConditionalOnProperty(name = "ai.provider", havingValue = "openai")
@@ -56,16 +54,16 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
     public Map<String, Object> generatePlan(String role, String profileSnapshotJson, List<Map<String, Object>> candidates) {
         if (candidates != null && !candidates.isEmpty()) {
             // idx가 겹치지 않도록 0..N 재부여
-            java.util.List<Map<String,Object>> normalized = new java.util.ArrayList<>();
+            List<Map<String,Object>> normalized = new ArrayList<>();
             for (int i = 0; i < candidates.size(); i++) {
                 Map<String,Object> c = candidates.get(i);
-                normalized.add(java.util.Map.of(
+                normalized.add(Map.of(
                         "idx", i,
                         "type", String.valueOf(c.get("type")),
                         "text", String.valueOf(c.get("text"))
                 ));
             }
-            return java.util.Map.of("questions", normalized);
+            return Map.of("questions", normalized);
         }
 
         Map<String, Object> q0 = Map.of("idx", 0, "type", "BEHAVIORAL", "text", "자기소개를 간단히 해주세요.");
@@ -91,7 +89,7 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
 
         PlanQuestionDto q = planParser.getQuestionByIndex(planJson, questionIndex);
 
-        // === JSON Schema (strict + 키 고정) ===
+        // JSON Schema (strict + 키 고정)
         Map<String, Object> schema = Map.of(
                 "type", "object",
                 "properties", Map.of(
@@ -218,7 +216,7 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
             body.put("model", model);
             body.put("input", prompt);
             body.put("store", true);
-            body.put("text", Map.of("format", format)); // ★ 여기!
+            body.put("text", Map.of("format", format));
             if (previousResponseId != null && !previousResponseId.isBlank()) {
                 body.put("previous_response_id", previousResponseId);
             }

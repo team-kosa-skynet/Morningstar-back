@@ -2,9 +2,7 @@ package com.gaebang.backend.domain.interviewTurn.config;
 
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 public class QuestionCatalog {
@@ -27,7 +25,7 @@ public class QuestionCatalog {
         }
 
         // ✅ 세션마다 순서 랜덤
-        java.util.Collections.shuffle(all);
+        Collections.shuffle(all);
 
         // (선택) skills 가중치 주고 싶으면 여기서 재정렬 로직 추가
         // 예: skills에 "Spring" 있으면 DB_TX/PERF 우선 등

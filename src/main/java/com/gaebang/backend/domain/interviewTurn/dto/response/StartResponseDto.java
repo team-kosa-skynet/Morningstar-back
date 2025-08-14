@@ -1,10 +1,8 @@
 package com.gaebang.backend.domain.interviewTurn.dto.response;
 
-import java.util.UUID;
-
-public record StartSessionResponseDto(
-        UUID sessionId,
-        String greeting,
+public record StartResponseDto(
+        String sessionId,
+        int questionIndex,
         String firstQuestion,
         TtsPayloadDto tts
 ) {

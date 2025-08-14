@@ -1,5 +1,6 @@
 package com.gaebang.backend.domain.interviewTurn.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaebang.backend.domain.interviewTurn.config.QuestionCatalog;
@@ -12,13 +13,16 @@ import com.gaebang.backend.domain.interviewTurn.dto.request.UpsertContextRequest
 import com.gaebang.backend.domain.interviewTurn.dto.response.FinalizeReportResponseDto;
 import com.gaebang.backend.domain.interviewTurn.dto.response.NextTurnResponseDto;
 import com.gaebang.backend.domain.interviewTurn.dto.response.StartSessionResponseDto;
+import com.gaebang.backend.domain.interviewTurn.dto.response.TtsPayloadDto;
 import com.gaebang.backend.domain.interviewTurn.entity.InterviewsAnswer;
 import com.gaebang.backend.domain.interviewTurn.entity.InterviewsSession;
+import com.gaebang.backend.domain.interviewTurn.entity.UploadedDocument;
 import com.gaebang.backend.domain.interviewTurn.enums.InterviewMode;
 import com.gaebang.backend.domain.interviewTurn.enums.InterviewStatus;
 import com.gaebang.backend.domain.interviewTurn.llm.InterviewerAiGateway;
 import com.gaebang.backend.domain.interviewTurn.repository.InterviewsAnswerRepository;
 import com.gaebang.backend.domain.interviewTurn.repository.InterviewsSessionRepository;
+import com.gaebang.backend.domain.interviewTurn.repository.UploadedDocumentRepository;
 import com.gaebang.backend.domain.interviewTurn.util.PlanParser;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
@@ -40,28 +44,34 @@ public class InterviewsService {
     private final InterviewsSessionRepository interviewsSessionRepository;
     private final InterviewsAnswerRepository interviewsAnswerRepository;
     private final MemberRepository memberRepository;
+    private final UploadedDocumentRepository uploadedDocumentRepository;
     private final InterviewerAiGateway ai;
     private final ObjectMapper om;
     private final PlanParser planParser;
     private final QuestionCatalog questionCatalog;
+    private final TtsService ttsService;
 
     public InterviewsService(InterviewsSessionRepository interviewsSessionRepository,
                              InterviewerAiGateway ai,
                              ObjectMapper objectMapper,
                              InterviewsAnswerRepository interviewsAnswerRepository,
                              MemberRepository memberRepository,
-                             PlanParser planParser, QuestionCatalog questionCatalog) {
+                             UploadedDocumentRepository uploadedDocumentRepository,
+                             PlanParser planParser, QuestionCatalog questionCatalog,
+                             TtsService ttsService) {
         this.interviewsSessionRepository = interviewsSessionRepository;
         this.interviewsAnswerRepository = interviewsAnswerRepository;
         this.memberRepository = memberRepository;
+        this.uploadedDocumentRepository = uploadedDocumentRepository;
         this.ai = ai;
         this.om = objectMapper;
         this.planParser = planParser;
         this.questionCatalog = questionCatalog;
+        this.ttsService = ttsService;
     }
 
     @Transactional
-    public StartSessionResponseDto start(Long memberId, StartSessionRequestDto req) throws Exception {
+    public StartSessionResponseDto start(Long memberId, StartSessionRequestDto req, boolean withAudio) throws Exception {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new IllegalArgumentException("member not found: " + memberId));
 
@@ -69,21 +79,39 @@ public class InterviewsService {
                 ? req.displayName()
                 : member.getMemberBase().getNickname();
 
-        Map<String,Object> snap = (req.profileSnapshotJson()==null || req.profileSnapshotJson().isBlank())
-                ? java.util.Map.of()
-                : om.readValue(req.profileSnapshotJson(), Map.class);
+        // documentId가 있으면 업로드된 문서에서 프로필 스냅샷 생성
+        String profileSnapshotJson = "{}";
+        if (req.documentId() != null) {
+            UploadedDocument document = uploadedDocumentRepository.findById(req.documentId())
+                    .orElseThrow(() -> new IllegalArgumentException("문서를 찾을 수 없습니다: " + req.documentId()));
+            
+            // 문서 소유자 확인
+            if (!document.getMember().getId().equals(memberId)) {
+                throw new AccessDeniedException("해당 문서에 접근할 수 없습니다.");
+            }
+            
+            // 문서 내용으로 프로필 스냅샷 생성
+            Map<String, Object> profileSnapshot = new HashMap<>();
+            profileSnapshot.put("role", req.jobRole().name());
+            profileSnapshot.put("documentContent", document.getExtractedContent());
+            profileSnapshot.put("fileName", document.getFileName());
+            profileSnapshotJson = om.writeValueAsString(profileSnapshot);
+        }
 
-        String role = req.role();
-        java.util.List<String> skills = om.convertValue(
-                snap.getOrDefault("skills", java.util.List.of()),
-                new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {}
+        Map<String,Object> snap = profileSnapshotJson.equals("{}")
+                ? Map.of()
+                : om.readValue(profileSnapshotJson, Map.class);
+
+        String role = req.jobRole().name();
+        List<String> skills = om.convertValue(
+                snap.getOrDefault("skills", List.of()),
+                new TypeReference<List<String>>() {}
         );
 
-        java.util.List<java.util.Map<String,Object>> candidates =
+        List<Map<String,Object>> candidates =
                 questionCatalog.candidates(role, skills, 10);
 
-        Map<String, Object> planMap = ai.generatePlan(role, req.profileSnapshotJson(), candidates);
-
+        Map<String, Object> planMap = ai.generatePlan(role, profileSnapshotJson, candidates);
         String planJson = om.writeValueAsString(planMap);
 
         UUID sessionId = UUID.randomUUID();
@@ -91,9 +119,9 @@ public class InterviewsService {
                 sessionId,
                 member,
                 displayName,
-                req.role(),
+                role,
                 InterviewMode.TURN_TEXT,
-                req.profileSnapshotJson(),
+                profileSnapshotJson,
                 planJson
         );
         interviewsSessionRepository.save(session);
@@ -102,29 +130,36 @@ public class InterviewsService {
         String firstQuestion = plan.questions().get(0).text();
         String greeting = ai.generateGreeting(displayName);
 
-        return new StartSessionResponseDto(sessionId, greeting, firstQuestion);
+        // withAudio면 첫 질문(필요시 greeting 포함) 음성 생성
+        TtsPayloadDto tts = null;
+        if (withAudio && firstQuestion != null && !firstQuestion.isBlank()) {
+            try {
+                // 필요하면 greeting까지 합성: String text = greeting + " " + firstQuestion;
+                String text = greeting + " " + firstQuestion;
+                tts = ttsService.synthesize(text, "wav");
+            } catch (Exception e) {
+                log.warn("[TTS] start synthesize failed: {}", e.getMessage());
+            }
+        }
+
+        return new StartSessionResponseDto(sessionId, greeting, firstQuestion, tts);
     }
 
     @Transactional
-    public NextTurnResponseDto nextTurn(TurnRequestDto req, Long memberId) throws Exception {
+    public NextTurnResponseDto nextTurn(TurnRequestDto req, Long memberId, boolean withAudio) throws Exception {
         InterviewsSession session = interviewsSessionRepository.findById(req.sessionId())
                 .orElseThrow(() -> new IllegalArgumentException("session not found: " + req.sessionId()));
 
-        // 세션 소유자 검증
         if (!session.getMember().getId().equals(memberId)) {
             throw new AccessDeniedException("forbidden: not your session");
         }
-
-        // 이미 종료된 세션은 더 못 보냄
         if (session.getStatus() == InterviewStatus.FINISHED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "session already finished");
         }
-
         if (req.questionIndex() != session.getQuestionIndex()) {
             throw new IllegalStateException(
                     "out-of-order turn: expected " + session.getQuestionIndex() + ", got " + req.questionIndex());
         }
-
         if (interviewsAnswerRepository.existsBySession_IdAndQuestionIndex(req.sessionId(), req.questionIndex())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "already answered this question");
         }
@@ -152,13 +187,11 @@ public class InterviewsService {
         log.info("[AI][turn] session={} qidx={} prev={} -> new={} ({} ms)",
                 req.sessionId(), req.questionIndex(), prevResponseId, llmResponseId, elapsedMs);
 
-        // metricsJson 생성
         Map<String, Object> metricsPayload = new HashMap<>();
         metricsPayload.put("coachingTips", coachingTips);
         metricsPayload.put("scoreDelta", scoreDelta);
         String metricsJson = om.writeValueAsString(metricsPayload);
 
-        // ③ 답변 엔티티 생성 시 prev/llmResponseId 함께 저장  ← 저장 위치는 여기!
         InterviewsAnswer answer = InterviewsAnswer.create(
                 session,
                 req.questionIndex(),
@@ -166,8 +199,8 @@ public class InterviewsService {
                 questionText,
                 req.transcript(),
                 metricsJson,
-                llmResponseId,              // 이번 턴의 응답 ID
-                prevResponseId              // 직전 턴의 응답 ID
+                llmResponseId,
+                prevResponseId
         );
 
         try {
@@ -183,18 +216,31 @@ public class InterviewsService {
             session.updateLastResponseId(llmResponseId);
         }
 
-        // 이후 로직(플랜 파싱 → nextIndex/done 계산 → session.advance/finish → nextQuestion)은 그대로 유지
         InterviewPlanDto plan = planParser.parse(session.getPlanJson());
         int nextIndex = req.questionIndex() + 1;
         boolean done = nextIndex >= plan.questions().size();
         if (done) {
-            session.finishNow(OffsetDateTime.now());
+            session.finishNow(java.time.OffsetDateTime.now());
         } else {
             session.advance();
         }
         String nextQuestion = done ? null : plan.questions().get(nextIndex).text();
 
-        return new NextTurnResponseDto(nextQuestion, coachingTips, scoreDelta, done);
+        // withAudio면 다음 질문 합성(종료가 아닐 때만)
+        TtsPayloadDto tts = null;
+        if (!done && withAudio && nextQuestion != null && !nextQuestion.isBlank()) {
+            try {
+                log.info("[TTS] starting synthesize for question: '{}'", nextQuestion);
+                long ttsStart = System.nanoTime();
+                tts = ttsService.synthesize(nextQuestion, "wav");
+                long ttsMs = (System.nanoTime() - ttsStart) / 1_000_000;
+                log.info("[TTS] completed synthesize in {} ms", ttsMs);
+            } catch (Exception e) {
+                log.warn("[TTS] turn synthesize failed: {}", e.getMessage());
+            }
+        }
+
+        return new NextTurnResponseDto(nextQuestion, coachingTips, scoreDelta, done, tts);
     }
 
     @Transactional(readOnly = true)
@@ -216,7 +262,7 @@ public class InterviewsService {
             Map<String, Integer> delta =
                     (raw instanceof Map)
                             ? om.convertValue(raw, om.getTypeFactory().constructMapType(Map.class, String.class, Integer.class))
-                            : java.util.Collections.emptyMap();
+                            : Collections.emptyMap();
             for (Map.Entry<String, Integer> e : delta.entrySet()) {
                 totals.merge(e.getKey(), e.getValue(), Integer::sum);
             }
@@ -239,7 +285,7 @@ public class InterviewsService {
 
         // 4) 요약 팩트(facts) 강화: 상/하위 지표 키와 Q/A 발췌 포함
         //    - 상위 2개, 하위 2개 키를 뽑아 요약이 점수와 일치하도록 가이드
-        java.util.Comparator<Map.Entry<String, Integer>> byVal = Map.Entry.comparingByValue();
+        Comparator<Map.Entry<String, Integer>> byVal = Map.Entry.comparingByValue();
         List<String> topStrengthKeys = subscores.entrySet().stream()
                 .sorted(byVal.reversed()).limit(2).map(Map.Entry::getKey).toList();
         List<String> areasToImproveKeys = subscores.entrySet().stream()
@@ -316,18 +362,18 @@ public class InterviewsService {
 
         // 기존 snapshot JSON 불러오고 병합
         Map<String, Object> snap = (session.getProfileSnapshotJson() == null || session.getProfileSnapshotJson().isBlank())
-                ? new java.util.HashMap<>()
+                ? new HashMap<>()
                 : om.readValue(session.getProfileSnapshotJson(), Map.class);
 
         if (req.role() != null && !req.role().isBlank()) snap.put("role", req.role());
         if (req.skills() != null) snap.put("skills", req.skills());
         if (req.docs() != null) {
             // 너무 길면 LLM 안전을 위해 8~10KB 정도로 컷
-            java.util.List<Map<String,Object>> ds = new java.util.ArrayList<>();
+            List<Map<String,Object>> ds = new ArrayList<>();
             for (UpsertContextRequestDto.DocItem d : req.docs()) {
                 String t = d.text() == null ? "" : d.text().trim();
                 if (t.length() > 10_000) t = t.substring(0, 10_000) + "…";
-                ds.add(java.util.Map.of("title", d.title(), "text", t));
+                ds.add(Map.of("title", d.title(), "text", t));
             }
             snap.put("docs", ds);
         }
