@@ -9,16 +9,15 @@ POST http://localhost:8080/api/ai-recommend
 Content-Type: application/json
 
 {
-  "purpose": "CODING",
+  "purpose": "MATH",
   "accuracyVsSpeed": "ACCURACY",
-  "longReasoning": false,
+  "longReasoning": true,
   "monthlyTokens": 5.0,
-  "costPriority": "BALANCED",
-  "needLowLatency": false,
-  "allowOpenSource": true,
+  "costPriority": "CHEAP",
+  "needLowLatency": true,
   "creativityVsFact": "FACTUAL",
   "recentnessMatters": true,
-  "topK": 8
+  "topK": 30
 }
 
 ### ai 추천2
