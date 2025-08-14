@@ -25,17 +25,23 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     @Query("SELECT n FROM NewsData n WHERE n.isActive = 1 ORDER BY n.pubDate DESC")
     List<NewsData> findAllActiveNewsOrderByPubDateDesc();
 
+    // 최신 인기 뉴스 조회
+    @Query("SELECT n FROM NewsData n WHERE n.isActive = 1 AND n.isPopular = 1 ORDER BY n.pubDate DESC")
+    List<NewsData> findAllActiveNewsAndPopularNewsOrderByPubDateDesc();
+
     // 특정 날짜 범위 뉴스 조회
     @Query("SELECT n FROM NewsData n WHERE n.pubDate >= :startDate AND n.pubDate < :endDate ORDER BY n.pubDate DESC")
     List<NewsData> findNewsByDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
     // isPopular를 1로 설정하는 메서드
     @Modifying
+    @Transactional
     @Query("UPDATE NewsData n SET n.isPopular = 1 WHERE n.newsId = :newsId")
     void markAsPopular(@Param("newsId") Long newsId);
 
     // isActive를 0로 설정하는 메서드
     @Modifying
+    @Transactional
     @Query("UPDATE NewsData n SET n.isActive = 0 WHERE n.newsId = :newsId")
     void markAsActive(@Param("newsId") Long newsId);
 
@@ -49,4 +55,8 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     // 이미지가 없는 활성 뉴스 조회 메서드
     @Query("SELECT n FROM NewsData n WHERE (n.imageUrl IS NULL OR n.imageUrl = '') AND n.isActive = 1 ORDER BY n.pubDate DESC")
     List<NewsData> findAllByImageUrlIsNullOrEmpty();
+
+    // test용도
+    List<NewsData> findTop40ByOrderByPubDateDesc();
+    
 }

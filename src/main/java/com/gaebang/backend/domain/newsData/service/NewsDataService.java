@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.newsData.service;
 
 import com.gaebang.backend.domain.newsData.dto.response.NewsDataResponseDTO;
 import com.gaebang.backend.domain.newsData.entity.NewsData;
+import com.gaebang.backend.domain.newsData.event.NewsCreatedEvent;
 import com.gaebang.backend.domain.newsData.repository.NewsDataRepository;
 import com.gaebang.backend.domain.newsData.util.HtmlUtils;
 import com.gaebang.backend.domain.newsData.util.HttpClientUtil;
@@ -10,6 +11,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.cdimascio.dotenv.Dotenv;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +31,7 @@ import java.util.stream.Collectors;
 public class NewsDataService {
 
     private final PopularNewsDataService popularNewsDataService;
+    private final NewsImageService newsImageService;
     private final HttpClientUtil httpClient;
     private final NewsDataRepository newsRepository;
     private static Dotenv dotenv = Dotenv.load();
@@ -38,10 +42,11 @@ public class NewsDataService {
     private static final String NAVER_NEWS_API_URL = "https://openapi.naver.com/v1/search/news.json";
     private static final int DEFAULT_DISPLAY_COUNT = 100;
 
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
     // 뉴스 전체 조회
     public List<NewsDataResponseDTO> getNewsData() {
-
-//        List<NewsData> newsData = newsRepository.findTop100ByOrderByPubDateDesc();
         List<NewsData> newsData = newsRepository.findAllActiveNewsOrderByPubDateDesc();
 
         return newsData.stream()
@@ -49,15 +54,23 @@ public class NewsDataService {
                 .collect(Collectors.toList());
     }
 
+    // 인기글 조회
+    public List<NewsDataResponseDTO> getPopularNewsData() {
+        List<NewsData> newsData = newsRepository.findAllActiveNewsAndPopularNewsOrderByPubDateDesc();
+
+        return newsData.stream()
+                .map(news -> NewsDataResponseDTO.fromEntity(news))
+                .collect(Collectors.toList());
+    }
+
     // 뉴스 데이터를 조회하고 DB에 저장
-    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
-//    @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul") // 10분마다 실행
-//    @Scheduled(cron = "*/30 * * * * *", zone = "Asia/Seoul") // 30초마다 실행
+//    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
+    @Scheduled(cron = "0 */1 * * * *", zone = "Asia/Seoul") // 5분마다 실행
     @Transactional
     public void fetchAndSaveNews() {
         try {
             log.info("scheduled 실행 중");
-            
+
             String response = getNewsApiResponse();
             List<NewsData> newsDataList = parseNewsResponse(response);
 
@@ -68,12 +81,14 @@ public class NewsDataService {
             newsDataList = filterExistingNews(newsDataList);
 
             if (!newsDataList.isEmpty()) {
-                // 배치 저장
+                // 핵심 뉴스 저장만 동기 처리
                 newsRepository.saveAll(newsDataList);
                 log.info("뉴스 데이터 {}건 저장 완료", newsDataList.size());
-                
-                // 인기글과 중복글 가려내는 메서드 실행
-                popularNewsDataService.getDuplatedNews();
+
+                // 이벤트 발행 (트랜잭션 커밋 후 처리됨)
+                eventPublisher.publishEvent(new NewsCreatedEvent(newsDataList.size()));
+
+                log.info("비동기 작업들 시작됨 - 중복 분석 & 이미지 생성");
             } else {
                 log.info("저장할 새로운 뉴스가 없습니다.");
             }
