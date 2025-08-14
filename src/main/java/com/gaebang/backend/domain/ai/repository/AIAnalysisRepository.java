@@ -1,6 +1,6 @@
-package com.gaebang.backend.domain.aianalysis.repository;
+package com.gaebang.backend.domain.ai.repository;
 
-import com.gaebang.backend.domain.aianalysis.entity.AIModelIntegrated;
+import com.gaebang.backend.domain.ai.entity.AIModelIntegrated;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
