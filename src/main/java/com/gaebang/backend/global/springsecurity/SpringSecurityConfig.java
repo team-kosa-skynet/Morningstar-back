@@ -96,6 +96,8 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/recruitment/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/analysis/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ai-recommend/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/ai-news/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/ai-updates/**")).permitAll()
                 .anyRequest().authenticated());
 
         /**

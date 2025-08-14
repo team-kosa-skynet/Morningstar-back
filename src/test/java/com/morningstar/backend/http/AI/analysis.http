@@ -34,3 +34,6 @@ Content-Type: application/json
   "recentnessMatters": true,
   "topK": 8
 }
+
+### AI뉴스 조회
+GET http://localhost:8080/api/ai-updates/latest
