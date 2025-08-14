@@ -23,7 +23,7 @@ public class RecommendationController {
     @PostMapping("")
     public ResponseEntity<ResponseDTO<List<Model>>> recommend(@RequestBody Answers answers) {
         ResponseDTO<List<Model>> response
-                = recommendationService.recommend(answers);
+                = recommendationService.recommendModels(answers);
 
         return ResponseEntity
                 .status(response.getCode())

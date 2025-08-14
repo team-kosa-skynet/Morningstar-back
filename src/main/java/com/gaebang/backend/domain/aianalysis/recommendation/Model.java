@@ -10,7 +10,6 @@ import lombok.NoArgsConstructor;
 public class Model {
     private String name;
     private String creator;
-    private boolean openSource;
     private String releaseDate;
     private Scores scores = new Scores();
 
@@ -19,7 +18,6 @@ public class Model {
                  double knowledge, double reasoning, double recency) {
         this.name = name;
         this.creator = creator;
-        this.openSource = openSource;
         this.releaseDate = releaseDate;
         this.scores.cost = cost;
         this.scores.speed = speed;
