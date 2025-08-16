@@ -13,6 +13,7 @@ public record NewsDataResponseDTO (
     String description,
     Integer isPopular,
     Integer isActive,
+    String imageUrl,
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     LocalDateTime pubDate
 ) {
@@ -26,6 +27,7 @@ public record NewsDataResponseDTO (
             newsData.getDescription(),
             newsData.getIsPopular(),
             newsData.getIsActive(),
+            newsData.getImageUrl(),
             newsData.getPubDate()
         );
     }

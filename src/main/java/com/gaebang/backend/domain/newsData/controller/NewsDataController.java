@@ -20,9 +20,20 @@ public class NewsDataController {
 
     private final NewsDataService newsDataService;
 
+    // 뉴스 전체 조회
     @GetMapping("")
-    public ResponseEntity<ResponseDTO<List<NewsDataResponseDTO>>> getNewsData() {  // void -> String으로 변경
+    public ResponseEntity<ResponseDTO<List<NewsDataResponseDTO>>> getNewsData() {
         List<NewsDataResponseDTO> newsData = newsDataService.getNewsData();
+        ResponseDTO<List<NewsDataResponseDTO>> response = ResponseDTO.okWithData(newsData);
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
+    }
+
+    // 인기글 조회
+    @GetMapping("/popular-news")
+    public ResponseEntity<ResponseDTO<List<NewsDataResponseDTO>>> getPopularNewsData() {
+        List<NewsDataResponseDTO> newsData = newsDataService.getPopularNewsData();
         ResponseDTO<List<NewsDataResponseDTO>> response = ResponseDTO.okWithData(newsData);
         return ResponseEntity
                 .status(response.getCode())
