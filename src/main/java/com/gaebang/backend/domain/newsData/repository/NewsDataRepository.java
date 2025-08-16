@@ -58,5 +58,8 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
 
     // test용도
     List<NewsData> findTop40ByOrderByPubDateDesc();
-    
+
+    // test용도
+    @Query(value = "SELECT * FROM news ORDER BY pub_date DESC LIMIT 15 OFFSET 20", nativeQuery = true)
+    List<NewsData> findNews31To40();
 }

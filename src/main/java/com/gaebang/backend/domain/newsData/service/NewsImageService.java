@@ -35,8 +35,9 @@ public class NewsImageService {
     // 이미지가 없는 뉴스 데이터만 조회
     public List<NewsData> getNewsWithoutImages() {
         // 실제 운영 시 주석 해제
-        // List<NewsData> newsData = newsDataRepository.findAllByImageUrlIsNullOrEmpty();
-        List<NewsData> newsData = newsDataRepository.findTop40ByOrderByPubDateDesc();
+         List<NewsData> newsData = newsDataRepository.findAllByImageUrlIsNullOrEmpty();
+//        List<NewsData> newsData = newsDataRepository.findTop40ByOrderByPubDateDesc();
+//        List<NewsData> newsData = newsDataRepository.findNews31To40();
         log.info("이미지가 없는 뉴스 데이터 개수: {}", newsData.size());
         return newsData;
     }

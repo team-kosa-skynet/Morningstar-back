@@ -36,8 +36,8 @@ public class PopularNewsDataService {
         LocalDateTime startOfYesterday = now.minusDays(1).toLocalDate().atStartOfDay();
         LocalDateTime endOfToday = now.toLocalDate().plusDays(1).atStartOfDay();
 
-//        List<NewsData> newsData = newsDataRepository.findNewsByDateRange(startOfYesterday, endOfToday);
-        List<NewsData> newsData = newsDataRepository.findTop40ByOrderByPubDateDesc();
+        List<NewsData> newsData = newsDataRepository.findNewsByDateRange(startOfYesterday, endOfToday);
+//        List<NewsData> newsData = newsDataRepository.findTop40ByOrderByPubDateDesc();
 
         log.info("뉴스 데이터 개수 확인 ({}부터 {}까지): {}",
                 startOfYesterday, endOfToday, newsData.size());
@@ -78,30 +78,38 @@ public class PopularNewsDataService {
 
     // content 작성하기
     private static String writeSystem() {
-        return "SYSTEM: You are a news deduplication expert that identifies duplicate groups with STRICT criteria.\n" +
-                "\n" +
-                "!!! PRIMARY RULE (APPLY BEFORE ANYTHING ELSE) !!!\n" +
-                "ONLY return groups that have 5 or MORE articles with 80%+ title+description similarity.\n" +
-                "STRICTLY IGNORE any group with LESS than 5 articles — DO NOT include them in the output at all.\n" +
+        return "SYSTEM: You are a Korean news deduplication expert.\n" +
                 "\n" +
                 "TASK:\n" +
-                "1. Compare title+description similarity (80%+ threshold)\n" +
-                "2. Group articles with similarity >= 80%\n" +
-                "3. A group qualifies as 'duplicate' ONLY if it has 5 or more articles\n" +
-                "4. If no groups meet this, output empty duplicateGroups array\n" +
-                "5. Include ALL articles in each valid group\n" +
-                "6. For each group, find the earliest article by pubDate and include its newsId as earlyPubDateNewsId\n" +
+                "1. Analyze ALL news articles to find groups reporting the SAME EVENT/STORY.\n" +
+                "2. Look for groups of 2+ articles (mark 5+ as 'popular').\n" +
+                "3. Focus on core elements: WHO did WHAT, WHEN, WHERE.\n" +
                 "\n" +
-                "STRICT RULES:\n" +
-                "- LESS than 5 articles → IGNORE COMPLETELY\n" +
-                "- DO NOT include small groups in the output\n" +
-                "- This rule overrides all others\n" +
+                "DUPLICATE IDENTIFICATION RULES:\n" +
+                "- Same entity (company/person/organization) + same action/event\n" +
+                "- Same incident/announcement with same timeframe\n" +
+                "- Different media outlets reporting identical news event\n" +
+                "- Similar quotes from same spokesperson about same matter\n" +
                 "\n" +
-                "OUTPUT FORMAT (VALID JSON ONLY):\n" +
+                "ANALYSIS METHOD:\n" +
+                "1. Extract key entities: companies, people, organizations\n" +
+                "2. Identify main action/event for each article\n" +
+                "3. Group articles with matching entity+action combinations\n" +
+                "4. Verify timing consistency (same day/week)\n" +
+                "\n" +
+                "CRITICAL JSON FORMATTING RULES:\n" +
+                "- Output ONLY pure JSON, no markdown formatting\n" +
+                "- Do NOT use ```json or ``` code blocks\n" +
+                "- Start directly with { and end with }\n" +
+                "- No explanatory text before or after JSON\n" +
+                "- No comments or additional formatting\n" +
+                "\n" +
+                "OUTPUT FORMAT:\n" +
                 "{\n" +
                 "  \"duplicateGroups\": [\n" +
                 "    {\n" +
                 "      \"groupId\": 1,\n" +
+                "      \"theme\": \"주요 사건 요약\",\n" +
                 "      \"articles\": [\n" +
                 "        {\n" +
                 "          \"newsId\": 123,\n" +
@@ -110,7 +118,9 @@ public class PopularNewsDataService {
                 "          \"pubDate\": \"article date\"\n" +
                 "        }\n" +
                 "      ],\n" +
-                "      \"earlyPubDateNewsId\": 123\n" +
+                "      \"articleCount\": 15,\n" +
+                "      \"earlyPubDateNewsId\": 123,\n" +
+                "      \"isPopular\": true\n" +
                 "    }\n" +
                 "  ]\n" +
                 "}\n" +
@@ -120,11 +130,6 @@ public class PopularNewsDataService {
                 "  \"duplicateGroups\": [],\n" +
                 "  \"message\": \"중복 기사 없음\"\n" +
                 "}\n" +
-                "\n" +
-                "CRITICAL:\n" +
-                "- Output ONLY valid JSON\n" +
-                "- No comments or explanations\n" +
-                "- DO NOT list or mention groups under 5 articles\n" +
                 "\n" +
                 "INPUT: [news list]";
     }
@@ -158,7 +163,7 @@ public class PopularNewsDataService {
         try {
             log.info("=== 중복 뉴스 탐지 시작 ===");
 
-            String modelToUse = openaiQuestionProperties.getDefaultModel();
+            String modelToUse = openaiQuestionProperties.getModelToUse("gpt-4o");
             String openaiUrl = openaiQuestionProperties.getResponseUrl();
             log.info("사용 모델: {}, API URL: {}", modelToUse, openaiUrl);
 

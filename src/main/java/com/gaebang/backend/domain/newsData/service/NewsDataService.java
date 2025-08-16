@@ -64,8 +64,7 @@ public class NewsDataService {
     }
 
     // 뉴스 데이터를 조회하고 DB에 저장
-//    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
-    @Scheduled(cron = "0 */1 * * * *", zone = "Asia/Seoul") // 5분마다 실행
+    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
     @Transactional
     public void fetchAndSaveNews() {
         try {
