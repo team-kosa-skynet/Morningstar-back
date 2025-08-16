@@ -53,8 +53,15 @@ app:
     voice: verse
 
 tts:
-  provider: gemini
-  default-format: wav            # Gemini TTS는 PCM을 WAV로 변환하여 반환
+  provider: google
+  default-format: mp3            # Google Cloud TTS 기본 포맷
+  google:
+    api:
+      key: ${GEMINI_API_KEY}
+    voice-name: ko-KR-Neural2-A  # 한국어 신경망 음성
+    language-code: ko-KR
+    speaking-rate: 1.0           # 표준 속도
+    pitch: 0.0                   # 표준 톤
   gemini:
     api:
       key: ${GEMINI_API_KEY}

@@ -96,7 +96,6 @@ public class DocumentParsingService {
             
             String extractedText = stripper.getText(document);
             
-            // 불필요한 공백 정리 (너무 많은 줄바꿈 제거)
             return extractedText.replaceAll("\\n{3,}", "\n\n").trim();
         }
     }

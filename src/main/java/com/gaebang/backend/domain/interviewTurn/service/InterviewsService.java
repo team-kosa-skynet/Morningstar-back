@@ -27,6 +27,7 @@ import com.gaebang.backend.domain.interviewTurn.util.PlanParser;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -50,6 +51,9 @@ public class InterviewsService {
     private final PlanParser planParser;
     private final QuestionCatalog questionCatalog;
     private final TtsService ttsService;
+    
+    @Value("${tts.default-format:mp3}")
+    private String defaultTtsFormat;
 
     public InterviewsService(InterviewsSessionRepository interviewsSessionRepository,
                              InterviewerAiGateway ai,
@@ -134,9 +138,8 @@ public class InterviewsService {
         TtsPayloadDto tts = null;
         if (withAudio && firstQuestion != null && !firstQuestion.isBlank()) {
             try {
-                // 필요하면 greeting까지 합성: String text = greeting + " " + firstQuestion;
                 String text = greeting + " " + firstQuestion;
-                tts = ttsService.synthesize(text, "wav");
+                tts = ttsService.synthesize(text, defaultTtsFormat);
             } catch (Exception e) {
                 log.warn("[TTS] start synthesize failed: {}", e.getMessage());
             }
@@ -180,7 +183,7 @@ public class InterviewsService {
         );
         long elapsedMs = (System.nanoTime() - t0) / 1_000_000;
 
-        Map<String, Integer> scoreDelta = feedback.scoreDelta();
+        Map<String, Integer> scoreResult = feedback.scoreDelta(); // 이제 100점 만점 점수
         String coachingTips = normalizeTips(feedback.coachingTips());
         String llmResponseId = feedback.responseId();
 
@@ -189,7 +192,7 @@ public class InterviewsService {
 
         Map<String, Object> metricsPayload = new HashMap<>();
         metricsPayload.put("coachingTips", coachingTips);
-        metricsPayload.put("scoreDelta", scoreDelta);
+        metricsPayload.put("scoreResult", scoreResult);
         String metricsJson = om.writeValueAsString(metricsPayload);
 
         InterviewsAnswer answer = InterviewsAnswer.create(
@@ -225,6 +228,30 @@ public class InterviewsService {
             session.advance();
         }
         String nextQuestion = done ? null : plan.questions().get(nextIndex).text();
+        
+        // 🆕 질문 의도와 답변 가이드 생성 (다음 질문이 있을 때만)
+        String questionIntent = null;
+        List<String> answerGuides = null;
+        if (!done && nextQuestion != null) {
+            try {
+                PlanQuestionDto nextQuestionDto = plan.questions().get(nextIndex);
+                Map<String, Object> intentAndGuides = generateQuestionIntentAndGuidesWithRetry(
+                    nextQuestionDto.type(), 
+                    nextQuestion,
+                    session.getRole()
+                );
+                questionIntent = (String) intentAndGuides.get("intent");
+                answerGuides = (List<String>) intentAndGuides.get("guides");
+            } catch (Exception e) {
+                log.warn("[AI] 질문 의도/가이드 생성 실패: {}", e.getMessage());
+                questionIntent = "이 질문을 통해 지원자의 역량을 평가합니다.";
+                answerGuides = List.of(
+                    "구체적인 경험을 바탕으로 답변해주세요.",
+                    "STAR 방식(상황, 과제, 행동, 결과)을 활용하면 좋습니다.",
+                    "기술적 근거와 함께 설명해주세요."
+                );
+            }
+        }
 
         // withAudio면 다음 질문 합성(종료가 아닐 때만)
         TtsPayloadDto tts = null;
@@ -232,7 +259,7 @@ public class InterviewsService {
             try {
                 log.info("[TTS] starting synthesize for question: '{}'", nextQuestion);
                 long ttsStart = System.nanoTime();
-                tts = ttsService.synthesize(nextQuestion, "wav");
+                tts = ttsService.synthesize(nextQuestion, defaultTtsFormat);
                 long ttsMs = (System.nanoTime() - ttsStart) / 1_000_000;
                 log.info("[TTS] completed synthesize in {} ms", ttsMs);
             } catch (Exception e) {
@@ -240,7 +267,7 @@ public class InterviewsService {
             }
         }
 
-        return new NextTurnResponseDto(nextQuestion, coachingTips, scoreDelta, done, tts);
+        return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, scoreResult, done, tts);
     }
 
     @Transactional(readOnly = true)
@@ -254,31 +281,22 @@ public class InterviewsService {
         List<InterviewsAnswer> answers = interviewsAnswerRepository
                 .findBySession_IdOrderByQuestionIndexAsc(sessionId);
 
-        // 1) 턴별 metricsJson에서 scoreDelta 합산
-        Map<String, Integer> totals = new HashMap<>();
+        // 1) 턴별 metricsJson에서 scoreResult 평균 계산 (100점 만점 시스템)
+        Map<String, List<Integer>> scoreHistory = new HashMap<>();
         for (InterviewsAnswer a : answers) {
             Map<?, ?> metrics = om.readValue(a.getMetricsJson(), Map.class);
-            Object raw = metrics.get("scoreDelta");
-            Map<String, Integer> delta =
+            Object raw = metrics.get("scoreResult");
+            Map<String, Integer> scores =
                     (raw instanceof Map)
                             ? om.convertValue(raw, om.getTypeFactory().constructMapType(Map.class, String.class, Integer.class))
                             : Collections.emptyMap();
-            for (Map.Entry<String, Integer> e : delta.entrySet()) {
-                totals.merge(e.getKey(), e.getValue(), Integer::sum);
+            for (Map.Entry<String, Integer> e : scores.entrySet()) {
+                scoreHistory.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(e.getValue());
             }
         }
 
-        // 2) 1..5 스케일로 정규화
-        int n = Math.max(1, answers.size());
-        Map<String, Integer> subscores = new HashMap<>();
-        for (Map.Entry<String, Integer> e : totals.entrySet()) {
-            double avg = (double) e.getValue() / n;             // -2..+3 예상
-            double scaled = ((avg + 2.0) / 5.0) * 4.0 + 1.0;    // 1..5 맵핑
-            int rounded = (int) Math.round(Math.max(1.0, Math.min(5.0, scaled)));
-            subscores.put(e.getKey(), rounded);
-        }
+        Map<String, Integer> subscores = calculateAverageScores(scoreHistory);
 
-        // 3) overallScore = 서브스코어 평균(소수 1자리)
         double overall = 0.0;
         for (Integer v : subscores.values()) overall += v;
         double overallRounded = subscores.isEmpty() ? 0.0 : Math.round((overall / subscores.size()) * 10.0) / 10.0;
@@ -379,6 +397,119 @@ public class InterviewsService {
         }
 
         session.updateProfileSnapshotJson(om.writeValueAsString(snap));
+    }
+
+    /**
+     * AI 가이드 생성을 재시도 로직과 함께 수행
+     */
+    private Map<String, Object> generateQuestionIntentAndGuidesWithRetry(String questionType, String questionText, String role) throws Exception {
+        Exception lastException = null;
+        
+        // 최대 2번 시도
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                log.debug("[AI] 질문 의도/가이드 생성 시도 {}/2", attempt);
+                return ai.generateQuestionIntentAndGuides(questionType, questionText, role);
+            } catch (Exception e) {
+                lastException = e;
+                log.warn("[AI] 질문 의도/가이드 생성 {}차 시도 실패: {}", attempt, e.getMessage());
+                
+                if (attempt < 2) {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException("재시도 중 인터럽트", ie);
+                    }
+                }
+            }
+        }
+        
+        throw new RuntimeException("AI 가이드 생성 2차 시도 모두 실패", lastException);
+    }
+
+    /**
+     * 100점 만점 평균 점수 계산 방식
+     * 각 지표별로 모든 턴의 점수를 평균내어 최종 점수 산정
+     */
+    private Map<String, Integer> calculateAverageScores(Map<String, List<Integer>> scoreHistory) {
+        Map<String, Integer> subscores = new HashMap<>();
+        
+        for (Map.Entry<String, List<Integer>> entry : scoreHistory.entrySet()) {
+            String metric = entry.getKey();
+            List<Integer> scores = entry.getValue();
+            
+            if (scores.isEmpty()) {
+                subscores.put(metric, 20); // 기본값 20점 (기본선)
+                continue;
+            }
+            
+            double average = scores.stream().mapToInt(Integer::intValue).average().orElse(20.0);
+            int finalScore = (int) Math.round(average);
+            
+            finalScore = Math.max(0, Math.min(100, finalScore));
+            
+            subscores.put(metric, finalScore);
+            
+            log.debug("[점수계산] {} = {} (평균 {:.1f}, 턴별점수: {})", 
+                metric, finalScore, average, scores);
+        }
+        
+        // 기본 지표들이 없는 경우 기본값 설정
+        String[] defaultMetrics = {"clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"};
+        for (String metric : defaultMetrics) {
+            if (!subscores.containsKey(metric)) {
+                subscores.put(metric, 20); // 기본값 20점 (기본선)
+            }
+        }
+        
+        return subscores;
+    }
+
+    /**
+     * 개선된 누적 점수 산정 방식 (기존 방식 - 호환성 유지)
+     * 기본 점수 3점에서 시작하여 scoreDelta를 가중치와 함께 누적 적용
+     */
+    private Map<String, Integer> calculateImprovedScores(Map<String, Integer> totals, int questionCount) {
+        Map<String, Integer> subscores = new HashMap<>();
+        
+        // 기본 점수 설정 (평균적인 면접자 수준)
+        double baseScore = 3.0;
+        
+        // 가중치 설정 (scoreDelta의 영향력 조절)
+        double weightFactor = 0.3;
+        
+        // 질문 수에 따른 완화 계수 (질문이 많을수록 점수 변화를 완화)
+        double stabilityFactor = Math.max(1.0, Math.sqrt(questionCount));
+        
+        for (Map.Entry<String, Integer> entry : totals.entrySet()) {
+            String metric = entry.getKey();
+            int totalDelta = entry.getValue();
+            
+            // 누적 점수 계산
+            // 기본점수 + (총변화량 * 가중치 / 안정화계수)
+            double cumulativeScore = baseScore + (totalDelta * weightFactor / stabilityFactor);
+            
+            // 1-5점 범위로 조정
+            int finalScore = (int) Math.round(Math.max(1.0, Math.min(5.0, cumulativeScore)));
+            
+            subscores.put(metric, finalScore);
+            
+            log.debug("[점수계산] {} = {} (기본{}+델타{}*{}÷{} = {}→{})", 
+                metric, finalScore, baseScore, totalDelta, weightFactor, 
+                String.format("%.1f", stabilityFactor), 
+                String.format("%.2f", cumulativeScore), finalScore);
+        }
+        
+        // 기본 지표들이 없는 경우 기본값 설정
+        String[] defaultMetrics = {"clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"};
+        for (String metric : defaultMetrics) {
+            if (!subscores.containsKey(metric)) {
+                subscores.put(metric, (int) Math.round(baseScore));
+            }
+        }
+        
+        return subscores;
     }
 
     private String normalizeTips(String tipsRaw) {
