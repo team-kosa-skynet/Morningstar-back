@@ -1,22 +1,25 @@
 package com.gaebang.backend.domain.question.openai.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaebang.backend.domain.conversation.dto.request.AddAnswerRequestDto;
 import com.gaebang.backend.domain.conversation.dto.request.AddQuestionRequestDto;
+import com.gaebang.backend.domain.conversation.dto.request.FileAttachmentDto;
 import com.gaebang.backend.domain.conversation.dto.response.ConversationHistoryDto;
 import com.gaebang.backend.domain.conversation.service.ConversationService;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.question.common.service.FileProcessingService;
 import com.gaebang.backend.domain.question.openai.dto.request.OpenaiQuestionRequestDto;
 import com.gaebang.backend.domain.question.openai.util.OpenaiQuestionProperties;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.BufferedReader;
@@ -34,71 +37,146 @@ public class OpenaiQuestionService {
     private final OpenaiQuestionProperties openaiQuestionProperties;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
-    private final ConversationService conversationService; // ConversationService 주입 추가
+    private final ConversationService conversationService;
+    private final FileProcessingService fileProcessingService;
 
-    /**
-     * 특정 대화방에서 OpenAI 질문 스트리밍을 생성합니다
-     * 이전 대화 히스토리를 포함하여 연속적인 대화가 가능합니다
-     */
     public SseEmitter createQuestionStream(
             Long conversationId,
-            String model, // 쿼리 파라미터로 받은 모델
+            String model,
             OpenaiQuestionRequestDto openaiQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
         Member member = validateAndGetMember(principalDetails);
-        SseEmitter emitter = new SseEmitter(300000L); // 5분 타임아웃
+        SseEmitter emitter = new SseEmitter(300000L);
 
-        // 사용자 질문을 대화방에 먼저 저장
-        AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(openaiQuestionRequestDto.content());
+        List<FileAttachmentDto> attachments = processFiles(openaiQuestionRequestDto.files());
+
+        AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(
+                openaiQuestionRequestDto.content(),
+                attachments
+        );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performApiCall(emitter, conversationId, model, openaiQuestionRequestDto, member); // 모델 파라미터 추가
+        performApiCallWithFiles(emitter, conversationId, model, openaiQuestionRequestDto, member, attachments);
 
         setupEmitterCallbacks(emitter, "OpenAI");
         return emitter;
     }
 
+    private List<FileAttachmentDto> processFiles(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return Collections.emptyList();
+        }
 
-    /**
-     * OpenAI API를 호출하고 스트리밍 응답을 처리합니다
-     * 대화 히스토리를 포함하여 이전 맥락을 유지합니다
-     */
-    private void performApiCall(SseEmitter emitter, Long conversationId, String requestModel,
-                                OpenaiQuestionRequestDto requestDto, Member member) {
-        StringBuilder fullResponse = new StringBuilder(); // 전체 응답 저장용
+        return files.stream()
+                .map(file -> {
+                    Map<String, Object> processedFile = fileProcessingService.processFile(file);
+
+                    return new FileAttachmentDto(
+                            (String) processedFile.get("fileName"),
+                            (String) processedFile.get("type"),
+                            (Long) processedFile.get("fileSize"),
+                            (String) processedFile.get("mimeType")
+                    );
+                })
+                .toList();
+    }
+
+    private void performApiCallWithFiles(SseEmitter emitter, Long conversationId, String requestModel,
+                                         OpenaiQuestionRequestDto requestDto, Member member,
+                                         List<FileAttachmentDto> attachments) {
+        StringBuilder fullResponse = new StringBuilder();
 
         try {
-            // 사용할 모델 결정 (쿼리 파라미터로 받은 모델 또는 기본값)
             String modelToUse = openaiQuestionProperties.getModelToUse(requestModel);
             log.info("OpenAI API 호출 - 사용 모델: {} (요청 모델: {})", modelToUse, requestModel);
 
-            // 대화 히스토리 조회 (이전 대화 맥락 포함)
             ConversationHistoryDto historyDto = conversationService.getConversationHistory(
                     conversationId,
                     member.getId(),
-                    null // 전체 히스토리 사용 (토큰 제한 고려시 숫자 설정)
+                    null
             );
 
-            // Chat Completions API 스트리밍 요청 데이터 준비
             Map<String, Object> parameters = new HashMap<>();
-            parameters.put("model", modelToUse); // 동적으로 결정된 모델 사용
+            parameters.put("model", modelToUse);
             parameters.put("stream", true);
 
-            // 히스토리에서 messages 가져오기 (이미 LLM API 형태로 변환됨)
             List<Map<String, Object>> messages = new ArrayList<>(historyDto.messages());
 
-            // 현재 질문 추가 (이미 ConversationService에 저장했으므로 히스토리에 포함되어 있음)
-            // 하지만 혹시 누락될 경우를 대비해 마지막 메시지가 현재 질문인지 확인
+            // 파일이 있거나 새로운 텍스트일 때 createContentWithFiles 호출
             if (messages.isEmpty() ||
-                    !requestDto.content().equals(messages.get(messages.size() - 1).get("content"))) {
+                    !requestDto.content().equals(messages.get(messages.size() - 1).get("content")) ||
+                    (requestDto.files() != null && !requestDto.files().isEmpty())) {
+
+                List<Map<String, Object>> content = createContentWithFiles(
+                        requestDto.content(),
+                        requestDto.files()
+                );
+
                 Map<String, Object> currentMessage = new HashMap<>();
                 currentMessage.put("role", "user");
-                currentMessage.put("content", requestDto.content());
+                currentMessage.put("content", content);
                 messages.add(currentMessage);
             }
 
             parameters.put("messages", messages);
+
+            // === OpenAI API 요청 데이터 로깅 ===
+            log.info("=== OpenAI API 요청 데이터 ===");
+            log.info("모델: {}", modelToUse);
+            log.info("메시지 개수: {}", messages.size());
+
+            if (!messages.isEmpty()) {
+                Map<String, Object> lastMessage = messages.get(messages.size() - 1);
+                log.info("마지막 메시지 role: {}", lastMessage.get("role"));
+
+                Object contentObj = lastMessage.get("content");
+                if (contentObj instanceof List) {
+                    List<Map<String, Object>> contentList = (List<Map<String, Object>>) contentObj;
+                    log.info("content 파트 개수: {}", contentList.size());
+
+                    for (int i = 0; i < contentList.size(); i++) {
+                        Map<String, Object> part = contentList.get(i);
+                        String type = (String) part.get("type");
+                        log.info("content[{}] 타입: {}", i, type);
+
+                        if ("text".equals(type)) {
+                            String text = (String) part.get("text");
+                            log.info("content[{}] 텍스트 길이: {} 문자", i, text != null ? text.length() : 0);
+                            log.info("content[{}] 텍스트 내용: {}", i, text != null && text.length() > 100 ? text.substring(0, 100) + "..." : text);
+                        } else if ("image_url".equals(type)) {
+                            Map<String, String> imageUrl = (Map<String, String>) part.get("image_url");
+                            if (imageUrl != null) {
+                                String url = imageUrl.get("url");
+                                if (url != null && url.startsWith("data:")) {
+                                    String[] parts = url.split(",");
+                                    log.info("content[{}] 이미지 URL 헤더: {}", i, parts.length > 0 ? parts[0] : "없음");
+                                    log.info("content[{}] Base64 데이터 길이: {} 문자", i, parts.length > 1 ? parts[1].length() : 0);
+
+                                    // Base64 데이터 유효성 검사
+                                    if (parts.length > 1) {
+                                        String base64Data = parts[1];
+                                        boolean isValidBase64 = base64Data.matches("^[A-Za-z0-9+/]*={0,2}$");
+                                        log.info("content[{}] Base64 유효성: {}", i, isValidBase64 ? "유효" : "무효");
+
+                                        // Base64 디코딩 테스트
+                                        try {
+                                            byte[] decoded = java.util.Base64.getDecoder().decode(base64Data);
+                                            log.info("content[{}] 디코딩된 바이트 크기: {} bytes", i, decoded.length);
+                                        } catch (Exception e) {
+                                            log.error("content[{}] Base64 디코딩 실패: {}", i, e.getMessage());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    log.info("content가 List가 아님: {}", contentObj != null ? contentObj.getClass().getSimpleName() : "null");
+                    log.info("content 내용: {}", contentObj);
+                }
+            }
+            log.info("=== OpenAI API 요청 데이터 끝 ===");
 
             String openaiUrl = openaiQuestionProperties.getResponseUrl();
 
@@ -108,13 +186,11 @@ public class OpenaiQuestionService {
                     .header("Content-Type", "application/json")
                     .body(parameters)
                     .exchange((request, response) -> {
-                        // 취소 신호 확인
                         if (Thread.currentThread().isInterrupted()) {
                             log.info("OpenAI Chat Completions API 스레드 인터럽트 감지 - API 호출 중단");
                             return null;
                         }
 
-                        // HTTP 상태 코드 검증
                         if (!response.getStatusCode().is2xxSuccessful()) {
                             String errorMessage = String.format("OpenAI Chat Completions API 호출 실패: %s", response.getStatusCode());
                             log.error(errorMessage);
@@ -128,7 +204,6 @@ public class OpenaiQuestionService {
                             String line;
 
                             while ((line = reader.readLine()) != null) {
-                                // 주기적으로 취소 신호 확인
                                 if (Thread.currentThread().isInterrupted()) {
                                     log.info("OpenAI Chat Completions API 스레드 인터럽트 감지 - 스트리밍 중단");
                                     break;
@@ -137,18 +212,16 @@ public class OpenaiQuestionService {
                                 line = line.trim();
                                 if (line.isEmpty()) continue;
 
-                                // SSE 스트리밍 데이터 파싱: "data: {json}"
                                 if (line.startsWith("data: ")) {
                                     String data = line.substring(6);
 
-                                    // [DONE] 신호 확인
                                     if ("[DONE]".equals(data.trim())) {
                                         break;
                                     }
 
                                     String content = parseChatCompletionsStreamResponse(data);
                                     if (content != null && !content.isEmpty()) {
-                                        fullResponse.append(content); // 전체 응답에 추가
+                                        fullResponse.append(content);
 
                                         try {
                                             emitter.send(SseEmitter.event()
@@ -163,11 +236,10 @@ public class OpenaiQuestionService {
                             }
 
                             if (!Thread.currentThread().isInterrupted()) {
-                                // 스트리밍 완료 후 전체 응답을 대화방에 저장 (실제 사용된 모델명으로)
                                 if (fullResponse.length() > 0) {
                                     AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
                                             fullResponse.toString(),
-                                            modelToUse // 실제 사용된 모델명 저장
+                                            modelToUse
                                     );
                                     conversationService.addAnswer(conversationId, member.getId(), answerRequest);
                                     log.info("OpenAI 답변 저장 완료 - 모델: {}", modelToUse);
@@ -196,8 +268,62 @@ public class OpenaiQuestionService {
         }
     }
 
+    private List<Map<String, Object>> createContentWithFiles(String textContent, List<MultipartFile> files) {
+        List<Map<String, Object>> content = new ArrayList<>();
 
-    // 기존 메서드들은 그대로 유지
+        log.info("=== createContentWithFiles 시작 ===");
+        log.info("텍스트 내용: {}", textContent);
+        log.info("파일 개수: {}", files != null ? files.size() : 0);
+
+        StringBuilder combinedText = new StringBuilder(textContent);
+
+        if (files != null && !files.isEmpty()) {
+            for (MultipartFile file : files) {
+                try {
+                    log.info("처리 중인 파일: {}", file.getOriginalFilename());
+                    Map<String, Object> processedFile = fileProcessingService.processFile(file);
+                    log.info("파일 처리 결과: {}", processedFile);
+
+                    String fileType = (String) processedFile.get("type");
+
+                    if ("image".equals(fileType)) {
+                        String base64 = (String) processedFile.get("base64");
+                        String mimeType = (String) processedFile.get("mimeType");
+
+                        Map<String, Object> imagePart = new HashMap<>();
+                        imagePart.put("type", "image_url");
+
+                        Map<String, String> imageUrl = new HashMap<>();
+                        imageUrl.put("url", "data:" + mimeType + ";base64," + base64);
+                        imagePart.put("image_url", imageUrl);
+
+                        content.add(imagePart);
+                        log.info("이미지 파트 추가됨 - MIME: {}, Base64 길이: {}", mimeType, base64.length());
+                    } else if ("text".equals(fileType)) {
+                        String extractedText = (String) processedFile.get("extractedText");
+                        String fileName = (String) processedFile.get("fileName");
+                        combinedText.append("\n\n[파일: ").append(fileName).append("]\n").append(extractedText);
+                        log.info("텍스트 파트 추가됨 - 파일: {}, 길이: {}", fileName, extractedText.length());
+                    }
+                } catch (Exception e) {
+                    log.error("파일 처리 실패: {}", file.getOriginalFilename(), e);
+                }
+            }
+        }
+
+        // 텍스트 파트 추가 (맨 앞에)
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", combinedText.toString());
+        content.add(0, textPart);
+
+        log.info("최종 content 파트 개수: {}", content.size());
+        log.info("최종 텍스트 내용: {}", combinedText.toString());
+        log.info("=== createContentWithFiles 끝 ===");
+
+        return content;
+    }
+
     private void setupEmitterCallbacks(SseEmitter emitter, String serviceName) {
         emitter.onTimeout(() -> {
             log.warn("{} 스트리밍 타임아웃", serviceName);
@@ -209,6 +335,7 @@ public class OpenaiQuestionService {
         });
 
         emitter.onError((throwable) -> {
+            log.error("{} 스트리밍 에러", serviceName, throwable);
         });
     }
 
@@ -225,7 +352,6 @@ public class OpenaiQuestionService {
         try {
             JsonNode jsonNode = objectMapper.readTree(data);
 
-            // Chat Completions API 스트리밍 응답 구조
             JsonNode choices = jsonNode.get("choices");
             if (choices != null && choices.isArray() && choices.size() > 0) {
                 JsonNode firstChoice = choices.get(0);

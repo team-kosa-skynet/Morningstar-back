@@ -75,6 +75,10 @@ dependencies {
 	//MockMultipartFile
 	implementation 'org.springframework:spring-test'
 
+	// Apache Tika 3.x (Java 17 지원)
+	implementation 'org.apache.tika:tika-core:3.1.0'
+	implementation 'org.apache.tika:tika-parsers-standard-package:3.1.0'
+
 }
 
 tasks.named('test') {

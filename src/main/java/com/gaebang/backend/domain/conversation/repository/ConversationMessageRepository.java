@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 대화 메시지 엔티티에 대한 데이터베이스 접근 레포지토리
@@ -65,4 +66,7 @@ public interface ConversationMessageRepository extends JpaRepository<Conversatio
      */
     @Query("SELECT cm FROM ConversationMessage cm WHERE cm.conversation.conversationId = :conversationId AND cm.role = 'USER' ORDER BY cm.messageOrder ASC")
     List<ConversationMessage> findUserQuestionsByConversationId(@Param("conversationId") Long conversationId);
+
+    @Query("SELECT MAX(cm.messageOrder) FROM ConversationMessage cm WHERE cm.conversation.conversationId = :conversationId")
+    Optional<Integer> findMaxMessageOrderByConversationId(@Param("conversationId") Long conversationId);
 }

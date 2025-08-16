@@ -28,7 +28,7 @@ public class OpenaiQuestionProperties {
         /**
          * 기본 모델 (하드코딩)
          */
-        private final String defaultModel = "gpt-3.5-turbo";
+        private final String defaultModel = "gpt-4o";
 
         /**
          * 지원하는 OpenAI 모델 목록 (하드코딩)

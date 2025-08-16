@@ -1,10 +1,12 @@
 package com.gaebang.backend.domain.conversation.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaebang.backend.domain.conversation.dto.request.*;
 import com.gaebang.backend.domain.conversation.dto.response.*;
 import com.gaebang.backend.domain.conversation.entity.Conversation;
 import com.gaebang.backend.domain.conversation.entity.ConversationMessage;
 import com.gaebang.backend.domain.conversation.entity.MessageRole;
+import com.gaebang.backend.domain.conversation.exception.ConversationNotFoundException;
 import com.gaebang.backend.domain.conversation.repository.ConversationMessageRepository;
 import com.gaebang.backend.domain.conversation.repository.ConversationRepository;
 import com.gaebang.backend.domain.member.entity.Member;
@@ -31,6 +33,8 @@ public class ConversationService {
     private final ConversationRepository conversationRepository;
     private final ConversationMessageRepository messageRepository;
     private final MemberRepository memberRepository;
+    private final ConversationMessageRepository conversationMessageRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * 새로운 대화방을 생성합니다
@@ -177,36 +181,36 @@ public class ConversationService {
      * @return 추가된 메시지 정보
      */
     @Transactional
-    public MessageResponseDto addQuestion(Long conversationId, Long memberId, AddQuestionRequestDto request) {
-        log.info("사용자 질문 추가 - 대화방 ID: {}, 사용자 ID: {}", conversationId, memberId);
+    public void addQuestion(Long conversationId, Long memberId, AddQuestionRequestDto request) {
+        Conversation conversation = conversationRepository.findByConversationIdAndMemberIdAndIsActiveTrue(conversationId, memberId)
+                .orElseThrow(() -> new ConversationNotFoundException("대화방을 찾을 수 없습니다."));
 
-        // 대화방 접근 권한 검증
-        Conversation conversation = conversationRepository
-                .findActiveConversationByIdAndMemberId(conversationId, memberId)
-                .orElseThrow(() -> new IllegalArgumentException("대화방을 찾을 수 없거나 접근 권한이 없습니다."));
+        Integer nextOrder = conversationMessageRepository.findMaxMessageOrderByConversationId(conversationId)
+                .orElse(0) + 1;
 
-        // 다음 메시지 순서 번호 조회
-        Integer nextOrder = messageRepository.findNextMessageOrder(conversationId);
+        String attachmentsJson = null;
+        if (request.attachments() != null && !request.attachments().isEmpty()) {
+            try {
+                attachmentsJson = objectMapper.writeValueAsString(request.attachments());
+            } catch (Exception e) {
+                log.error("파일 첨부 정보 JSON 변환 실패", e);
+            }
+        }
 
-        // 사용자 질문 메시지 생성
-        ConversationMessage questionMessage = ConversationMessage.builder()
+        ConversationMessage message = ConversationMessage.builder()
                 .conversation(conversation)
                 .role(MessageRole.USER)
                 .content(request.content())
-                .aiModel(null) // 사용자 질문이므로 AI 모델 없음
                 .messageOrder(nextOrder)
+                .attachments(attachmentsJson)
                 .build();
 
-        ConversationMessage savedMessage = messageRepository.save(questionMessage);
-
-        // 첫 번째 질문이면 대화방 제목을 자동 생성 (제목이 "새로운 대화"인 경우만)
-        if (nextOrder == 1 && "새로운 대화".equals(conversation.getTitle())) {
-            updateConversationTitleFromFirstQuestion(conversation, request.content());
-        }
-
-        log.info("사용자 질문 추가 완료 - 메시지 ID: {}", savedMessage.getMessageId());
-        return MessageResponseDto.from(savedMessage);
+        conversationMessageRepository.save(message);
+        log.info("사용자 질문 저장 완료 - 대화방 ID: {}, 순서: {}, 파일 개수: {}",
+                conversationId, nextOrder,
+                request.attachments() != null ? request.attachments().size() : 0);
     }
+
 
     /**
      * 대화방에 AI 답변을 추가합니다

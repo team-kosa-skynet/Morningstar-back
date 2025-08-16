@@ -66,6 +66,9 @@ public enum ErrorCode {
     RESTAURANT_LIST_ACCESS_DENIED(HttpStatus.FORBIDDEN, "요청한 리스트에 대해 접근 할 수 없습니다."),
     THIS_RESTAURANT_PRIVATE(HttpStatus.BAD_REQUEST, "해당 식당정보는 비공개입니다."),
 
+    // Conversation
+    CONVERSATION_NOT_FOUND(HttpStatus.BAD_REQUEST, "대화방을 찾을 수 없습니다."),
+
     // board
     BOARD_NOT_FOUND(HttpStatus.BAD_REQUEST, "해당 게시글을 찾을 수 없습니다."),
 

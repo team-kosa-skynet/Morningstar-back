@@ -37,4 +37,6 @@ public interface ConversationRepository extends JpaRepository<Conversation, Long
     @Query("SELECT c FROM Conversation c WHERE c.member.id = :memberId AND c.isActive = true AND c.title LIKE %:keyword% ORDER BY c.updatedAt DESC")
     List<Conversation> findActiveConversationsByMemberIdAndTitleContaining(@Param("memberId") Long memberId,
                                                                            @Param("keyword") String keyword);
+
+    Optional<Conversation> findByConversationIdAndMemberIdAndIsActiveTrue(Long conversationId, Long memberId);
 }

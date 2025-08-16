@@ -8,7 +8,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/conversations")
@@ -17,27 +20,22 @@ public class OpenaiQuestionController {
 
     private final OpenaiQuestionService openaiQuestionService;
 
-    /**
-     * 특정 대화방에서 OpenAI에게 질문하고 스트리밍 답변을 받습니다
-     * 이전 대화 맥락이 포함되어 연속적인 대화가 가능합니다
-     *
-     * @param conversationId           대화방 ID
-     * @param model                    사용할 OpenAI 모델 (선택사항, 없으면 기본값 사용)
-     * @param openaiQuestionRequestDto 질문 내용
-     * @param principalDetails         인증된 사용자 정보
-     * @return SSE 스트리밍 응답
-     */
-    @PostMapping(value = "/{conversationId}/openai/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @PostMapping(value = "/{conversationId}/openai/stream",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamQuestion(
             @PathVariable Long conversationId,
-            @RequestParam(value = "model", required = false) String model, // 쿼리 파라미터로 모델 받기
-            @RequestBody @Valid OpenaiQuestionRequestDto openaiQuestionRequestDto,
+            @RequestParam(value = "model", required = false) String model,
+            @RequestParam("content") String content,
+            @RequestParam(value = "files", required = false) List<MultipartFile> files,
             @AuthenticationPrincipal PrincipalDetails principalDetails
     ) {
+        OpenaiQuestionRequestDto requestDto = new OpenaiQuestionRequestDto(content, files);
+
         return openaiQuestionService.createQuestionStream(
                 conversationId,
-                model, // 쿼리 파라미터로 받은 모델 전달
-                openaiQuestionRequestDto,
+                model,
+                requestDto,
                 principalDetails
         );
     }
