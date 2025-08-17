@@ -1,6 +1,7 @@
 package com.gaebang.backend.domain.question.openai.controller;
 
 import com.gaebang.backend.domain.question.openai.dto.request.OpenaiQuestionRequestDto;
+import com.gaebang.backend.domain.question.openai.dto.request.OpenaiImageGenerateRequestDto;
 import com.gaebang.backend.domain.question.openai.service.OpenaiQuestionService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import jakarta.validation.Valid;
@@ -59,6 +60,24 @@ public class OpenaiQuestionController {
                 conversationId,
                 model,
                 requestDto,
+                principalDetails
+        );
+    }
+
+    /**
+     * OpenAI DALL-E 3 이미지 생성 전용 엔드포인트
+     */
+    @PostMapping(value = "/{conversationId}/openai/generate-image",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter generateImage(
+            @PathVariable Long conversationId,
+            @RequestBody @Valid OpenaiImageGenerateRequestDto request,
+            @AuthenticationPrincipal PrincipalDetails principalDetails
+    ) {
+        return openaiQuestionService.generateImageInConversation(
+                conversationId,
+                request.prompt(),
                 principalDetails
         );
     }

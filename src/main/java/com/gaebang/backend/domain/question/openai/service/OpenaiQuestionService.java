@@ -11,9 +11,9 @@ import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
-import com.gaebang.backend.domain.question.common.service.FileProcessingService;
 import com.gaebang.backend.domain.question.openai.dto.request.OpenaiQuestionRequestDto;
 import com.gaebang.backend.domain.question.openai.util.OpenaiQuestionProperties;
+import com.gaebang.backend.domain.question.common.service.FileProcessingService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,7 +24,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
@@ -63,6 +65,257 @@ public class OpenaiQuestionService {
         return emitter;
     }
 
+    /**
+     * OpenAI DALL-E 3를 사용하여 이미지를 생성하고 대화방에 저장
+     */
+    public SseEmitter generateImageInConversation(
+            Long conversationId,
+            String prompt,
+            PrincipalDetails principalDetails
+    ) {
+        Member member = validateAndGetMember(principalDetails);
+        SseEmitter emitter = new SseEmitter(300000L);
+
+        // 1. 사용자 질문을 대화방에 저장
+        AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(
+                prompt,
+                Collections.emptyList() // 이미지 생성은 파일 첨부 없음
+        );
+        conversationService.addQuestion(conversationId, member.getId(), questionRequest);
+
+        // 2. 이미지 생성 수행
+        performImageGeneration(emitter, conversationId, prompt, member);
+
+        setupEmitterCallbacks(emitter, "OpenAI DALL-E 3");
+        return emitter;
+    }
+
+    private void performImageGeneration(SseEmitter emitter, Long conversationId,
+                                        String prompt, Member member) {
+        try {
+            log.info("OpenAI DALL-E 3 이미지 생성 요청: {}", prompt);
+
+            // OpenAI DALL-E 3 이미지 생성 API 호출 후 base64로 변환
+            String imageDataUrl = generateImageWithOpenAI(prompt);
+
+            if (imageDataUrl != null) {
+                // 이미지 data URL을 SSE로 전송 (Gemini와 통일성 유지)
+                Map<String, Object> imageResponse = new HashMap<>();
+                imageResponse.put("imageUrl", imageDataUrl);
+                imageResponse.put("prompt", prompt);
+                imageResponse.put("type", "base64"); // Gemini와 동일하게 base64 형태
+
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("image")
+                            .data(imageResponse));
+
+                    log.info("OpenAI DALL-E 3 이미지 생성 완료 및 전송");
+                } catch (IOException e) {
+                    log.warn("OpenAI 이미지 전송 실패 - 클라이언트 연결 종료됨");
+                    return;
+                }
+
+                // 이미지 정보를 attachments에 저장 (대화 맥락 유지)
+                FileAttachmentDto imageAttachment = new FileAttachmentDto(
+                        "generated_image.png",
+                        "generated_image",
+                        0L,
+                        "image/png"
+                );
+
+                // AI 답변을 대화방에 저장 (이미지 설명) - 대화 맥락 이어짐
+                String responseText = String.format("요청하신 '%s' 이미지를 생성했습니다.", prompt);
+                AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
+                        responseText,
+                        "dall-e-3",
+                        List.of(imageAttachment)
+                );
+                conversationService.addAnswer(conversationId, member.getId(), answerRequest);
+
+                emitter.send(SseEmitter.event()
+                        .name("done")
+                        .data("이미지 생성 완료"));
+                emitter.complete();
+
+            } else {
+                // 이미지 생성 실패
+                handleStreamError(emitter, new RuntimeException("이미지 생성에 실패했습니다."));
+            }
+
+        } catch (Exception e) {
+            log.error("OpenAI DALL-E 3 이미지 생성 실패: ", e);
+            handleStreamError(emitter, e);
+        }
+    }
+
+    private String generateImageWithOpenAI(String prompt) {
+        try {
+            // OpenAI DALL-E 3 API 요청 구조
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", "dall-e-3");
+            requestBody.put("prompt", prompt);
+            requestBody.put("n", 1); // 이미지 1개 생성
+            requestBody.put("size", "1024x1024"); // 이미지 크기
+            requestBody.put("quality", "standard"); // 품질: standard 또는 hd
+            requestBody.put("response_format", "url"); // URL 형식으로 응답 요청
+
+            log.info("OpenAI DALL-E 3 이미지 생성 API 호출");
+            log.info("요청 프롬프트: {}", prompt);
+
+            // API 호출
+            String response = restClient.post()
+                    .uri("https://api.openai.com/v1/images/generations")
+                    .header("Authorization", "Bearer " + openaiQuestionProperties.getApiKey())
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .exchange((request, httpResponse) -> {
+                        if (!httpResponse.getStatusCode().is2xxSuccessful()) {
+                            log.error("OpenAI DALL-E 3 API 호출 실패: {}", httpResponse.getStatusCode());
+                            try {
+                                String errorBody = new String(httpResponse.getBody().readAllBytes());
+                                log.error("오류 응답 본문: {}", errorBody);
+                            } catch (Exception e) {
+                                log.error("오류 응답 읽기 실패", e);
+                            }
+                            return null;
+                        }
+                        try {
+                            return new String(httpResponse.getBody().readAllBytes());
+                        } catch (Exception e) {
+                            log.error("응답 파싱 오류", e);
+                            return null;
+                        }
+                    });
+
+            if (response != null) {
+                log.info("OpenAI DALL-E 3 실제 API 응답 전체: {}", response);
+                return parseOpenAIImageResponseAndConvertToBase64(response);
+            }
+
+            return null;
+
+        } catch (Exception e) {
+            log.error("OpenAI DALL-E 3 이미지 생성 API 호출 실패: ", e);
+            return null;
+        }
+    }
+
+    // 기존 URL 방식 (주석처리) - 나중에 사용할 수 있도록 보존
+      /*
+      private String parseOpenAIImageResponse(String response) {
+          try {
+              JsonNode rootNode = objectMapper.readTree(response);
+              List<String> fieldNames = new ArrayList<>();
+              rootNode.fieldNames().forEachRemaining(fieldNames::add);
+              log.info("OpenAI DALL-E 3 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
+
+              // OpenAI 응답 구조: { "data": [{ "url": "https://...", "revised_prompt": "..." }] }
+              JsonNode dataArray = rootNode.path("data");
+
+              if (dataArray.isEmpty()) {
+                  log.warn("OpenAI DALL-E 3 응답에 data가 없습니다.");
+                  return null;
+              }
+
+              // 첫 번째 생성된 이미지 사용
+              JsonNode firstData = dataArray.get(0);
+              List<String> dataFields = new ArrayList<>();
+              firstData.fieldNames().forEachRemaining(dataFields::add);
+              log.info("첫 번째 data 필드들: {}", String.join(", ", dataFields));
+
+              if (firstData.has("url")) {
+                  String imageUrl = firstData.path("url").asText();
+                  String revisedPrompt = firstData.path("revised_prompt").asText("");
+
+                  log.info("OpenAI DALL-E 3 이미지 생성 성공: URL={}, Revised Prompt={}", imageUrl, revisedPrompt);
+                  return imageUrl; // 실제 HTTP URL 반환
+              }
+
+              log.warn("OpenAI DALL-E 3 응답에 url 필드가 없습니다.");
+              return null;
+
+          } catch (Exception e) {
+              log.error("OpenAI DALL-E 3 응답 파싱 실패", e);
+              return null;
+          }
+      }
+      */
+
+    // 새로운 base64 변환 방식 - Gemini와 통일성 유지
+    private String parseOpenAIImageResponseAndConvertToBase64(String response) {
+        try {
+            JsonNode rootNode = objectMapper.readTree(response);
+            List<String> fieldNames = new ArrayList<>();
+            rootNode.fieldNames().forEachRemaining(fieldNames::add);
+            log.info("OpenAI DALL-E 3 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
+
+            // OpenAI 응답 구조: { "data": [{ "url": "https://...", "revised_prompt": "..." }] }
+            JsonNode dataArray = rootNode.path("data");
+
+            if (dataArray.isEmpty()) {
+                log.warn("OpenAI DALL-E 3 응답에 data가 없습니다.");
+                return null;
+            }
+
+            // 첫 번째 생성된 이미지 사용
+            JsonNode firstData = dataArray.get(0);
+            List<String> dataFields = new ArrayList<>();
+            firstData.fieldNames().forEachRemaining(dataFields::add);
+            log.info("첫 번째 data 필드들: {}", String.join(", ", dataFields));
+
+            if (firstData.has("url")) {
+                String imageUrl = firstData.path("url").asText();
+                String revisedPrompt = firstData.path("revised_prompt").asText("");
+
+                log.info("OpenAI DALL-E 3 이미지 URL 수신: URL={}, Revised Prompt={}", imageUrl, revisedPrompt);
+
+                // URL에서 이미지를 다운로드하고 base64로 변환
+                String base64DataUrl = downloadImageAndConvertToBase64(imageUrl);
+                if (base64DataUrl != null) {
+                    log.info("OpenAI DALL-E 3 이미지 base64 변환 완료");
+                    return base64DataUrl;
+                }
+
+                log.warn("OpenAI DALL-E 3 이미지 base64 변환 실패");
+                return null;
+            }
+
+            log.warn("OpenAI DALL-E 3 응답에 url 필드가 없습니다.");
+            return null;
+
+        } catch (Exception e) {
+            log.error("OpenAI DALL-E 3 응답 파싱 실패", e);
+            return null;
+        }
+    }
+
+    // URL에서 이미지를 다운로드하고 base64 data URL로 변환
+    private String downloadImageAndConvertToBase64(String imageUrl) {
+        try {
+            log.info("이미지 다운로드 시작: {}", imageUrl);
+
+            URL url = new URL(imageUrl);
+            try (InputStream inputStream = url.openStream()) {
+                byte[] imageBytes = inputStream.readAllBytes();
+                String base64Data = Base64.getEncoder().encodeToString(imageBytes);
+
+                // MIME 타입 결정 (일반적으로 PNG)
+                String mimeType = "image/png";
+
+                // data URL 형태로 변환
+                String dataUrl = String.format("data:%s;base64,%s", mimeType, base64Data);
+
+                log.info("이미지 다운로드 및 base64 변환 완료: 크기={} bytes", imageBytes.length);
+                return dataUrl;
+            }
+
+        } catch (Exception e) {
+            log.error("이미지 다운로드 및 base64 변환 실패: {}", imageUrl, e);
+            return null;
+        }
+    }
+
     private List<FileAttachmentDto> processFiles(List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
             return Collections.emptyList();
@@ -98,102 +351,105 @@ public class OpenaiQuestionService {
             );
 
             Map<String, Object> parameters = new HashMap<>();
-            parameters.put("model", modelToUse);
-            parameters.put("stream", true);
 
-            List<Map<String, Object>> messages = new ArrayList<>(historyDto.messages());
+            List<Map<String, Object>> messages = new ArrayList<>();
 
-            // 파일이 있거나 새로운 텍스트일 때 createContentWithFiles 호출
-            if (messages.isEmpty() ||
-                    !requestDto.content().equals(messages.get(messages.size() - 1).get("content")) ||
+            // OpenAI용 대화 히스토리 처리
+            List<Map<String, Object>> historyMessages = historyDto.messages();
+            for (Map<String, Object> message : historyMessages) {
+                String role = (String) message.get("role");
+                String content = (String) message.get("content");
+
+                Map<String, Object> openaiMessage = new HashMap<>();
+                openaiMessage.put("role", "user".equals(role) ? "user" : "assistant");
+                openaiMessage.put("content", content);
+                messages.add(openaiMessage);
+            }
+
+            // 파일이 있거나 새로운 텍스트일 때 새 메시지 추가
+            if (historyMessages.isEmpty() ||
+                    !requestDto.content().equals(getLastUserMessage(historyMessages)) ||
                     (requestDto.files() != null && !requestDto.files().isEmpty())) {
 
-                List<Map<String, Object>> content = createContentWithFiles(
+                Map<String, Object> content = createContentWithFiles(
                         requestDto.content(),
                         requestDto.files()
                 );
-
-                Map<String, Object> currentMessage = new HashMap<>();
-                currentMessage.put("role", "user");
-                currentMessage.put("content", content);
-                messages.add(currentMessage);
+                messages.add(content);
             }
 
+            parameters.put("model", modelToUse);
             parameters.put("messages", messages);
+            parameters.put("temperature", 0.7);
+            parameters.put("max_tokens", 4096);
+            parameters.put("stream", true);
 
             // === OpenAI API 요청 데이터 로깅 ===
             log.info("=== OpenAI API 요청 데이터 ===");
             log.info("모델: {}", modelToUse);
-            log.info("메시지 개수: {}", messages.size());
+            log.info("messages 개수: {}", messages.size());
 
             if (!messages.isEmpty()) {
                 Map<String, Object> lastMessage = messages.get(messages.size() - 1);
-                log.info("마지막 메시지 role: {}", lastMessage.get("role"));
+                log.info("마지막 message role: {}", lastMessage.get("role"));
 
                 Object contentObj = lastMessage.get("content");
-                if (contentObj instanceof List) {
-                    List<Map<String, Object>> contentList = (List<Map<String, Object>>) contentObj;
-                    log.info("content 파트 개수: {}", contentList.size());
+                if (contentObj instanceof String) {
+                    String textContent = (String) contentObj;
+                    log.info("content 텍스트 길이: {} 문자", textContent.length());
+                    log.info("content 텍스트 내용: {}", textContent.length() > 100 ? textContent.substring(0, 100) + "..." : textContent);
+                } else if (contentObj instanceof List) {
+                    List<Map<String, Object>> contentParts = (List<Map<String, Object>>) contentObj;
+                    log.info("content parts 개수: {}", contentParts.size());
 
-                    for (int i = 0; i < contentList.size(); i++) {
-                        Map<String, Object> part = contentList.get(i);
+                    for (int i = 0; i < contentParts.size(); i++) {
+                        Map<String, Object> part = contentParts.get(i);
                         String type = (String) part.get("type");
-                        log.info("content[{}] 타입: {}", i, type);
+                        log.info("part[{}] type: {}", i, type);
 
                         if ("text".equals(type)) {
                             String text = (String) part.get("text");
-                            log.info("content[{}] 텍스트 길이: {} 문자", i, text != null ? text.length() : 0);
-                            log.info("content[{}] 텍스트 내용: {}", i, text != null && text.length() > 100 ? text.substring(0, 100) + "..." : text);
+                            log.info("part[{}] 텍스트 길이: {} 문자", i, text != null ? text.length() : 0);
                         } else if ("image_url".equals(type)) {
-                            Map<String, String> imageUrl = (Map<String, String>) part.get("image_url");
+                            Map<String, Object> imageUrl = (Map<String, Object>) part.get("image_url");
                             if (imageUrl != null) {
-                                String url = imageUrl.get("url");
-                                if (url != null && url.startsWith("data:")) {
-                                    String[] parts = url.split(",");
-                                    log.info("content[{}] 이미지 URL 헤더: {}", i, parts.length > 0 ? parts[0] : "없음");
-                                    log.info("content[{}] Base64 데이터 길이: {} 문자", i, parts.length > 1 ? parts[1].length() : 0);
-
-                                    // Base64 데이터 유효성 검사
-                                    if (parts.length > 1) {
-                                        String base64Data = parts[1];
-                                        boolean isValidBase64 = base64Data.matches("^[A-Za-z0-9+/]*={0,2}$");
-                                        log.info("content[{}] Base64 유효성: {}", i, isValidBase64 ? "유효" : "무효");
-
-                                        // Base64 디코딩 테스트
-                                        try {
-                                            byte[] decoded = java.util.Base64.getDecoder().decode(base64Data);
-                                            log.info("content[{}] 디코딩된 바이트 크기: {} bytes", i, decoded.length);
-                                        } catch (Exception e) {
-                                            log.error("content[{}] Base64 디코딩 실패: {}", i, e.getMessage());
-                                        }
-                                    }
-                                }
+                                String url = (String) imageUrl.get("url");
+                                log.info("part[{}] 이미지 URL 길이: {} 문자", i, url != null ? url.length() : 0);
                             }
                         }
                     }
-                } else {
-                    log.info("content가 List가 아님: {}", contentObj != null ? contentObj.getClass().getSimpleName() : "null");
-                    log.info("content 내용: {}", contentObj);
                 }
             }
             log.info("=== OpenAI API 요청 데이터 끝 ===");
 
-            String openaiUrl = openaiQuestionProperties.getResponseUrl();
-
             restClient.post()
-                    .uri(openaiUrl)
+                    .uri("https://api.openai.com/v1/chat/completions")
                     .header("Authorization", "Bearer " + openaiQuestionProperties.getApiKey())
                     .header("Content-Type", "application/json")
                     .body(parameters)
                     .exchange((request, response) -> {
                         if (Thread.currentThread().isInterrupted()) {
-                            log.info("OpenAI Chat Completions API 스레드 인터럽트 감지 - API 호출 중단");
+                            log.info("OpenAI API 스레드 인터럽트 감지 - API 호출 중단");
                             return null;
                         }
 
                         if (!response.getStatusCode().is2xxSuccessful()) {
-                            String errorMessage = String.format("OpenAI Chat Completions API 호출 실패: %s", response.getStatusCode());
+                            String errorMessage = String.format("OpenAI API 호출 실패: %s", response.getStatusCode());
                             log.error(errorMessage);
+
+                            // 에러 응답 본문 로깅
+                            try (BufferedReader errorReader = new BufferedReader(
+                                    new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
+                                String errorLine;
+                                StringBuilder errorBody = new StringBuilder();
+                                while ((errorLine = errorReader.readLine()) != null) {
+                                    errorBody.append(errorLine);
+                                }
+                                log.error("OpenAI API 에러 응답: {}", errorBody.toString());
+                            } catch (IOException e) {
+                                log.error("에러 응답 읽기 실패", e);
+                            }
+
                             handleStreamError(emitter, new RuntimeException(errorMessage));
                             return null;
                         }
@@ -205,13 +461,14 @@ public class OpenaiQuestionService {
 
                             while ((line = reader.readLine()) != null) {
                                 if (Thread.currentThread().isInterrupted()) {
-                                    log.info("OpenAI Chat Completions API 스레드 인터럽트 감지 - 스트리밍 중단");
+                                    log.info("OpenAI API 스레드 인터럽트 감지 - 스트리밍 중단");
                                     break;
                                 }
 
                                 line = line.trim();
                                 if (line.isEmpty()) continue;
 
+                                // SSE 형식 처리
                                 if (line.startsWith("data: ")) {
                                     String data = line.substring(6);
 
@@ -219,7 +476,7 @@ public class OpenaiQuestionService {
                                         break;
                                     }
 
-                                    String content = parseChatCompletionsStreamResponse(data);
+                                    String content = parseOpenAIStreamResponse(data);
                                     if (content != null && !content.isEmpty()) {
                                         fullResponse.append(content);
 
@@ -228,7 +485,7 @@ public class OpenaiQuestionService {
                                                     .name("message")
                                                     .data(content));
                                         } catch (IOException e) {
-                                            log.warn("OpenAI Chat Completions API 클라이언트 연결 종료됨 - 스트리밍 중단");
+                                            log.warn("OpenAI API 클라이언트 연결 종료됨 - 스트리밍 중단");
                                             return null;
                                         }
                                     }
@@ -253,7 +510,7 @@ public class OpenaiQuestionService {
 
                         } catch (IOException e) {
                             if (!Thread.currentThread().isInterrupted()) {
-                                log.error("OpenAI Chat Completions API 스트리밍 중 네트워크 오류", e);
+                                log.error("OpenAI API 스트리밍 중 네트워크 오류", e);
                                 handleStreamError(emitter, e);
                             }
                         }
@@ -262,22 +519,30 @@ public class OpenaiQuestionService {
 
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
-                log.error("OpenAI Chat Completions API 스트리밍 호출 실패: ", e);
+                log.error("OpenAI API 스트리밍 호출 실패: ", e);
                 handleStreamError(emitter, e);
             }
         }
     }
 
-    private List<Map<String, Object>> createContentWithFiles(String textContent, List<MultipartFile> files) {
-        List<Map<String, Object>> content = new ArrayList<>();
+    private Map<String, Object> createContentWithFiles(String textContent, List<MultipartFile> files) {
+        Map<String, Object> message = new HashMap<>();
+        message.put("role", "user");
 
-        log.info("=== createContentWithFiles 시작 ===");
+        log.info("=== OpenAI createContentWithFiles 시작 ===");
         log.info("텍스트 내용: {}", textContent);
         log.info("파일 개수: {}", files != null ? files.size() : 0);
 
-        StringBuilder combinedText = new StringBuilder(textContent);
-
         if (files != null && !files.isEmpty()) {
+            // 파일이 있는 경우 - content를 배열 형태로 구성
+            List<Map<String, Object>> contentParts = new ArrayList<>();
+
+            // 텍스트 파트 추가
+            Map<String, Object> textPart = new HashMap<>();
+            textPart.put("type", "text");
+
+            StringBuilder combinedText = new StringBuilder(textContent);
+
             for (MultipartFile file : files) {
                 try {
                     log.info("처리 중인 파일: {}", file.getOriginalFilename());
@@ -290,38 +555,57 @@ public class OpenaiQuestionService {
                         String base64 = (String) processedFile.get("base64");
                         String mimeType = (String) processedFile.get("mimeType");
 
+                        // OpenAI 이미지 파트 추가
                         Map<String, Object> imagePart = new HashMap<>();
                         imagePart.put("type", "image_url");
 
-                        Map<String, String> imageUrl = new HashMap<>();
-                        imageUrl.put("url", "data:" + mimeType + ";base64," + base64);
+                        Map<String, Object> imageUrl = new HashMap<>();
+                        imageUrl.put("url", String.format("data:%s;base64,%s", mimeType, base64));
                         imagePart.put("image_url", imageUrl);
 
-                        content.add(imagePart);
-                        log.info("이미지 파트 추가됨 - MIME: {}, Base64 길이: {}", mimeType, base64.length());
+                        contentParts.add(imagePart);
+
+                        log.info("OpenAI 이미지 파트 추가됨 - MIME: {}, Base64 길이: {}", mimeType, base64.length());
                     } else if ("text".equals(fileType)) {
                         String extractedText = (String) processedFile.get("extractedText");
                         String fileName = (String) processedFile.get("fileName");
-                        combinedText.append("\n\n[파일: ").append(fileName).append("]\n").append(extractedText);
-                        log.info("텍스트 파트 추가됨 - 파일: {}, 길이: {}", fileName, extractedText.length());
+
+                        combinedText.append("\n\n--- 파일: ").append(fileName).append(" ---\n");
+                        combinedText.append(extractedText);
+                        combinedText.append("\n--- 파일 끝 ---\n");
+
+                        log.info("OpenAI 텍스트 파일 내용 텍스트에 추가됨 - 파일: {}, 길이: {}", fileName, extractedText.length());
                     }
                 } catch (Exception e) {
                     log.error("파일 처리 실패: {}", file.getOriginalFilename(), e);
                 }
             }
+
+            textPart.put("text", combinedText.toString());
+            contentParts.add(0, textPart); // 텍스트 파트를 맨 앞에 추가
+
+            message.put("content", contentParts);
+            log.info("OpenAI 최종 content parts 개수: {}", contentParts.size());
+        } else {
+            // 파일이 없는 경우 - content를 문자열로 구성
+            message.put("content", textContent);
+            log.info("OpenAI 파일 없음 - 텍스트만 사용");
         }
 
-        // 텍스트 파트 추가 (맨 앞에)
-        Map<String, Object> textPart = new HashMap<>();
-        textPart.put("type", "text");
-        textPart.put("text", combinedText.toString());
-        content.add(0, textPart);
+        log.info("OpenAI 최종 텍스트 내용 길이: {} 문자", textContent.length());
+        log.info("=== OpenAI createContentWithFiles 끝 ===");
 
-        log.info("최종 content 파트 개수: {}", content.size());
-        log.info("최종 텍스트 내용: {}", combinedText.toString());
-        log.info("=== createContentWithFiles 끝 ===");
+        return message;
+    }
 
-        return content;
+    private String getLastUserMessage(List<Map<String, Object>> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Map<String, Object> message = messages.get(i);
+            if ("user".equals(message.get("role"))) {
+                return (String) message.get("content");
+            }
+        }
+        return "";
     }
 
     private void setupEmitterCallbacks(SseEmitter emitter, String serviceName) {
@@ -348,7 +632,7 @@ public class OpenaiQuestionService {
                 .orElseThrow(() -> new UserNotFoundException());
     }
 
-    private String parseChatCompletionsStreamResponse(String data) {
+    private String parseOpenAIStreamResponse(String data) {
         try {
             JsonNode jsonNode = objectMapper.readTree(data);
 
@@ -363,7 +647,7 @@ public class OpenaiQuestionService {
 
             return null;
         } catch (Exception e) {
-            log.warn("OpenAI Chat Completions API 스트리밍 응답 파싱 실패: {}", e.getMessage());
+            log.warn("OpenAI API 스트리밍 응답 파싱 실패: {}", e.getMessage());
             return null;
         }
     }
