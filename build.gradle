@@ -75,9 +75,6 @@ dependencies {
 	//jsoup
 	implementation 'org.jsoup:jsoup:1.17.2'
 
-  //webclient
-  implementation 'org.springframework.boot:spring-boot-starter-webflux'
-
 	// 1) Spring AI
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai:1.0.1'
 	implementation 'com.openai:openai-java:3.0.2'

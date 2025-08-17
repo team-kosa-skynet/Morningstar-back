@@ -37,6 +37,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
@@ -150,6 +151,10 @@ public class InterviewsService {
 
     @Transactional
     public NextTurnResponseDto nextTurn(TurnRequestDto req, Long memberId, boolean withAudio) throws Exception {
+        long methodStart = System.nanoTime();
+        log.info("[PERF] nextTurn 메서드 시작 - session: {}, question: {}, withAudio: {}", 
+                req.sessionId(), req.questionIndex(), withAudio);
+        
         InterviewsSession session = interviewsSessionRepository.findById(req.sessionId())
                 .orElseThrow(() -> new IllegalArgumentException("session not found: " + req.sessionId()));
 
@@ -229,44 +234,91 @@ public class InterviewsService {
         }
         String nextQuestion = done ? null : plan.questions().get(nextIndex).text();
         
-        // 🆕 질문 의도와 답변 가이드 생성 (다음 질문이 있을 때만)
+        // 🚀 병렬 처리: 질문 의도/가이드 생성과 TTS 합성을 동시에 실행
         String questionIntent = null;
         List<String> answerGuides = null;
+        TtsPayloadDto tts = null;
+        
         if (!done && nextQuestion != null) {
+            long parallelStart = System.nanoTime();
+            
+            // 1️⃣ 질문 의도/가이드 생성 비동기 작업
+            CompletableFuture<Map<String, Object>> intentGuidesFuture = CompletableFuture.supplyAsync(() -> {
+                try {
+                    long intentStart = System.nanoTime();
+                    PlanQuestionDto nextQuestionDto = plan.questions().get(nextIndex);
+                    Map<String, Object> result = generateQuestionIntentAndGuidesWithRetry(
+                        nextQuestionDto.type(), 
+                        nextQuestion,
+                        session.getRole()
+                    );
+                    long intentMs = (System.nanoTime() - intentStart) / 1_000_000;
+                    log.info("[AI][parallel] 질문 의도/가이드 생성 완료: {} ms", intentMs);
+                    return result;
+                } catch (Exception e) {
+                    log.warn("[AI][parallel] 질문 의도/가이드 생성 실패: {}", e.getMessage());
+                    return Map.of(
+                        "intent", "이 질문을 통해 지원자의 역량을 평가합니다.",
+                        "guides", List.of(
+                            "구체적인 경험을 바탕으로 답변해주세요.",
+                            "STAR 방식(상황, 과제, 행동, 결과)을 활용하면 좋습니다.",
+                            "기술적 근거와 함께 설명해주세요."
+                        )
+                    );
+                }
+            });
+
+            // 2️⃣ TTS 합성 비동기 작업 (withAudio일 때만)
+            CompletableFuture<TtsPayloadDto> ttsFuture = null;
+            if (withAudio && !nextQuestion.isBlank()) {
+                ttsFuture = CompletableFuture.supplyAsync(() -> {
+                    try {
+                        long ttsStart = System.nanoTime();
+                        log.info("[TTS][parallel] starting synthesize for question: '{}'", nextQuestion);
+                        TtsPayloadDto result = ttsService.synthesize(nextQuestion, defaultTtsFormat);
+                        long ttsMs = (System.nanoTime() - ttsStart) / 1_000_000;
+                        log.info("[TTS][parallel] completed synthesize in {} ms", ttsMs);
+                        return result;
+                    } catch (Exception e) {
+                        log.warn("[TTS][parallel] synthesize failed: {}", e.getMessage());
+                        return null;
+                    }
+                });
+            }
+
+            // 3️⃣ 병렬 작업 완료 대기 및 결과 취합
             try {
-                PlanQuestionDto nextQuestionDto = plan.questions().get(nextIndex);
-                Map<String, Object> intentAndGuides = generateQuestionIntentAndGuidesWithRetry(
-                    nextQuestionDto.type(), 
-                    nextQuestion,
-                    session.getRole()
-                );
+                // 질문 의도/가이드 결과 취합
+                Map<String, Object> intentAndGuides = intentGuidesFuture.get();
                 questionIntent = (String) intentAndGuides.get("intent");
                 answerGuides = (List<String>) intentAndGuides.get("guides");
+
+                // TTS 결과 취합 (있을 경우에만)
+                if (ttsFuture != null) {
+                    tts = ttsFuture.get();
+                }
+
+                long parallelMs = (System.nanoTime() - parallelStart) / 1_000_000;
+                log.info("[PARALLEL] 전체 병렬 처리 완료: {} ms (의도/가이드 + TTS)", parallelMs);
+                
             } catch (Exception e) {
-                log.warn("[AI] 질문 의도/가이드 생성 실패: {}", e.getMessage());
+                log.error("[PARALLEL] 병렬 처리 중 예외 발생: {}", e.getMessage());
+                // 폴백: 기본값 설정
                 questionIntent = "이 질문을 통해 지원자의 역량을 평가합니다.";
                 answerGuides = List.of(
                     "구체적인 경험을 바탕으로 답변해주세요.",
                     "STAR 방식(상황, 과제, 행동, 결과)을 활용하면 좋습니다.",
                     "기술적 근거와 함께 설명해주세요."
                 );
+                tts = null;
             }
         }
 
-        // withAudio면 다음 질문 합성(종료가 아닐 때만)
-        TtsPayloadDto tts = null;
-        if (!done && withAudio && nextQuestion != null && !nextQuestion.isBlank()) {
-            try {
-                log.info("[TTS] starting synthesize for question: '{}'", nextQuestion);
-                long ttsStart = System.nanoTime();
-                tts = ttsService.synthesize(nextQuestion, defaultTtsFormat);
-                long ttsMs = (System.nanoTime() - ttsStart) / 1_000_000;
-                log.info("[TTS] completed synthesize in {} ms", ttsMs);
-            } catch (Exception e) {
-                log.warn("[TTS] turn synthesize failed: {}", e.getMessage());
-            }
-        }
-
+        // 🎯 전체 성능 측정 및 로깅
+        long methodMs = (System.nanoTime() - methodStart) / 1_000_000;
+        log.info("[PERF] nextTurn 메서드 완료 - 전체 실행 시간: {} ms (AI: {} ms, 병렬처리)", 
+                methodMs, elapsedMs);
+                
         return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, scoreResult, done, tts);
     }
 

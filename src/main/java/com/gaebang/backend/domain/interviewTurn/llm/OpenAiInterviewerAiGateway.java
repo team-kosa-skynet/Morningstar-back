@@ -5,36 +5,54 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaebang.backend.domain.interviewTurn.dto.internal.AiTurnFeedbackDto;
 import com.gaebang.backend.domain.interviewTurn.dto.internal.PlanQuestionDto;
 import com.gaebang.backend.domain.interviewTurn.util.PlanParser;
+import io.github.cdimascio.dotenv.Dotenv;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.client.RestTemplate;
 
-import java.time.Duration;
 import java.util.*;
 
 @Component
-@ConditionalOnProperty(name = "ai.provider", havingValue = "openai")
 public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
 
-    private final WebClient webClient;
+    private static final Dotenv dotenv = Dotenv.load();
+    
+    private final RestTemplate restTemplate;
     private final String apiKey;
     private final String model;
     private final PlanParser planParser;
     private final ObjectMapper om;
 
     public OpenAiInterviewerAiGateway(
-            WebClient.Builder builder,
-            @Value("${spring.ai.openai.api-key}") String apiKey,
             @Value("${spring.ai.openai.chat.options.model:gpt-4o-mini}") String model,
             PlanParser planParser,
             ObjectMapper objectMapper
     ) {
-        this.webClient = builder.baseUrl("https://api.openai.com/v1").build();
-        this.apiKey = apiKey;
+        this.restTemplate = new RestTemplate();
+        
+        // Dotenv로 직접 .env 파일에서 API 키 로드
+        String dotenvKey = dotenv.get("OPENAI_API_KEY");
+        String systemKey = System.getenv("OPENAI_API_KEY");
+        
+        String finalApiKey = null;
+        if (dotenvKey != null && !dotenvKey.isBlank()) {
+            finalApiKey = dotenvKey;
+            System.out.println("[OpenAI] API key loaded from .env file: OK (length: " + finalApiKey.length() + ")");
+        } else if (systemKey != null && !systemKey.isBlank()) {
+            finalApiKey = systemKey;
+            System.out.println("[OpenAI] API key loaded from system env: OK (length: " + finalApiKey.length() + ")");
+        }
+        
+        // API 키 최종 검증
+        if (finalApiKey == null || finalApiKey.isBlank()) {
+            throw new IllegalStateException("[OpenAI] API key is missing. " +
+                "Dotenv: " + (dotenvKey != null ? "'" + dotenvKey + "'" : "null") + ", " +
+                "System.getenv: " + (systemKey != null ? "OK" : "null"));
+        }
+        this.apiKey = finalApiKey.trim();
+        
         this.model = model;
         this.planParser = planParser;
         this.om = objectMapper;
@@ -43,6 +61,8 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
     @PostConstruct
     void log() {
         System.out.println("[AI] Using OpenAiInterviewerAiGateway");
+        System.out.println("[AI] API Key status: " + (apiKey != null && !apiKey.isBlank() ? "OK (length: " + apiKey.length() + ")" : "MISSING"));
+        System.out.println("[AI] Model: " + model);
     }
 
     @Override
@@ -140,17 +160,25 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
             "max_tokens", 2000
         );
 
-        String response = webClient.post()
-                .uri("/chat/completions")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(requestBody)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofSeconds(30))
-                .block();
+        // API 키 검증
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("[OpenAI] API key is null. Check environment variables: OPENAI_API_KEY=" + System.getenv("OPENAI_API_KEY"));
+        }
 
-        return parseOpenAiResponse(response);
+        // RestTemplate으로 HTTP 요청
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+        
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        
+        ResponseEntity<String> response = restTemplate.postForEntity(
+            "https://api.openai.com/v1/chat/completions", 
+            entity, 
+            String.class
+        );
+
+        return parseOpenAiResponse(response.getBody());
     }
     
     private String buildSystemPrompt(String role, String profileSnapshotJson) {
@@ -406,9 +434,11 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
 
             Map<String, Object> format = Map.of(
                 "type", "json_schema",
-                "name", "QuestionIntentAndGuides",
-                "schema", schema,
-                "strict", true
+                "json_schema", Map.of(
+                    "name", "QuestionIntentAndGuides",
+                    "schema", schema,
+                    "strict", true
+                )
             );
 
             String roleGuide = getRoleSpecificGuidePrompt(role);
@@ -450,17 +480,20 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
                 "max_tokens", 1000
             );
 
-            String response = webClient.post()
-                    .uri("/chat/completions")
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofSeconds(15))
-                    .block();
+            // RestTemplate으로 HTTP 요청
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+            
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                "https://api.openai.com/v1/chat/completions", 
+                entity, 
+                String.class
+            );
 
-            return parseQuestionIntentResponse(response);
+            return parseQuestionIntentResponse(response.getBody());
             
         } catch (Exception e) {
             System.err.println("[AI] 질문 의도/가이드 생성 실패");
@@ -715,22 +748,29 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
     }
 
     private String postJson(String path, Map<String, Object> body) {
-        return webClient.post()
-                .uri(path)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(body)
-                .exchangeToMono(resp ->
-                        resp.bodyToMono(String.class).map(b -> {
-                            if (resp.statusCode().isError()) {
-                                // ★ OpenAI 에러 원인 확인용 전체 바디 출력
-                                System.err.println("[OpenAI][HTTP " + resp.statusCode() + "] " + b);
-                                throw new RuntimeException("OpenAI error: " + b);
-                            }
-                            return b;
-                        })
-                )
-                .block(Duration.ofSeconds(30));
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+        
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
+        
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                "https://api.openai.com/v1" + path,
+                entity,
+                String.class
+            );
+            
+            if (response.getStatusCode().isError()) {
+                System.err.println("[OpenAI][HTTP " + response.getStatusCode() + "] " + response.getBody());
+                throw new RuntimeException("OpenAI error: " + response.getBody());
+            }
+            
+            return response.getBody();
+        } catch (Exception e) {
+            System.err.println("[OpenAI] postJson failed: " + e.getMessage());
+            throw new RuntimeException("OpenAI API call failed", e);
+        }
     }
 
     // 클래스 내부 private 메서드 두 개 추가
@@ -791,5 +831,12 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
         } catch (Exception ignore) {
             return null;
         }
+    }
+
+    private String requireApiKey() {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("[OpenAI] API key is missing. Check spring.ai.openai.api-key or OPENAI_API_KEY");
+        }
+        return apiKey.trim();
     }
 }
