@@ -1,93 +1,131 @@
 package com.gaebang.backend.domain.interview.controller;
 
-import com.gaebang.backend.domain.interview.service.InterviewerAiService;
-import lombok.RequiredArgsConstructor;
+import com.gaebang.backend.domain.interview.dto.request.FinalizeReportRequestDto;
+import com.gaebang.backend.domain.interview.dto.request.StartSessionRequestDto;
+import com.gaebang.backend.domain.interview.dto.request.TurnRequestDto;
+import com.gaebang.backend.domain.interview.dto.request.UpsertContextRequestDto;
+import com.gaebang.backend.domain.interview.dto.response.FinalizeReportResponseDto;
+import com.gaebang.backend.domain.interview.dto.response.NextTurnResponseDto;
+import com.gaebang.backend.domain.interview.dto.response.ScoresDto;
+import com.gaebang.backend.domain.interview.dto.response.StartSessionResponseDto;
+import com.gaebang.backend.domain.interview.service.DocumentParsingService;
+import com.gaebang.backend.domain.interview.service.InterviewScoreService;
+import com.gaebang.backend.domain.interview.service.InterviewService;
+import com.gaebang.backend.global.springsecurity.PrincipalDetails;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/interview")
-@RequiredArgsConstructor
 public class InterviewController {
 
-    private final InterviewerAiService interviewerAiService;
+    private final InterviewService interviewService;
+    private final InterviewScoreService interviewScoreService;
+    private final DocumentParsingService documentParsingService;
 
-    // 면접 시작 - 첫 질문 생성
-    @PostMapping("/start")
-    public ResponseEntity<Map<String, String>> startInterview(@RequestBody Map<String, String> request) {
-        try {
-            String jobPosition = request.getOrDefault("jobPosition", "백엔드 개발자");
-            String firstQuestion = interviewerAiService.generateFirstQuestion(jobPosition);
+    @Value("${interview.defaults.with-audio:true}")
+    private boolean defaultWithAudio;
 
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "question", firstQuestion,
-                    "questionNumber", "1"
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "error",
-                    "message", e.getMessage()
-            ));
+    public InterviewController(InterviewService interviewService,
+                               InterviewScoreService interviewScoreService,
+                               DocumentParsingService documentParsingService) {
+        this.interviewService = interviewService;
+        this.interviewScoreService = interviewScoreService;
+        this.documentParsingService = documentParsingService;
+    }
+
+    @PostMapping("/session")
+    public ResponseEntity<StartSessionResponseDto> start(@Valid @RequestBody StartSessionRequestDto req,
+                                                         @AuthenticationPrincipal PrincipalDetails principalDetails,
+                                                         @RequestParam(required = false) Boolean withAudio
+    ) throws Exception {
+        Long memberId = principalDetails.getMember().getId();
+        boolean includeAudio = (withAudio != null) ? withAudio : defaultWithAudio;
+        return ResponseEntity.ok(interviewService.start(memberId, req, includeAudio));
+    }
+
+    @PostMapping("/turn")
+    public ResponseEntity<NextTurnResponseDto> turn(@Valid @RequestBody TurnRequestDto req,
+                                                    @AuthenticationPrincipal PrincipalDetails principalDetails,
+                                                    @RequestParam(required = false) Boolean withAudio
+    ) throws Exception {
+        Long memberId = principalDetails.getMember().getId();
+        boolean includeAudio = (withAudio != null) ? withAudio : defaultWithAudio;
+        return ResponseEntity.ok(interviewService.nextTurn(req, memberId, includeAudio));
+    }
+
+    @PostMapping("/report/finalize")
+    public ResponseEntity<FinalizeReportResponseDto> finalizeReport(@RequestBody FinalizeReportRequestDto dto,
+                                                                    @AuthenticationPrincipal PrincipalDetails principalDetails) throws Exception {
+        Long memberId = principalDetails.getMember().getId();
+        return ResponseEntity.ok(interviewService.finalizeReport(dto.sessionId(), memberId));
+    }
+
+    @GetMapping("/{sessionId}/scores")
+    public ScoresDto scores(@PathVariable UUID sessionId) {
+        return interviewScoreService.computeScores(sessionId);
+    }
+
+    @PostMapping("/context")
+    public ResponseEntity<Void> upsertContext(
+            @RequestBody UpsertContextRequestDto req,
+            @AuthenticationPrincipal PrincipalDetails principalDetails) throws Exception {
+        interviewService.upsertContext(req, principalDetails.getMember().getId());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/documents/parse")
+    public ResponseEntity<String> parseDocument(
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal PrincipalDetails principalDetails) throws Exception {
+        
+        // 컨트롤러에서 파일 검증
+        validateFile(file);
+        
+        Long memberId = principalDetails.getMember().getId();
+        String documentId = documentParsingService.parseAndSaveDocument(file, memberId);
+        return ResponseEntity.ok(documentId);
+    }
+
+    private void validateFile(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("파일이 비어있습니다.");
+        }
+        
+        String originalFilename = file.getOriginalFilename();
+        if (originalFilename == null) {
+            throw new IllegalArgumentException("파일명이 없습니다.");
+        }
+        
+        // 파일 크기 체크 (예: 50MB)
+        long maxSize = 50 * 1024 * 1024; // 50MB
+        if (file.getSize() > maxSize) {
+            throw new IllegalArgumentException("파일 크기가 너무 큽니다. (최대 50MB)");
+        }
+        
+        // 지원 파일 형식 체크
+        String extension = getFileExtension(originalFilename);
+        if (!isSupportedFileType(extension)) {
+            throw new IllegalArgumentException("지원하지 않는 파일 형식입니다. (.pdf, .docx, .txt만 지원)");
         }
     }
 
-    // 답변 제출 후 다음 질문 생성
-    @PostMapping("/answer")
-    public ResponseEntity<Map<String, String>> submitAnswer(@RequestBody Map<String, String> request) {
-        try {
-            String answer = request.get("answer");
-            String situation = request.getOrDefault("situation", "일반적인 기술 면접");
-
-            if (answer == null || answer.trim().isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "status", "error",
-                        "message", "답변을 입력해주세요"
-                ));
-            }
-
-            String nextQuestion = interviewerAiService.generateNextQuestion(situation, answer);
-
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "question", nextQuestion,
-                    "previousAnswer", answer
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "error",
-                    "message", e.getMessage()
-            ));
+    private String getFileExtension(String filename) {
+        if (filename == null || !filename.contains(".")) {
+            return "";
         }
+        return filename.substring(filename.lastIndexOf(".") + 1).toLowerCase();
     }
 
-    // AI 서비스 연결 테스트
-    @GetMapping("/test")
-    public ResponseEntity<Map<String, String>> testAiConnection() {
-        try {
-            String testQuestion = interviewerAiService.generateFirstQuestion("테스트");
-            return ResponseEntity.ok(Map.of(
-                    "status", "success",
-                    "message", "AI 서비스 연결 성공",
-                    "testQuestion", testQuestion
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "error",
-                    "message", "AI 서비스 연결 실패: " + e.getMessage()
-            ));
-        }
+    private boolean isSupportedFileType(String extension) {
+        return extension.equals("pdf") || 
+               extension.equals("docx") || 
+               extension.equals("txt");
     }
-
-    @GetMapping("/debug/env")
-    public ResponseEntity<Map<String, String>> checkEnvironment() {
-        return ResponseEntity.ok(Map.of(
-                "apiKey", System.getenv("OPENAI_API_KEY") != null ? "있음" : "없음",
-                "apiKeyLength", System.getenv("OPENAI_API_KEY") != null ?
-                        String.valueOf(System.getenv("OPENAI_API_KEY").length()) : "0"
-        ));
-    }
-
 }

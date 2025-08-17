@@ -1,9 +1,0 @@
-package com.gaebang.backend.domain.interviewTurn.dto.response;
-
-import java.util.Map;
-
-public record ScoresDto(
-        double overallScore,
-        Map<String, Integer> subscores
-) {
-}
