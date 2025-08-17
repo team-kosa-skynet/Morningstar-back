@@ -68,9 +68,9 @@ dependencies {
 
 	//mail
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
-  
-  //webclient
-  implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	//webclient
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
   
 	// 1) Spring AI
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai:1.0.1'
