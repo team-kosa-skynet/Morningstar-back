@@ -1,6 +1,6 @@
-package com.gaebang.backend.domain.aianalysis.recommendation;
+package com.gaebang.backend.domain.ai.recommendation;
 
-import com.gaebang.backend.domain.aianalysis.entity.AIModelIntegrated;
+import com.gaebang.backend.domain.ai.entity.AIModelIntegrated;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
