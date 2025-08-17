@@ -434,9 +434,11 @@ public class OpenAiInterviewerAiGateway implements InterviewerAiGateway {
 
             Map<String, Object> format = Map.of(
                 "type", "json_schema",
-                "name", "QuestionIntentAndGuides",
-                "schema", schema,
-                "strict", true
+                "json_schema", Map.of(
+                    "name", "QuestionIntentAndGuides",
+                    "schema", schema,
+                    "strict", true
+                )
             );
 
             String roleGuide = getRoleSpecificGuidePrompt(role);
