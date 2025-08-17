@@ -59,6 +59,9 @@ public enum ErrorCode {
     INSUFFICIENT_POINT(HttpStatus.BAD_REQUEST, "남은 포인트가 사용하고자 하는 포인트보다 부족합니다."),
     POINT_CREATION_RETRY_EXHAUSTED_EXCEPTION(HttpStatus.INTERNAL_SERVER_ERROR, "포인트 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
 
+    // Conversation
+    CONVERSATION_NOT_FOUND(HttpStatus.BAD_REQUEST, "대화방을 찾을 수 없습니다."),
+
     // board
     BOARD_NOT_FOUND(HttpStatus.BAD_REQUEST, "해당 게시글을 찾을 수 없습니다."),
 

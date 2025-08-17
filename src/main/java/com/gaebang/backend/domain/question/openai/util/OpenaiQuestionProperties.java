@@ -22,17 +22,18 @@ public class OpenaiQuestionProperties {
          */
         private final String responseUrl = "https://api.openai.com/v1/chat/completions";
 
+        // 이미지 생성 url
+        private final String createImageUrl = "https://api.openai.com/v1/images/generations";
+
         /**
          * 기본 모델 (하드코딩)
          */
-        private final String defaultModel = "gpt-3.5-turbo";
+        private final String defaultModel = "gpt-4o";
 
         /**
          * 지원하는 OpenAI 모델 목록 (하드코딩)
          */
         private final List<String> supportedModels = List.of(
-                "gpt-3.5-turbo",
-                "gpt-4",
                 "gpt-4o",
                 "gpt-4-turbo",
                 "gpt-4o-mini"
