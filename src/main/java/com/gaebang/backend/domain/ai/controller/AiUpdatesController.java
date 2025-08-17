@@ -29,7 +29,6 @@ public class AiUpdatesController {
     public ResponseEntity<ResponseDTO<Page<AIUpdateNewsResponseDto>>> getAIUpdatesNewsList(
             @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
 
-        // ✨ 3. 서비스에 pageable 객체 전달
         ResponseDTO<Page<AIUpdateNewsResponseDto>> response = service.getAIUpdatesNewsList(pageable);
 
         return ResponseEntity
