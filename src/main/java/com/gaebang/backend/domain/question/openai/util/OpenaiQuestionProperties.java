@@ -34,8 +34,6 @@ public class OpenaiQuestionProperties {
          * 지원하는 OpenAI 모델 목록 (하드코딩)
          */
         private final List<String> supportedModels = List.of(
-                "gpt-3.5-turbo",
-                "gpt-4",
                 "gpt-4o",
                 "gpt-4-turbo",
                 "gpt-4o-mini"
