@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.ai.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gaebang.backend.domain.ai.dto.AIUpdateNewsResponseDto;
 import com.gaebang.backend.domain.ai.dto.OpenAiImageRequest;
 import com.gaebang.backend.domain.ai.entity.AiUpdate;
 import com.gaebang.backend.domain.ai.exception.AINewsIsNotGeneratedException;
@@ -16,6 +17,9 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.parser.Parser;
 import org.jsoup.select.Elements;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -36,7 +40,7 @@ public class AiUpdatesService {
     private static final String GEMINI_API_KEY = dotenv.get("GEMINI_API_KEY");
     private static final String STABILITY_API_KEY = dotenv.get("STABILITY_API_KEY");
     private static final String OPENAI_API_KEY = dotenv.get("OPENAI_API_KEY");
-    String DEEPAI_API_KEY = dotenv.get("DEEPAI_API_KEY");
+    private static final String DEEPAI_API_KEY = dotenv.get("DEEPAI_API_KEY");
 
     private final S3ImageService s3ImageService;
 
@@ -57,7 +61,27 @@ public class AiUpdatesService {
         }
     }
 
-    public ResponseDTO<AiUpdate> getLatestAiUpdates() throws Exception {
+    public ResponseDTO<Page<AIUpdateNewsResponseDto>> getAIUpdatesNewsList(Pageable pageable) {
+
+        Page<AiUpdate> aiUpdatePage = repository.findAll(pageable);
+        Page<AIUpdateNewsResponseDto> dtoPage = aiUpdatePage.map(AIUpdateNewsResponseDto::fromEntity);
+
+        return ResponseDTO.okWithData(dtoPage);
+    }
+
+    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
+    public void scheduleDailyAiUpdates() {
+        System.out.println("매일 아침 9시 AI 뉴스 업데이트 작업을 시작합니다...");
+        try {
+            getLatestAiUpdates();
+            System.out.println("AI 뉴스 업데이트 작업이 성공적으로 완료되었습니다.");
+        } catch (Exception e) {
+            System.err.println("AI 뉴스 업데이트 작업 중 오류가 발생했습니다: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    public void getLatestAiUpdates() throws Exception {
         List<NewsItem> allNews = new ArrayList<>();
 
         fetchAndAddNews(allNews, "https://openai.com/blog/rss.xml");
@@ -91,8 +115,6 @@ public class AiUpdatesService {
                         .imageUrl(imageUrl)
                         .build()
         );
-
-        return ResponseDTO.okWithData(saved);
     }
 
     private void fetchAndAddNews(List<NewsItem> newsList, String url) {

@@ -1,9 +1,14 @@
 package com.gaebang.backend.domain.ai.controller;
 
-import com.gaebang.backend.domain.ai.entity.AiUpdate;
+import com.gaebang.backend.domain.ai.dto.AIUpdateNewsResponseDto;
 import com.gaebang.backend.domain.ai.service.AiUpdatesService;
 import com.gaebang.backend.global.util.ResponseDTO;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,8 +20,20 @@ public class AiUpdatesController {
 
     private final AiUpdatesService service;
 
-    @GetMapping("/latest")
-    public ResponseDTO<AiUpdate> getLatest() throws Exception {
-        return service.getLatestAiUpdates();
+    @GetMapping("/generate-news")
+    public void generateAIUpdateNews() throws Exception {
+        service.getLatestAiUpdates();
+    }
+
+    @GetMapping("")
+    public ResponseEntity<ResponseDTO<Page<AIUpdateNewsResponseDto>>> getAIUpdatesNewsList(
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        // ✨ 3. 서비스에 pageable 객체 전달
+        ResponseDTO<Page<AIUpdateNewsResponseDto>> response = service.getAIUpdatesNewsList(pageable);
+
+        return ResponseEntity
+                .status(response.getCode())
+                .body(response);
     }
 }
