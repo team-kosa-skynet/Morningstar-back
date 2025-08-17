@@ -63,6 +63,200 @@ public class GeminiQuestionService {
         return emitter;
     }
 
+    public SseEmitter generateImageInConversation(
+            Long conversationId,
+            String prompt,
+            PrincipalDetails principalDetails
+    ) {
+        Member member = validateAndGetMember(principalDetails);
+        SseEmitter emitter = new SseEmitter(300000L);
+
+        // 1. 사용자 질문을 대화방에 저장
+        AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(
+                prompt,
+                Collections.emptyList() // 이미지 생성은 파일 첨부 없음
+        );
+        conversationService.addQuestion(conversationId, member.getId(), questionRequest);
+
+        // 2. 이미지 생성 수행
+        performImageGeneration(emitter, conversationId, prompt, member);
+
+        setupEmitterCallbacks(emitter, "Gemini Image");
+        return emitter;
+    }
+
+    private void performImageGeneration(SseEmitter emitter, Long conversationId,
+                                        String prompt, Member member) {
+        try {
+            log.info("Gemini 이미지 생성 요청: {}", prompt);
+
+            // Gemini 이미지 생성 API 호출
+            String imageDataUrl = generateImageWithGemini(prompt);
+
+            if (imageDataUrl != null) {
+                // 이미지 data URL을 SSE로 전송
+                Map<String, Object> imageResponse = new HashMap<>();
+                imageResponse.put("imageUrl", imageDataUrl);
+                imageResponse.put("prompt", prompt);
+                imageResponse.put("type", "base64"); // data URL 형태임을 명시
+
+                try {
+                    emitter.send(SseEmitter.event()
+                            .name("image")
+                            .data(imageResponse));
+
+                    log.info("Gemini 이미지 생성 완료 및 전송");
+                } catch (IOException e) {
+                    log.warn("Gemini 이미지 전송 실패 - 클라이언트 연결 종료됨");
+                    return;
+                }
+
+                // 이미지 정보를 attachments에 저장 (대화 맥락 유지)
+                FileAttachmentDto imageAttachment = new FileAttachmentDto(
+                        "generated_image.png",
+                        "generated_image",
+                        0L,
+                        "image/png"
+                );
+
+                // AI 답변을 대화방에 저장 (이미지 설명) - 대화 맥락 이어짐
+                String responseText = String.format("요청하신 '%s' 이미지를 생성했습니다.", prompt);
+                AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
+                        responseText,
+                        "imagen-4.0",
+                        List.of(imageAttachment)
+                );
+                conversationService.addAnswer(conversationId, member.getId(), answerRequest);
+
+                emitter.send(SseEmitter.event()
+                        .name("done")
+                        .data("이미지 생성 완료"));
+                emitter.complete();
+
+            } else {
+                // 이미지 생성 실패
+                handleStreamError(emitter, new RuntimeException("이미지 생성에 실패했습니다."));
+            }
+
+        } catch (Exception e) {
+            log.error("Gemini 이미지 생성 실패: ", e);
+            handleStreamError(emitter, e);
+        }
+    }
+
+    private String generateImageWithGemini(String prompt) {
+        try {
+            // Imagen 4.0 API 요청 구조
+            Map<String, Object> instance = new HashMap<>();
+            instance.put("prompt", prompt);
+
+            Map<String, Object> parameters = new HashMap<>();
+            parameters.put("sampleCount", 1);
+            parameters.put("aspectRatio", "1:1");
+
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("instances", Arrays.asList(instance));
+            requestBody.put("parameters", parameters);
+
+            log.info("Gemini Imagen-4.0 이미지 생성 API 호출");
+            log.info("요청 프롬프트: {}", prompt);
+
+            // API 호출
+            String response = restClient.post()
+                    .uri(geminiQuestionProperties.getCreateImageUrl())
+                    .header("x-goog-api-key", geminiQuestionProperties.getApiKey())
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .exchange((request, httpResponse) -> {
+                        if (!httpResponse.getStatusCode().is2xxSuccessful()) {
+                            log.error("Imagen 4.0 API 호출 실패: {}", httpResponse.getStatusCode());
+                            try {
+                                String errorBody = new String(httpResponse.getBody().readAllBytes());
+                                log.error("오류 응답 본문: {}", errorBody);
+                            } catch (Exception e) {
+                                log.error("오류 응답 읽기 실패", e);
+                            }
+                            return null;
+                        }
+                        try {
+                            return new String(httpResponse.getBody().readAllBytes());
+                        } catch (Exception e) {
+                            log.error("응답 파싱 오류", e);
+                            return null;
+                        }
+                    });
+
+            if (response != null) {
+                log.info("Imagen-4.0 실제 API 응답 전체: {}", response);
+                return parseImagenUrlResponse(response);
+            }
+
+            return null;
+
+        } catch (Exception e) {
+            log.error("Gemini 이미지 생성 API 호출 실패: ", e);
+            return null;
+        }
+    }
+
+    private String parseImagenUrlResponse(String response) {
+        try {
+            JsonNode rootNode = objectMapper.readTree(response);
+            List<String> fieldNames = new ArrayList<>();
+            rootNode.fieldNames().forEachRemaining(fieldNames::add);
+            log.info("Imagen-4.0 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
+
+            // Imagen 4.0 실제 응답 구조 확인: { "predictions": [{ "bytesBase64Encoded": "...", "mimeType": "..." }] }
+            JsonNode predictions = rootNode.path("predictions");
+            
+            if (predictions.isEmpty()) {
+                log.warn("Imagen 4.0 응답에 predictions가 없습니다.");
+                log.info("사용 가능한 필드들: {}", rootNode.fieldNames());
+                return null;
+            }
+
+            // 첫 번째 예측 결과 사용
+            JsonNode firstPrediction = predictions.get(0);
+            List<String> predictionFields = new ArrayList<>();
+            firstPrediction.fieldNames().forEachRemaining(predictionFields::add);
+            log.info("첫 번째 prediction 필드들: {}", String.join(", ", predictionFields));
+
+            // Base64 데이터 추출 (Imagen-4.0은 URL 대신 Base64로 응답)
+            String base64Data = null;
+            String mimeType = "image/png";
+
+            if (firstPrediction.has("bytesBase64Encoded")) {
+                base64Data = firstPrediction.path("bytesBase64Encoded").asText();
+            } else if (firstPrediction.has("image")) {
+                base64Data = firstPrediction.path("image").asText();
+            } else if (firstPrediction.has("data")) {
+                base64Data = firstPrediction.path("data").asText();
+            }
+
+            if (firstPrediction.has("mimeType")) {
+                mimeType = firstPrediction.path("mimeType").asText();
+            }
+
+            if (base64Data == null || base64Data.isEmpty()) {
+                log.warn("Imagen 4.0 이미지 데이터가 비어있습니다.");
+                return null;
+            }
+
+            log.info("Imagen 4.0 Base64 이미지 데이터 발견: mimeType={}, 데이터 크기={} bytes", 
+                    mimeType, base64Data.length());
+
+            // Base64 데이터를 data URL 형태로 반환 (브라우저에서 바로 사용 가능)
+            String dataUrl = String.format("data:%s;base64,%s", mimeType, base64Data);
+            log.info("Imagen 4.0 이미지 data URL 생성 완료");
+            
+            return dataUrl;
+
+        } catch (Exception e) {
+            log.error("Imagen 4.0 응답 파싱 실패", e);
+            return null;
+        }
+    }
+
     private List<FileAttachmentDto> processFiles(List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
             return Collections.emptyList();

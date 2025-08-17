@@ -1,6 +1,7 @@
 package com.gaebang.backend.domain.question.gemini.controller;
 
 import com.gaebang.backend.domain.question.gemini.dto.request.GeminiQuestionRequestDto;
+import com.gaebang.backend.domain.question.gemini.dto.request.ImageGenerateRequestDto;
 import com.gaebang.backend.domain.question.gemini.service.GeminiQuestionService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import jakarta.validation.Valid;
@@ -62,4 +63,23 @@ public class GeminiQuestionController {
                 principalDetails
         );
     }
+
+    /**
+     * Gemini 이미지 생성 전용 엔드포인트
+     */
+    @PostMapping(value = "/{conversationId}/gemini/generate-image",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter generateImage(
+            @PathVariable Long conversationId,
+            @RequestBody @Valid ImageGenerateRequestDto request,
+            @AuthenticationPrincipal PrincipalDetails principalDetails
+    ) {
+        return geminiQuestionService.generateImageInConversation(
+                conversationId,
+                request.prompt(),
+                principalDetails
+        );
+    }
+
 }
