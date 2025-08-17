@@ -2,11 +2,16 @@ package com.gaebang.backend.domain.question.common.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.tika.Tika;
 import org.apache.tika.exception.TikaException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.*;
 
@@ -42,8 +47,35 @@ public class FileProcessingService {
                 result.put("base64", base64);
             } else if (isTextBasedFile(mimeType)) {
                 log.info("텍스트 파일로 인식됨");
-                result.put("type", "text");
-                result.put("extractedText", extractTextSafely(file, mimeType));
+
+                // PDF 특별 처리
+                if (mimeType.equals("application/pdf")) {
+                    String extractedText = extractTextSafely(file, mimeType);
+
+                    if (isPdfWithNoText(extractedText)) {
+                        log.info("PDF에서 텍스트 추출 실패 또는 빈 텍스트 - 이미지로 변환 시도");
+                        String base64Image = convertPdfToBase64Image(file);
+
+                        if (base64Image != null) {
+                            result.put("type", "image");
+                            result.put("base64", base64Image);
+                            result.put("mimeType", "image/png");
+                            log.info("PDF → 이미지 변환 성공 - Base64 길이: {} 문자", base64Image.length());
+                        } else {
+                            result.put("type", "text");
+                            result.put("extractedText", "[PDF 처리 실패: 텍스트 추출 및 이미지 변환 모두 실패]");
+                            log.warn("PDF 텍스트 추출 및 이미지 변환 모두 실패");
+                        }
+                    } else {
+                        result.put("type", "text");
+                        result.put("extractedText", extractedText);
+                        log.info("PDF 텍스트 추출 성공 - 길이: {} 문자", extractedText.length());
+                    }
+                } else {
+                    // 일반 텍스트 파일 처리
+                    result.put("type", "text");
+                    result.put("extractedText", extractTextSafely(file, mimeType));
+                }
             } else {
                 result.put("type", "unsupported");
                 log.warn("지원하지 않는 파일 형식: {} (파일: {})", mimeType, fileName);
@@ -64,6 +96,46 @@ public class FileProcessingService {
             return result;
         }
     }
+
+    private boolean isPdfWithNoText(String extractedText) {
+        return extractedText == null ||
+                extractedText.trim().isEmpty() ||
+                extractedText.startsWith("[파일 처리 실패:") ||
+                extractedText.startsWith("[텍스트 추출 실패:");
+    }
+
+    private String convertPdfToBase64Image(MultipartFile file) {
+        try {
+            log.info("PDF → 이미지 변환 시작: {}", file.getOriginalFilename());
+
+            // PDFBox 3.x 버전용 API 사용
+            PDDocument document = PDDocument.load(file.getBytes());
+            PDFRenderer pdfRenderer = new PDFRenderer(document);
+
+            // 첫 번째 페이지만 렌더링 (300 DPI)
+            BufferedImage image = pdfRenderer.renderImageWithDPI(0, 300);
+
+            // BufferedImage를 PNG 바이트 배열로 변환
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            ImageIO.write(image, "PNG", baos);
+            byte[] imageBytes = baos.toByteArray();
+
+            document.close();
+            baos.close();
+
+            // Base64 인코딩
+            String base64 = Base64.getEncoder().encodeToString(imageBytes);
+            log.info("PDF → 이미지 변환 완료 - 이미지 크기: {}x{}, Base64 길이: {} 문자",
+                    image.getWidth(), image.getHeight(), base64.length());
+
+            return base64;
+
+        } catch (Exception e) {
+            log.error("PDF → 이미지 변환 실패: {}", file.getOriginalFilename(), e);
+            return null;
+        }
+    }
+
 
     private String detectMimeTypeSafely(MultipartFile file) {
         try {

@@ -77,7 +77,7 @@ dependencies {
 	implementation 'com.openai:openai-java:3.0.2'
 
 	// Document parsing libraries
-	implementation 'org.apache.pdfbox:pdfbox:3.0.1'
+	implementation 'org.apache.pdfbox:pdfbox:2.0.31'
 	implementation 'org.apache.poi:poi:5.2.4'
 	implementation 'org.apache.poi:poi-ooxml:5.2.4'
 	implementation 'org.apache.poi:poi-scratchpad:5.2.4'
@@ -108,8 +108,8 @@ dependencies {
 	implementation 'org.springframework:spring-test'
 
 	// Apache Tika 3.x (Java 17 지원)
-	implementation 'org.apache.tika:tika-core:3.1.0'
-	implementation 'org.apache.tika:tika-parsers-standard-package:3.1.0'
+	implementation 'org.apache.tika:tika-core:2.9.2'
+	implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
 
 }
 

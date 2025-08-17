@@ -20,10 +20,33 @@ public class OpenaiQuestionController {
 
     private final OpenaiQuestionService openaiQuestionService;
 
+    /**
+     * 텍스트만 (JSON 요청)
+     */
     @PostMapping(value = "/{conversationId}/openai/stream",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            consumes = {MediaType.APPLICATION_JSON_VALUE},
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamQuestion(
+    public SseEmitter streamQuestionText(
+            @PathVariable Long conversationId,
+            @RequestParam(value = "model", required = false) String model,
+            @RequestBody @Valid OpenaiQuestionRequestDto requestDto,
+            @AuthenticationPrincipal PrincipalDetails principalDetails
+    ) {
+        return openaiQuestionService.createQuestionStream(
+                conversationId,
+                model,
+                requestDto,
+                principalDetails
+        );
+    }
+
+    /**
+     * 파일 포함 (Multipart 요청)
+     */
+    @PostMapping(value = "/{conversationId}/openai/stream",
+            consumes = {MediaType.MULTIPART_FORM_DATA_VALUE},
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamQuestionWithFiles(
             @PathVariable Long conversationId,
             @RequestParam(value = "model", required = false) String model,
             @RequestParam("content") String content,
