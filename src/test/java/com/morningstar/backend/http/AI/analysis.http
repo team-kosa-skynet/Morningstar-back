@@ -1,0 +1,36 @@
+POST http://localhost:8080/api/analysis/default-data
+Content-Type: application/json
+
+### 종합지능순 조회
+GET http://localhost:8080/api/analysis/by-intelligence
+
+### ai 추천
+POST http://localhost:8080/api/ai-recommend
+Content-Type: application/json
+
+{
+  "purpose": "MATH",
+  "accuracyVsSpeed": "ACCURACY",
+  "longReasoning": true,
+  "monthlyTokens": 5.0,
+  "costPriority": "CHEAP",
+  "needLowLatency": true,
+  "creativityVsFact": "FACTUAL",
+  "recentnessMatters": true,
+  "topK": 30
+}
+
+### ai 추천2
+POST http://localhost:8080/api/ai-recommend
+Content-Type: application/json
+
+{
+  "purpose": "CODING",
+  "accuracyVsSpeed": "ACCURACY",
+  "longReasoning": false,
+  "costPriority": "BALANCED",
+  "needLowLatency": false,
+  "creativityVsFact": "FACTUAL",
+  "recentnessMatters": true,
+  "topK": 8
+}
