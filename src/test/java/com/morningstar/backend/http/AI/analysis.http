@@ -34,3 +34,12 @@ Content-Type: application/json
   "recentnessMatters": true,
   "topK": 8
 }
+
+### AI뉴스 생성
+GET http://localhost:8080/api/ai-updates/generate-news
+
+### AI뉴스 조회
+GET http://localhost:8080/api/ai-updates
+
+### AI뉴스 조회 페이징 적용
+GET http://localhost:8080/api/ai-updates?page=2&size=5

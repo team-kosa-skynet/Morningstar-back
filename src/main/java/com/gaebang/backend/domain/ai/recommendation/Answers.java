@@ -1,4 +1,4 @@
-package com.gaebang.backend.domain.aianalysis.recommendation;
+package com.gaebang.backend.domain.ai.recommendation;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

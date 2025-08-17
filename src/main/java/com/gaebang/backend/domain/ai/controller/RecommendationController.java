@@ -1,8 +1,8 @@
-package com.gaebang.backend.domain.aianalysis.controller;
+package com.gaebang.backend.domain.ai.controller;
 
-import com.gaebang.backend.domain.aianalysis.recommendation.Answers;
-import com.gaebang.backend.domain.aianalysis.recommendation.Model;
-import com.gaebang.backend.domain.aianalysis.service.RecommendationService;
+import com.gaebang.backend.domain.ai.recommendation.Answers;
+import com.gaebang.backend.domain.ai.recommendation.Model;
+import com.gaebang.backend.domain.ai.service.RecommendationService;
 import com.gaebang.backend.global.util.ResponseDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

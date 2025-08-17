@@ -1,9 +1,9 @@
-package com.gaebang.backend.domain.aianalysis.service;
+package com.gaebang.backend.domain.ai.service;
 
-import com.gaebang.backend.domain.aianalysis.dto.AIAnalysisDto;
-import com.gaebang.backend.domain.aianalysis.dto.AIModelListResponseDto;
-import com.gaebang.backend.domain.aianalysis.entity.AIModelIntegrated;
-import com.gaebang.backend.domain.aianalysis.repository.AIAnalysisRepository;
+import com.gaebang.backend.domain.ai.dto.AIAnalysisDto;
+import com.gaebang.backend.domain.ai.dto.AIModelListResponseDto;
+import com.gaebang.backend.domain.ai.entity.AIModelIntegrated;
+import com.gaebang.backend.domain.ai.repository.AIAnalysisRepository;
 import com.gaebang.backend.global.util.ResponseDTO;
 import io.github.cdimascio.dotenv.Dotenv;
 import org.slf4j.Logger;

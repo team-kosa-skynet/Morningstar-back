@@ -1,4 +1,4 @@
-package com.gaebang.backend.domain.aianalysis.dto;
+package com.gaebang.backend.domain.ai.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
