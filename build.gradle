@@ -68,14 +68,20 @@ dependencies {
 
 	//mail
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
-  
+
+	//webclient
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	//jsoup
+	implementation 'org.jsoup:jsoup:1.17.2'
+
   //webclient
   implementation 'org.springframework.boot:spring-boot-starter-webflux'
-  
+
 	// 1) Spring AI
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai:1.0.1'
 	implementation 'com.openai:openai-java:3.0.2'
-	
+
 	// Document parsing libraries
 	implementation 'org.apache.pdfbox:pdfbox:3.0.1'
 	implementation 'org.apache.poi:poi:5.2.4'

@@ -1,4 +1,4 @@
-package com.gaebang.backend.domain.aianalysis.entity;
+package com.gaebang.backend.domain.ai.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

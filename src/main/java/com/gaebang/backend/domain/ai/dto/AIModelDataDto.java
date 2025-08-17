@@ -1,6 +1,6 @@
-package com.gaebang.backend.domain.aianalysis.dto;
+package com.gaebang.backend.domain.ai.dto;
 
-import com.gaebang.backend.domain.aianalysis.entity.AIModelIntegrated;
+import com.gaebang.backend.domain.ai.entity.AIModelIntegrated;
 import com.gaebang.backend.global.util.DataFormatter;
 
 public record AIModelDataDto(
