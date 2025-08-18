@@ -47,11 +47,6 @@ spring:
 ai:
   provider: openai
 
-app:
-  realtime:
-    model: gpt-4o-realtime-preview
-    voice: verse
-
 tts:
   provider: google
   default-format: mp3            # Google Cloud TTS 기본 포맷
