@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaebang.backend.domain.interview.dto.internal.AiTurnFeedbackDto;
 import com.gaebang.backend.domain.interview.dto.internal.PlanQuestionDto;
 import com.gaebang.backend.domain.interview.util.PlanParser;
-import io.github.cdimascio.dotenv.Dotenv;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -13,56 +12,42 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
-@Component("openAiInterviewerGateway")
-public class OpenAiInterviewerGateway implements InterviewerAiGateway {
+@Component("geminiInterviewerGateway")
+public class GeminiInterviewerGateway implements InterviewerAiGateway {
 
-    private static final Dotenv dotenv = Dotenv.load();
-    
     private final RestTemplate restTemplate;
     private final String apiKey;
     private final String model;
+    private final String baseUrl;
     private final PlanParser planParser;
     private final ObjectMapper om;
+    
+    // 컨텍스트 관리를 위한 대화 기록 저장
+    private final Map<String, List<Map<String, Object>>> conversationHistory = new ConcurrentHashMap<>();
 
-    public OpenAiInterviewerGateway(
-            @Value("${spring.ai.openai.chat.options.model:gpt-4o-mini}") String model,
+    public GeminiInterviewerGateway(
+            @Value("${gemini.api.key}") String apiKey,
+            @Value("${gemini.api.model:gemini-2.5-flash}") String model,
+            @Value("${gemini.api.base-url:https://generativelanguage.googleapis.com/v1beta}") String baseUrl,
             PlanParser planParser,
             ObjectMapper objectMapper
     ) {
         this.restTemplate = new RestTemplate();
-        
-        // Dotenv로 직접 .env 파일에서 API 키 로드
-        String dotenvKey = dotenv.get("OPENAI_API_KEY");
-        String systemKey = System.getenv("OPENAI_API_KEY");
-        
-        String finalApiKey = null;
-        if (dotenvKey != null && !dotenvKey.isBlank()) {
-            finalApiKey = dotenvKey;
-            System.out.println("[OpenAI] API key loaded from .env file: OK (length: " + finalApiKey.length() + ")");
-        } else if (systemKey != null && !systemKey.isBlank()) {
-            finalApiKey = systemKey;
-            System.out.println("[OpenAI] API key loaded from system env: OK (length: " + finalApiKey.length() + ")");
-        }
-        
-        // API 키 최종 검증
-        if (finalApiKey == null || finalApiKey.isBlank()) {
-            throw new IllegalStateException("[OpenAI] API key is missing. " +
-                "Dotenv: " + (dotenvKey != null ? "'" + dotenvKey + "'" : "null") + ", " +
-                "System.getenv: " + (systemKey != null ? "OK" : "null"));
-        }
-        this.apiKey = finalApiKey.trim();
-        
+        this.apiKey = apiKey;
         this.model = model;
+        this.baseUrl = baseUrl;
         this.planParser = planParser;
         this.om = objectMapper;
     }
 
     @PostConstruct
     void log() {
-        System.out.println("[AI] Using OpenAiInterviewerAiGateway");
+        System.out.println("[AI] Using GeminiInterviewerGateway");
         System.out.println("[AI] API Key status: " + (apiKey != null && !apiKey.isBlank() ? "OK (length: " + apiKey.length() + ")" : "MISSING"));
         System.out.println("[AI] Model: " + model);
+        System.out.println("[AI] Base URL: " + baseUrl);
     }
 
     @Override
@@ -73,27 +58,21 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
     @Override
     public Map<String, Object> generatePlan(String role, String profileSnapshotJson, List<Map<String, Object>> candidates) {
         try {
-            // OpenAI로 다양한 맞춤 질문 생성 (문서 있음/없음 모두 처리)
-            return generateQuestionsWithOpenAI(role, profileSnapshotJson);
-            
+            return generateQuestionsWithGemini(role, profileSnapshotJson);
         } catch (Exception e) {
-            System.err.println("[AI] 질문 생성 실패, 기본 질문 사용");
+            System.err.println("[AI][Gemini] 질문 생성 실패, 기본 질문 사용");
             System.err.println("  - 역할: " + role);
             System.err.println("  - 프로필 스냅샷: " + (profileSnapshotJson != null ? "있음(" + profileSnapshotJson.length() + "자)" : "없음"));
-            System.err.println("  - 후보 질문: " + (candidates != null ? candidates.size() + "개" : "없음"));
             System.err.println("  - 에러: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            if (e.getCause() != null) {
-                System.err.println("  - 원인: " + e.getCause().getMessage());
-            }
             e.printStackTrace();
-            // 폴백으로 후보 질문 활용
+            
             if (candidates != null && !candidates.isEmpty()) {
                 return createNormalizedQuestions(candidates);
             }
             return getFallbackQuestions();
         }
     }
-    
+
     private Map<String, Object> createNormalizedQuestions(List<Map<String, Object>> candidates) {
         List<Map<String,Object>> normalized = new ArrayList<>();
         for (int i = 0; i < candidates.size(); i++) {
@@ -106,11 +85,10 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         }
         return Map.of("questions", normalized);
     }
-    
-    private Map<String, Object> generateQuestionsWithOpenAI(String role, String profileSnapshotJson) throws Exception {
+
+    private Map<String, Object> generateQuestionsWithGemini(String role, String profileSnapshotJson) throws Exception {
         String systemPrompt = buildSystemPrompt(role, profileSnapshotJson);
         
-        // 다양성을 위한 시드 생성 (현재 시간 + 랜덤 + 역할 해시)
         long currentTime = System.currentTimeMillis();
         int randomSeed = new java.util.Random().nextInt(10000);
         int roleHash = role.hashCode();
@@ -120,80 +98,49 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
             "위 조건에 맞는 면접 질문 10개를 JSON 형식으로 생성해주세요. " +
             "⚠️ 중요: 시드값 %d를 활용하여 매번 완전히 다른 관점의 질문을 생성하세요. " +
             "같은 역할이라도 절대 비슷한 질문 패턴을 반복하지 마세요. " +
-            "창의적이고 다양한 각도에서 접근하세요.", 
+            "창의적이고 다양한 각도에서 접근하세요. " +
+            "응답은 반드시 다음 JSON 형식으로만 작성해주세요: " +
+            "{\"questions\": [{\"idx\": 0, \"type\": \"BEHAVIORAL\", \"text\": \"질문내용\"}, ...]}", 
             seed
         );
 
         Map<String, Object> requestBody = Map.of(
-            "model", model,
-            "messages", List.of(
-                Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content", userPrompt)
-            ),
-            "response_format", Map.of(
-                "type", "json_schema",
-                "json_schema", Map.of(
-                    "name", "interview_questions",
-                    "schema", Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                            "questions", Map.of(
-                                "type", "array",
-                                "items", Map.of(
-                                    "type", "object",
-                                    "properties", Map.of(
-                                        "idx", Map.of("type", "integer"),
-                                        "type", Map.of("type", "string"),
-                                        "text", Map.of("type", "string")
-                                    ),
-                                    "required", List.of("idx", "type", "text"),
-                                    "additionalProperties", false
-                                )
-                            )
-                        ),
-                        "required", List.of("questions"),
-                        "additionalProperties", false
+            "contents", List.of(
+                Map.of(
+                    "parts", List.of(
+                        Map.of("text", systemPrompt + "\n\n" + userPrompt)
                     )
                 )
             ),
-            "temperature", 0.8,  // 다양성을 위해 temperature 증가
-            "max_tokens", 2000
+            "generationConfig", Map.of(
+                "temperature", 0.8,
+                "maxOutputTokens", 2000,
+                "responseMimeType", "application/json"
+            )
         );
 
-        // API 키 검증
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException("[OpenAI] API key is null. Check environment variables: OPENAI_API_KEY=" + System.getenv("OPENAI_API_KEY"));
-        }
-
-        // RestTemplate으로 HTTP 요청
+        String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+        
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
         
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
         
-        ResponseEntity<String> response = restTemplate.postForEntity(
-            "https://api.openai.com/v1/chat/completions", 
-            entity, 
-            String.class
-        );
-
-        return parseOpenAiResponse(response.getBody());
+        ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+        
+        return parseGeminiResponse(response.getBody());
     }
-    
+
     private String buildSystemPrompt(String role, String profileSnapshotJson) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("당신은 전문 기술 면접관입니다. ");
         
-        // 역할별 맞춤 프롬프트
         String roleSpecificPrompt = getRoleSpecificPrompt(role);
         prompt.append(roleSpecificPrompt);
         
-        // 문서 기반 개인화 vs 일반 질문
         boolean hasDocument = profileSnapshotJson != null && !profileSnapshotJson.equals("{}");
         
         if (hasDocument) {
-            // 문서가 있는 경우: 개인화된 질문
             prompt.append("\n\n=== 지원자 정보 ===\n");
             prompt.append(profileSnapshotJson);
             prompt.append("\n\n📋 **개인화 질문 생성 지침:**");
@@ -201,7 +148,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
             prompt.append("\n- 문서에 언급된 프로젝트나 기술에 대한 심화 질문 포함");
             prompt.append("\n- 지원자의 경력 수준에 맞는 적절한 난이도 조절");
         } else {
-            // 문서가 없는 경우: 다양한 일반 질문
             prompt.append("\n\n📋 **다양성 질문 생성 지침:**");
             prompt.append("\n- 같은 역할이라도 매번 다른 관점의 질문 생성");
             prompt.append("\n- 다음 중 랜덤하게 선택하여 질문 방향성 결정:");
@@ -270,23 +216,27 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                 """;
         };
     }
-    
-    private Map<String, Object> parseOpenAiResponse(String response) throws Exception {
+
+    private Map<String, Object> parseGeminiResponse(String response) throws Exception {
         JsonNode root = om.readTree(response);
-        JsonNode choices = root.path("choices");
+        JsonNode candidates = root.path("candidates");
         
-        if (choices.isEmpty()) {
-            throw new RuntimeException("OpenAI 응답에 choices가 없습니다");
+        if (candidates.isEmpty()) {
+            throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
         }
         
-        JsonNode message = choices.get(0).path("message");
-        String content = message.path("content").asText();
+        JsonNode content = candidates.get(0).path("content");
+        JsonNode parts = content.path("parts");
         
-        return om.readValue(content, Map.class);
+        if (parts.isEmpty()) {
+            throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+        }
+        
+        String text = parts.get(0).path("text").asText();
+        return om.readValue(text, Map.class);
     }
-    
+
     private Map<String, Object> getFallbackQuestions() {
-        // OpenAI 실패시 사용할 기본 질문들
         Map<String, Object> q0 = Map.of("idx", 0, "type", "BEHAVIORAL", "text", "자기소개를 간단히 해주세요.");
         Map<String, Object> q1 = Map.of("idx", 1, "type", "BEHAVIORAL", "text", "최근 협업 갈등을 STAR로 설명해 주세요.");
         Map<String, Object> q2 = Map.of("idx", 2, "type", "TECHNICAL", "text", "가장 자신있는 기술 스택에 대해 설명해주세요.");
@@ -307,35 +257,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                                       String previousResponseId) throws Exception {
 
         PlanQuestionDto q = planParser.getQuestionByIndex(planJson, questionIndex);
-
-        // JSON Schema (0-10점 직접 평가 시스템)
-        Map<String, Object> schema = Map.of(
-                "type", "object",
-                "properties", Map.of(
-                        "coachingTips", Map.of("type", "string"),
-                        "scoreResult", Map.of(
-                                "type", "object",
-                                "properties", Map.of(
-                                        "clarity", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2),
-                                        "structure_STAR", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2),
-                                        "tech_depth", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2),
-                                        "tradeoff", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2),
-                                        "root_cause", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2)
-                                ),
-                                "required", List.of("clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"),
-                                "additionalProperties", false
-                        )
-                ),
-                "required", List.of("coachingTips", "scoreResult"),
-                "additionalProperties", false
-        );
-
-        Map<String, Object> format = Map.of(
-                "type", "json_schema",
-                "name", "AiTurnFeedback",
-                "schema", schema,
-                "strict", true
-        );
 
         String prompt = """
                 당신은 엄격한 모의면접 코치입니다. 아래 정보를 바탕으로 간단 코칭과 지표별 점수를 반환하세요.
@@ -365,82 +286,101 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                 3) 해당 질문에서 평가할 수 없는 지표 → 0점 (평가 불가)
                 4) 기본 수준의 답변 → 2-3점 (최소 기본선)
                 5) coachingTips: 1~2문장으로 개선점 구체적 제시
-                6) 반드시 지정된 JSON 스키마로 출력
+                
+                응답은 반드시 다음 JSON 형식으로만 작성해주세요:
+                {
+                  "coachingTips": "개선점 1-2문장",
+                  "scoreResult": {
+                    "clarity": 점수(0-10),
+                    "structure_STAR": 점수(0-10),
+                    "tech_depth": 점수(0-10),
+                    "tradeoff": 점수(0-10),
+                    "root_cause": 점수(0-10)
+                  }
+                }
                 """.formatted(q.type(), q.text(), transcript);
 
-        Map<String, Object> body = new HashMap<>();
-        body.put("model", model);
-        body.put("input", prompt);
-        body.put("text", Map.of("format", format));
-        body.put("store", true); // ★ 체인 안정화
-        if (previousResponseId != null && !previousResponseId.isBlank()) {
-            body.put("previous_response_id", previousResponseId);
+        // 대화 기록에 추가 (컨텍스트 관리)
+        String conversationKey = previousResponseId != null ? previousResponseId : "default";
+        List<Map<String, Object>> history = conversationHistory.computeIfAbsent(conversationKey, k -> new ArrayList<>());
+        
+        // 현재 대화를 히스토리에 추가
+        history.add(Map.of(
+            "role", "user",
+            "parts", List.of(Map.of("text", prompt))
+        ));
+
+        Map<String, Object> requestBody = Map.of(
+            "contents", history,
+            "generationConfig", Map.of(
+                "temperature", 0.3,
+                "maxOutputTokens", 1000,
+                "responseMimeType", "application/json"
+            )
+        );
+
+        String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        
+        ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+        
+        JsonNode root = om.readTree(response.getBody());
+        JsonNode candidates = root.path("candidates");
+        
+        if (candidates.isEmpty()) {
+            throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
         }
-
-        String raw = postJson("/responses", body);
-        JsonNode root = om.readTree(raw);
-        String responseId = root.path("id").asText(null);
-
-        JsonNode parsed = findParsed(root);
-
-        if (parsed == null) {
-            parsed = tryParseJsonFromText(root);
+        
+        JsonNode content = candidates.get(0).path("content");
+        JsonNode parts = content.path("parts");
+        
+        if (parts.isEmpty()) {
+            throw new RuntimeException("Gemini 응답에 parts가 없습니다");
         }
-
-        if (parsed != null && !parsed.isMissingNode() && !parsed.isNull()) {
-            String tips = parsed.path("coachingTips").asText("핵심부터 1~2문장으로.").trim();
-
-            // 5개 키 모두 채우기 (0-10점 직접 점수를 100점 만점으로 환산)
-            String[] KEYS = {"clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"};
-            Map<String, Integer> scores = new HashMap<>();
-            JsonNode sr = parsed.path("scoreResult");
-            for (String k : KEYS) {
-                int rawScore = (sr.has(k) && sr.get(k).isInt()) ? sr.get(k).asInt() : 2; // 기본값 2점 (최소 20점 보장)
-                // 0-10점을 100점 만점으로 환산: 절충형 20점 기준
-                // 0점 → 0점 (답변 없음), 1점 → 10점 (회피), 2점 → 20점 (기본선), 5점 → 50점, 10점 → 100점
-                int finalScore;
-                if (rawScore == 0) {
-                    finalScore = 0;
-                } else {
-                    finalScore = 20 + (rawScore - 2) * 10;
-                    finalScore = Math.max(10, finalScore);
-                }
-                finalScore = Math.max(0, Math.min(100, finalScore));
-                scores.put(k, finalScore);
+        
+        String responseText = parts.get(0).path("text").asText();
+        
+        // 응답을 히스토리에 추가
+        history.add(Map.of(
+            "role", "model",
+            "parts", List.of(Map.of("text", responseText))
+        ));
+        
+        // 응답 ID 생성 (Gemini에는 없으므로 시간 기반으로 생성)
+        String responseId = "gemini_" + System.currentTimeMillis() + "_" + questionIndex;
+        
+        Map<String, Object> parsedResponse = om.readValue(responseText, Map.class);
+        
+        String tips = (String) parsedResponse.getOrDefault("coachingTips", "핵심부터 1~2문장으로.");
+        Map<String, Integer> rawScores = (Map<String, Integer>) parsedResponse.getOrDefault("scoreResult", Map.of());
+        
+        // 0-10점을 100점 만점으로 환산
+        String[] KEYS = {"clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"};
+        Map<String, Integer> scores = new HashMap<>();
+        
+        for (String k : KEYS) {
+            int rawScore = rawScores.getOrDefault(k, 2);
+            int finalScore;
+            if (rawScore == 0) {
+                finalScore = 0;
+            } else {
+                finalScore = 20 + (rawScore - 2) * 10;
+                finalScore = Math.max(10, finalScore);
             }
-            return new AiTurnFeedbackDto(tips, scores, responseId);
+            finalScore = Math.max(0, Math.min(100, finalScore));
+            scores.put(k, finalScore);
         }
-
-        String text = findText(root);
-        Map<String, Integer> fallbackScores = Map.of("clarity", 20, "structure_STAR", 20, "tech_depth", 20, "tradeoff", 20, "root_cause", 20);
-        return new AiTurnFeedbackDto(text.isBlank() ? "핵심부터 1~2문장으로." : text, fallbackScores, responseId);
+        
+        return new AiTurnFeedbackDto(tips, scores, responseId);
     }
 
     @Override
     public Map<String, Object> generateQuestionIntentAndGuides(String questionType, String questionText, String role) throws Exception {
         try {
-            Map<String, Object> schema = Map.of(
-                "type", "object",
-                "properties", Map.of(
-                    "intent", Map.of("type", "string"),
-                    "guides", Map.of(
-                        "type", "array",
-                        "items", Map.of("type", "string")
-                    )
-                ),
-                "required", List.of("intent", "guides"),
-                "additionalProperties", false
-            );
-
-            Map<String, Object> format = Map.of(
-                "type", "json_schema",
-                "json_schema", Map.of(
-                    "name", "QuestionIntentAndGuides",
-                    "schema", schema,
-                    "strict", true
-                )
-            );
-
             String roleGuide = getRoleSpecificGuidePrompt(role);
             String typeGuide = getQuestionTypeGuidePrompt(questionType);
 
@@ -473,42 +413,60 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                     "상황을 명확히 설명하고, 대규모 사용자 트래픽을 처리해야 하는 이유와 목표를 제시하세요."
                     "아키텍처 설계에서 고려한 주요 요소(확장성, 가용성, 일관성)에 대해 구체적으로 설명하세요."
                     "사용한 기술 스택과 그 선택 이유를 명확히 하고, 각 기술의 장단점을 언급하세요."
+                    
+                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
+                    {
+                      "intent": "질문 의도 설명",
+                      "guides": ["가이드1", "가이드2", "가이드3", "가이드4", "가이드5"]
+                    }
                     """.formatted(role, questionType, questionText, roleGuide, typeGuide);
 
             Map<String, Object> requestBody = Map.of(
-                "model", model,
-                "messages", List.of(
-                    Map.of("role", "system", "content", "당신은 전문 면접 코치입니다. 질문 의도와 답변 가이드를 JSON 형식으로 정확히 생성합니다."),
-                    Map.of("role", "user", "content", prompt)
+                "contents", List.of(
+                    Map.of(
+                        "parts", List.of(
+                            Map.of("text", prompt)
+                        )
+                    )
                 ),
-                "response_format", format,
-                "temperature", 0.3,
-                "max_tokens", 1000
+                "generationConfig", Map.of(
+                    "temperature", 0.3,
+                    "maxOutputTokens", 1000,
+                    "responseMimeType", "application/json"
+                )
             );
 
-            // RestTemplate으로 HTTP 요청
+            String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+            
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                "https://api.openai.com/v1/chat/completions", 
-                entity, 
-                String.class
-            );
-
-            return parseQuestionIntentResponse(response.getBody());
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            
+            JsonNode root = om.readTree(response.getBody());
+            JsonNode candidates = root.path("candidates");
+            
+            if (candidates.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
+            }
+            
+            JsonNode content = candidates.get(0).path("content");
+            JsonNode parts = content.path("parts");
+            
+            if (parts.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+            }
+            
+            String responseText = parts.get(0).path("text").asText();
+            return om.readValue(responseText, Map.class);
             
         } catch (Exception e) {
-            System.err.println("[AI] 질문 의도/가이드 생성 실패");
+            System.err.println("[AI][Gemini] 질문 의도/가이드 생성 실패");
             System.err.println("  - 질문 유형: " + questionType);
             System.err.println("  - 역할: " + role);
             System.err.println("  - 에러: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            if (e.getCause() != null) {
-                System.err.println("  - 원인: " + e.getCause().getMessage());
-            }
             e.printStackTrace();
             return getFallbackIntentAndGuides(questionType, role);
         }
@@ -582,20 +540,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         };
     }
 
-    private Map<String, Object> parseQuestionIntentResponse(String response) throws Exception {
-        JsonNode root = om.readTree(response);
-        JsonNode choices = root.path("choices");
-        
-        if (choices.isEmpty()) {
-            throw new RuntimeException("OpenAI 응답에 choices가 없습니다");
-        }
-        
-        JsonNode message = choices.get(0).path("message");
-        String content = message.path("content").asText();
-        
-        return om.readValue(content, Map.class);
-    }
-
     private Map<String, Object> getFallbackIntentAndGuides(String questionType, String role) {
         String intent = switch (questionType) {
             case "BEHAVIORAL" -> "지원자의 협업 능력과 문제 해결 경험을 통해 조직 적합성을 평가합니다.";
@@ -606,7 +550,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
             default -> "지원자의 역량과 적합성을 종합적으로 평가합니다.";
         };
 
-        // 역할별/질문유형별 맞춤형 가이드 생성
         List<String> guides = generateRoleSpecificGuides(questionType, role);
 
         return Map.of(
@@ -648,7 +591,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
             default -> List.of("최종 성과와 그 과정에서 배운 핵심 인사이트를 구체적으로 언급하세요.");
         };
 
-        // 공통 + 역할별 + 질문유형별 가이드 조합 (최대 5개)
         List<String> combined = new java.util.ArrayList<>(commonGuides);
         combined.addAll(roleSpecificGuides);
         combined.addAll(questionTypeGuides);
@@ -659,27 +601,8 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
     @Override
     public Map<String, Object> finalizeReport(String sessionJson, String previousResponseId) {
         try {
-            Map<String, Object> schema = Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "strengths", Map.of("type", "string"),
-                            "areasToImprove", Map.of("type", "string"),
-                            "nextSteps", Map.of("type", "string")
-                    ),
-                    "required", List.of("strengths", "areasToImprove", "nextSteps"),
-                    "additionalProperties", false
-            );
-
-            Map<String, Object> format = Map.of(
-                    "type", "json_schema",
-                    "name", "FinalReportSummary",   // ★ 이름 변경
-                    "schema", schema,
-                    "strict", true
-            );
-
             String prompt = """
-                    당신은 엄격한 시니어 면접 코치입니다. 직전까지의 대화 맥락은 previous_response_id로 제공됩니다.
-                    아래 facts는 서버가 계산/정리한 공식 정보이므로 사실로 간주하고 반드시 반영하세요.
+                    당신은 엄격한 시니어 면접 코치입니다. 아래 facts는 서버가 계산/정리한 공식 정보이므로 사실로 간주하고 반드시 반영하세요.
                     
                     점수 기준 (100점 만점):
                     - 0-20점: 매우 부족 (답변 회피, 기본 지식 부족)
@@ -701,145 +624,75 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                     - 각 항목 2-3문장, 한국어, 존댓말 없이 간결하게
                     - 점수와 모순되는 긍정적 표현 절대 금지
                     
+                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
+                    {
+                      "strengths": "강점 분석",
+                      "areasToImprove": "개선점 분석",
+                      "nextSteps": "다음 단계 가이드"
+                    }
+                    
                     [facts JSON]
                     %s
                     """.formatted(sessionJson);
 
-            Map<String, Object> body = new HashMap<>();
-            body.put("model", model);
-            body.put("input", prompt);
-            body.put("store", true);
-            body.put("text", Map.of("format", format));
-            if (previousResponseId != null && !previousResponseId.isBlank()) {
-                body.put("previous_response_id", previousResponseId);
-            }
+            // 컨텍스트 관리
+            String conversationKey = previousResponseId != null ? previousResponseId : "default";
+            List<Map<String, Object>> history = conversationHistory.computeIfAbsent(conversationKey, k -> new ArrayList<>());
+            
+            history.add(Map.of(
+                "role", "user",
+                "parts", List.of(Map.of("text", prompt))
+            ));
 
-            String raw = postJson("/responses", body);
-            JsonNode root = om.readTree(raw);
-
-            JsonNode parsed = findParsed(root);
-
-            if (parsed == null) {
-                parsed = tryParseJsonFromText(root);
-            }
-
-            if (parsed != null) {
-                String strengths = parsed.path("strengths").asText("").trim();
-                String areas = parsed.path("areasToImprove").asText("").trim();
-                String next = parsed.path("nextSteps").asText("").trim();
-                Map<String, Object> out = new HashMap<>();
-                out.put("strengths", strengths);
-                out.put("areasToImprove", areas);
-                out.put("nextSteps", next);
-                return out;
-            }
-
-            /// 폴백
-            String text = findText(root);
-            return Map.of(
-                    "strengths", text.isBlank() ? "강점을 간결히 요약해 주세요." : text,
-                    "areasToImprove", "구체적 보완 포인트를 1~2문장으로.",
-                    "nextSteps", "다음 면접 전 준비할 행동을 한 줄로."
+            Map<String, Object> requestBody = Map.of(
+                "contents", history,
+                "generationConfig", Map.of(
+                    "temperature", 0.3,
+                    "maxOutputTokens", 1000,
+                    "responseMimeType", "application/json"
+                )
             );
+
+            String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            
+            JsonNode root = om.readTree(response.getBody());
+            JsonNode candidates = root.path("candidates");
+            
+            if (candidates.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
+            }
+            
+            JsonNode content = candidates.get(0).path("content");
+            JsonNode parts = content.path("parts");
+            
+            if (parts.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+            }
+            
+            String responseText = parts.get(0).path("text").asText();
+            
+            // 응답을 히스토리에 추가
+            history.add(Map.of(
+                "role", "model",
+                "parts", List.of(Map.of("text", responseText))
+            ));
+            
+            return om.readValue(responseText, Map.class);
+            
         } catch (Exception e) {
+            System.err.println("[AI][Gemini] finalizeReport 실패: " + e.getMessage());
             return Map.of(
                     "strengths", "논리 전개가 명확합니다.",
                     "areasToImprove", "사례 기반 근거를 보강하세요.",
                     "nextSteps", "핵심 경험을 STAR로 1분 요약하는 연습."
             );
         }
-    }
-
-    private String postJson(String path, Map<String, Object> body) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
-        
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(body, headers);
-        
-        try {
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                "https://api.openai.com/v1" + path,
-                entity,
-                String.class
-            );
-            
-            if (response.getStatusCode().isError()) {
-                System.err.println("[OpenAI][HTTP " + response.getStatusCode() + "] " + response.getBody());
-                throw new RuntimeException("OpenAI error: " + response.getBody());
-            }
-            
-            return response.getBody();
-        } catch (Exception e) {
-            System.err.println("[OpenAI] postJson failed: " + e.getMessage());
-            throw new RuntimeException("OpenAI API call failed", e);
-        }
-    }
-
-    // 클래스 내부 private 메서드 두 개 추가
-    private JsonNode findParsed(JsonNode root) {
-        // 1) 구버전/편의 필드
-        JsonNode parsed = root.path("output_parsed");
-        if (parsed != null && !parsed.isMissingNode() && !parsed.isNull()) return parsed;
-
-        // 2) 표준 위치: output[].content[].parsed
-        JsonNode output = root.path("output");
-        if (output.isArray()) {
-            for (JsonNode msg : output) {
-                JsonNode content = msg.path("content");
-                if (content.isArray()) {
-                    for (JsonNode c : content) {
-                        String t = c.path("type").asText("");
-                        if (c.hasNonNull("parsed") && (
-                                "json_schema".equals(t) || "output_json".equals(t) || "tool_result".equals(t)
-                        )) {
-                            return c.get("parsed");
-                        }
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    private String findText(JsonNode root) {
-        // 1) 구버전/편의 필드
-        String txt = root.path("output_text").asText(null);
-        if (txt != null) return txt;
-
-        // 2) 표준 위치: output[].content[].text (type=output_text)
-        JsonNode output = root.path("output");
-        if (output.isArray()) {
-            for (JsonNode msg : output) {
-                JsonNode content = msg.path("content");
-                if (content.isArray()) {
-                    for (JsonNode c : content) {
-                        if ("output_text".equals(c.path("type").asText(""))) {
-                            return c.path("text").asText("");
-                        }
-                    }
-                }
-            }
-        }
-        return "";
-    }
-
-    private JsonNode tryParseJsonFromText(JsonNode root) {
-        String txt = findText(root);
-        if (txt == null) return null;
-        txt = txt.trim();
-        if (!(txt.startsWith("{") || txt.startsWith("["))) return null;
-        try {
-            return om.readTree(txt);
-        } catch (Exception ignore) {
-            return null;
-        }
-    }
-
-    private String requireApiKey() {
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException("[OpenAI] API key is missing. Check spring.ai.openai.api-key or OPENAI_API_KEY");
-        }
-        return apiKey.trim();
     }
 }

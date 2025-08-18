@@ -19,11 +19,15 @@ import org.jsoup.parser.Parser;
 import org.jsoup.select.Elements;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+import java.net.URL;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,6 +35,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -276,7 +281,7 @@ public class AiUpdatesService {
                 "dall-e-3",
                 promptText,
                 1,
-                "1024x1024",
+                "1792x1024",
                 "standard"
         );
 
@@ -298,6 +303,30 @@ public class AiUpdatesService {
         }
 
         JsonNode jsonNode = objectMapper.readTree(response.body());
-        return jsonNode.path("data").get(0).path("url").asText();
+        String imageUrl = jsonNode.path("data").get(0).path("url").asText();
+
+        URL url = new URL(imageUrl);
+        try (InputStream inputStream = url.openStream()) {
+            MultipartFile multipartFile = convertInputStreamToMultipartFile(inputStream, imageUrl);
+            return s3ImageService.upload(multipartFile);
+        } catch (Exception e) {
+            System.err.println("OpenAI 이미지 다운로드 또는 S3 업로드 실패: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    private MultipartFile convertInputStreamToMultipartFile(InputStream inputStream, String fileUrl) throws IOException {
+
+        String contentType = "image/png";
+        String filename = UUID.randomUUID().toString() + ".png";
+
+        byte[] content = inputStream.readAllBytes();
+
+        return new MockMultipartFile(
+                "file",
+                filename,
+                contentType,
+                content
+        );
     }
 }
