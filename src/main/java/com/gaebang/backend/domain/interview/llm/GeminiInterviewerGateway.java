@@ -113,9 +113,27 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 )
             ),
             "generationConfig", Map.of(
-                "temperature", 0.8,
-                "maxOutputTokens", 2000,
-                "responseMimeType", "application/json"
+                "temperature", 0.7,
+                "maxOutputTokens", 8000,
+                "responseMimeType", "application/json",
+                "responseSchema", Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                        "questions", Map.of(
+                            "type", "array",
+                            "items", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                    "idx", Map.of("type", "integer"),
+                                    "type", Map.of("type", "string"),
+                                    "text", Map.of("type", "string")
+                                ),
+                                "required", List.of("idx", "type", "text")
+                            )
+                        )
+                    ),
+                    "required", List.of("questions")
+                )
             )
         );
 
@@ -161,6 +179,12 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         
         prompt.append("""
                 
+                🎯 **필수 역할 준수 조건:**
+                ⚠️ 경고: 역할과 맞지 않는 기술 질문 시 면접 무효 처리됩니다!
+                - 현재 역할: """ + role + """
+                - 해당 역할의 기술 스택만 사용하여 질문 생성
+                - 다른 분야 기술은 절대 언급 금지
+                
                 🎯 **공통 생성 조건:**
                 1. 질문 유형: BEHAVIORAL, TECHNICAL, SYSTEM_DESIGN, TROUBLESHOOT, WRAPUP 중 선택
                 2. 난이도를 점진적으로 높여가며 10개 질문 생성
@@ -184,23 +208,36 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
     
     private String getRoleSpecificPrompt(String role) {
         return switch (role) {
-            case "BACKEND_DEVELOPER" -> """
-                백엔드 개발자 면접을 진행합니다.
-                - 서버 아키텍처, 데이터베이스 설계, API 개발 중심
-                - Spring Framework, JPA, 동시성 처리, 성능 최적화
-                - 시스템 설계, 장애 대응, 코드 품질 관리
-                - MSA, 캐싱, 보안, 모니터링 관련 질문 포함
+            case "BACKEND", "BACKEND_DEVELOPER" -> """
+                🚨 중요: 당신은 백엔드 개발자 전문 면접관입니다. 반드시 백엔드 기술만 다루세요.
+                
+                ❌ 절대 금지: JavaScript, React, Vue, 프론트엔드 기술 관련 질문
+                ✅ 필수 포함: 
+                - Java, Spring Boot/Framework, JPA/Hibernate
+                - 서버 아키텍처, REST API 설계, 데이터베이스 (MySQL, PostgreSQL)
+                - 동시성 처리, 멀티스레딩, 성능 최적화
+                - 시스템 설계, MSA, 캐싱 (Redis), 메시지큐
+                - 장애 대응, 모니터링, 보안, 인증/인가
+                - Spring Security, JUnit 테스트, CI/CD
+                
+                역할 확인: 백엔드 개발자는 서버사이드 개발만 담당합니다.
                 """;
                 
-            case "FRONTEND_DEVELOPER" -> """
-                프론트엔드 개발자 면접을 진행합니다.
-                - React/Vue, JavaScript ES6+, TypeScript 중심
-                - 컴포넌트 설계, 상태 관리, 성능 최적화
+            case "FRONTEND", "FRONTEND_DEVELOPER" -> """
+                🚨 중요: 당신은 프론트엔드 개발자 전문 면접관입니다. 반드시 프론트엔드 기술만 다루세요.
+                
+                ❌ 절대 금지: Java, Spring, 서버사이드 기술 관련 질문
+                ✅ 필수 포함:
+                - JavaScript ES6+, TypeScript, React/Vue
+                - 컴포넌트 설계, 상태 관리 (Redux, Vuex)
                 - 브라우저 호환성, 웹 접근성, SEO
-                - 빌드 도구, 테스팅, 사용자 경험 개선 관련 질문 포함
+                - Webpack, Vite, 빌드 도구, Jest 테스팅
+                - 사용자 경험, 성능 최적화, 반응형 디자인
+                
+                역할 확인: 프론트엔드 개발자는 클라이언트사이드 개발만 담당합니다.
                 """;
                 
-            case "FULLSTACK_DEVELOPER" -> """
+            case "FULLSTACK", "FULLSTACK_DEVELOPER" -> """
                 풀스택 개발자 면접을 진행합니다.
                 - 프론트엔드와 백엔드 기술 스택 모두 다룸
                 - 전체 서비스 아키텍처 설계 능력 평가
@@ -233,7 +270,20 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         }
         
         String text = parts.get(0).path("text").asText();
-        return om.readValue(text, Map.class);
+        
+        // JSON 응답이 불완전할 수 있으므로 안전하게 파싱
+        try {
+            // 텍스트가 JSON으로 시작하는지 확인
+            if (!text.trim().startsWith("{")) {
+                throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + text.substring(0, Math.min(text.length(), 100)));
+            }
+            
+            return om.readValue(text, Map.class);
+            
+        } catch (Exception e) {
+            System.err.println("[Gemini] JSON 파싱 실패. 응답 텍스트: " + text);
+            throw new RuntimeException("Gemini JSON 응답 파싱 실패: " + e.getMessage(), e);
+        }
     }
 
     private Map<String, Object> getFallbackQuestions() {
@@ -259,7 +309,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         PlanQuestionDto q = planParser.getQuestionByIndex(planJson, questionIndex);
 
         String prompt = """
-                당신은 엄격한 모의면접 코치입니다. 아래 정보를 바탕으로 간단 코칭과 지표별 점수를 반환하세요.
+                당신은 전문 면접 코치입니다. 아래 정보를 바탕으로 건설적인 피드백과 지표별 점수를 반환하세요.
                 - 질문유형: %s
                 - 질문: %s
                 - 후보자 답변: %s
@@ -301,8 +351,20 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 """.formatted(q.type(), q.text(), transcript);
 
         // 대화 기록에 추가 (컨텍스트 관리)
-        String conversationKey = previousResponseId != null ? previousResponseId : "default";
+        String conversationKey = previousResponseId != null ? previousResponseId : "session_" + planJson.hashCode();
         List<Map<String, Object>> history = conversationHistory.computeIfAbsent(conversationKey, k -> new ArrayList<>());
+        
+        // 히스토리가 비어있으면 시스템 메시지 추가
+        if (history.isEmpty()) {
+            history.add(Map.of(
+                "role", "user",
+                "parts", List.of(Map.of("text", "당신은 전문 면접 코치입니다. 다음부터 면접 답변에 대해 건설적인 피드백을 제공해주세요."))
+            ));
+            history.add(Map.of(
+                "role", "model", 
+                "parts", List.of(Map.of("text", "네, 전문적이고 건설적인 피드백을 제공하겠습니다."))
+            ));
+        }
         
         // 현재 대화를 히스토리에 추가
         history.add(Map.of(
@@ -314,11 +376,34 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             "contents", history,
             "generationConfig", Map.of(
                 "temperature", 0.3,
-                "maxOutputTokens", 1000,
-                "responseMimeType", "application/json"
+                "maxOutputTokens", 4000,
+                "responseMimeType", "application/json",
+                "responseSchema", Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                        "coachingTips", Map.of("type", "string"),
+                        "scoreResult", Map.of(
+                            "type", "object",
+                            "properties", Map.of(
+                                "clarity", Map.of("type", "integer"),
+                                "structure_STAR", Map.of("type", "integer"),
+                                "tech_depth", Map.of("type", "integer"),
+                                "tradeoff", Map.of("type", "integer"),
+                                "root_cause", Map.of("type", "integer")
+                            ),
+                            "required", List.of("clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause")
+                        )
+                    ),
+                    "required", List.of("coachingTips", "scoreResult")
+                )
             )
         );
 
+        // API 키 검증
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalStateException("[Gemini] API key is missing. Check GEMINI_API_KEY environment variable");
+        }
+        
         String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
         
         HttpHeaders headers = new HttpHeaders();
@@ -326,20 +411,59 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
         
-        ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+        ResponseEntity<String> response;
+        try {
+            response = restTemplate.postForEntity(url, entity, String.class);
+            
+            if (!response.getStatusCode().is2xxSuccessful()) {
+                // 실패 시 히스토리에서 마지막 사용자 메시지 제거
+                if (!history.isEmpty() && "user".equals(history.get(history.size() - 1).get("role"))) {
+                    history.remove(history.size() - 1);
+                }
+                throw new RuntimeException("Gemini API 호출 실패: " + response.getStatusCode() + " - " + response.getBody());
+            }
+        } catch (Exception e) {
+            // 실패 시 히스토리에서 마지막 사용자 메시지 제거
+            if (!history.isEmpty() && "user".equals(history.get(history.size() - 1).get("role"))) {
+                history.remove(history.size() - 1);
+            }
+            throw e;
+        }
         
         JsonNode root = om.readTree(response.getBody());
+        
+        // 디버깅을 위한 상세 로깅
+        System.err.println("[Gemini Debug] Full response: " + root.toPrettyString());
+        
         JsonNode candidates = root.path("candidates");
         
         if (candidates.isEmpty()) {
+            System.err.println("[Gemini Debug] No candidates in response");
             throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
         }
         
-        JsonNode content = candidates.get(0).path("content");
+        JsonNode candidate = candidates.get(0);
+        JsonNode content = candidate.path("content");
         JsonNode parts = content.path("parts");
         
+        // 후보자 정보 로깅
+        System.err.println("[Gemini Debug] Candidate finish reason: " + candidate.path("finishReason").asText("NONE"));
+        System.err.println("[Gemini Debug] Content node: " + content.toPrettyString());
+        
         if (parts.isEmpty()) {
-            throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+            System.err.println("[Gemini Debug] Parts is empty. Full candidate: " + candidate.toPrettyString());
+            
+            // Safety ratings 확인
+            JsonNode safetyRatings = candidate.path("safetyRatings");
+            if (!safetyRatings.isEmpty()) {
+                System.err.println("[Gemini Debug] Safety ratings detected: " + safetyRatings.toPrettyString());
+            }
+            
+            // 실패 시 히스토리에서 마지막 사용자 메시지 제거
+            if (!history.isEmpty() && "user".equals(history.get(history.size() - 1).get("role"))) {
+                history.remove(history.size() - 1);
+            }
+            throw new RuntimeException("Gemini 응답에 parts가 없습니다. finishReason: " + candidate.path("finishReason").asText("UNKNOWN"));
         }
         
         String responseText = parts.get(0).path("text").asText();
@@ -353,7 +477,23 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         // 응답 ID 생성 (Gemini에는 없으므로 시간 기반으로 생성)
         String responseId = "gemini_" + System.currentTimeMillis() + "_" + questionIndex;
         
-        Map<String, Object> parsedResponse = om.readValue(responseText, Map.class);
+        // 안전한 JSON 파싱
+        Map<String, Object> parsedResponse;
+        try {
+            if (!responseText.trim().startsWith("{")) {
+                throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + responseText.substring(0, Math.min(responseText.length(), 100)));
+            }
+            parsedResponse = om.readValue(responseText, Map.class);
+        } catch (Exception e) {
+            System.err.println("[Gemini] nextTurn JSON 파싱 실패. 응답 텍스트: " + responseText);
+            // 폴백: 기본 응답 생성
+            parsedResponse = Map.of(
+                "coachingTips", "답변을 더 구체적으로 보완해주세요.",
+                "scoreResult", Map.of(
+                    "clarity", 3, "structure_STAR", 3, "tech_depth", 3, "tradeoff", 3, "root_cause", 3
+                )
+            );
+        }
         
         String tips = (String) parsedResponse.getOrDefault("coachingTips", "핵심부터 1~2문장으로.");
         Map<String, Integer> rawScores = (Map<String, Integer>) parsedResponse.getOrDefault("scoreResult", Map.of());
@@ -400,7 +540,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                     
                     **생성 요구사항:**
                     1. intent: 이 질문을 통해 무엇을 평가하려는지 1-2문장으로 명확히 설명
-                    2. guides: 좋은 답변을 위한 구체적인 가이드 5개를 배열로 제공
+                    2. guides: 좋은 답변을 위한 구체적인 가이드 3개를 배열로 제공
                     
                     **답변 가이드 작성 원칙:**
                     - 각 가이드는 구체적이고 실행 가능한 조언으로 작성
@@ -417,7 +557,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                     응답은 반드시 다음 JSON 형식으로만 작성해주세요:
                     {
                       "intent": "질문 의도 설명",
-                      "guides": ["가이드1", "가이드2", "가이드3", "가이드4", "가이드5"]
+                      "guides": ["가이드1", "가이드2", "가이드3"]
                     }
                     """.formatted(role, questionType, questionText, roleGuide, typeGuide);
 
@@ -431,8 +571,19 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 ),
                 "generationConfig", Map.of(
                     "temperature", 0.3,
-                    "maxOutputTokens", 1000,
-                    "responseMimeType", "application/json"
+                    "maxOutputTokens", 4000,
+                    "responseMimeType", "application/json",
+                    "responseSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                            "intent", Map.of("type", "string"),
+                            "guides", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            )
+                        ),
+                        "required", List.of("intent", "guides")
+                    )
                 )
             );
 
@@ -460,7 +611,17 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             }
             
             String responseText = parts.get(0).path("text").asText();
-            return om.readValue(responseText, Map.class);
+            
+            // 안전한 JSON 파싱
+            try {
+                if (!responseText.trim().startsWith("{")) {
+                    throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + responseText.substring(0, Math.min(responseText.length(), 100)));
+                }
+                return om.readValue(responseText, Map.class);
+            } catch (Exception e) {
+                System.err.println("[Gemini] generateQuestionIntentAndGuides JSON 파싱 실패. 응답 텍스트: " + responseText);
+                throw new RuntimeException("Gemini JSON 응답 파싱 실패: " + e.getMessage(), e);
+            }
             
         } catch (Exception e) {
             System.err.println("[AI][Gemini] 질문 의도/가이드 생성 실패");
@@ -474,21 +635,23 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
 
     private String getRoleSpecificGuidePrompt(String role) {
         return switch (role) {
-            case "BACKEND_DEVELOPER" -> """
-                백엔드 개발자로서 다음 관점에서 답변하도록 가이드:
-                - 서버 아키텍처, 성능, 확장성 관점
-                - 데이터베이스 설계 및 최적화
-                - API 설계 원칙과 보안 고려사항
-                - 장애 대응 및 모니터링 경험
+            case "BACKEND", "BACKEND_DEVELOPER" -> """
+                🔹 백엔드 개발자 전용 가이드 (서버사이드 개발만):
+                - Java/Spring 기반 서버 아키텍처, 성능, 확장성 관점
+                - 데이터베이스 설계, JPA/Hibernate, SQL 최적화
+                - REST API 설계, Spring Security, 인증/인가
+                - 멀티스레딩, 동시성, 시스템 장애 대응
+                ❌ 금지: JavaScript, React, 프론트엔드 관련 내용
                 """;
-            case "FRONTEND_DEVELOPER" -> """
-                프론트엔드 개발자로서 다음 관점에서 답변하도록 가이드:
+            case "FRONTEND", "FRONTEND_DEVELOPER" -> """
+                🔹 프론트엔드 개발자 전용 가이드 (클라이언트사이드 개발만):
                 - 사용자 경험(UX)과 성능 최적화
                 - 컴포넌트 설계 및 상태 관리
                 - 브라우저 호환성 및 접근성
                 - 최신 프론트엔드 기술 트렌드 활용
+                ❌ 금지: Java, Spring, 서버사이드 관련 내용
                 """;
-            case "FULLSTACK_DEVELOPER" -> """
+            case "FULLSTACK", "FULLSTACK_DEVELOPER" -> """
                 풀스택 개발자로서 다음 관점에서 답변하도록 가이드:
                 - 전체 시스템 아키텍처 이해도
                 - 프론트엔드-백엔드 연동 경험
@@ -565,15 +728,15 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         );
 
         List<String> roleSpecificGuides = switch (role) {
-            case "BACKEND_DEVELOPER" -> List.of(
-                "서버 아키텍처와 데이터베이스 설계 관점에서 기술적 결정 사항을 구체적으로 설명하세요.",
-                "성능 최적화나 확장성 고려사항을 포함하여 비즈니스 임팩트를 수치로 보여주세요."
+            case "BACKEND", "BACKEND_DEVELOPER" -> List.of(
+                "Java/Spring 기반 서버 아키텍처와 데이터베이스 설계 관점에서 기술적 결정을 구체적으로 설명하세요.",
+                "JPA/Hibernate, 멀티스레딩, 성능 최적화 경험을 포함하여 비즈니스 임팩트를 수치로 보여주세요."
             );
-            case "FRONTEND_DEVELOPER" -> List.of(
-                "사용자 경험과 성능 최적화 관점에서 기술적 접근 방법을 구체적으로 설명하세요.",
-                "브라우저 호환성이나 접근성을 고려한 설계 결정과 그 결과를 보여주세요."
+            case "FRONTEND", "FRONTEND_DEVELOPER" -> List.of(
+                "React/Vue, JavaScript 기반 사용자 경험과 성능 최적화 관점에서 기술적 접근을 설명하세요.",
+                "브라우저 호환성, 번들링, 접근성을 고려한 설계 결정과 그 결과를 보여주세요."
             );
-            case "FULLSTACK_DEVELOPER" -> List.of(
+            case "FULLSTACK", "FULLSTACK_DEVELOPER" -> List.of(
                 "프론트엔드와 백엔드를 아우르는 전체 시스템 관점에서 기술적 의사결정을 설명하세요.",
                 "다양한 기술 스택 선택의 근거와 트레이드오프를 구체적으로 언급하세요."
             );
@@ -595,7 +758,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         combined.addAll(roleSpecificGuides);
         combined.addAll(questionTypeGuides);
         
-        return combined.size() > 5 ? combined.subList(0, 5) : combined;
+        return combined.size() > 3 ? combined.subList(0, 3) : combined;
     }
 
     @Override
@@ -636,8 +799,20 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                     """.formatted(sessionJson);
 
             // 컨텍스트 관리
-            String conversationKey = previousResponseId != null ? previousResponseId : "default";
+            String conversationKey = previousResponseId != null ? previousResponseId : "report_" + sessionJson.hashCode();
             List<Map<String, Object>> history = conversationHistory.computeIfAbsent(conversationKey, k -> new ArrayList<>());
+            
+            // 히스토리가 비어있으면 시스템 메시지 추가
+            if (history.isEmpty()) {
+                history.add(Map.of(
+                    "role", "user",
+                    "parts", List.of(Map.of("text", "당신은 엄격한 시니어 면접 코치입니다. 면접 결과를 종합하여 리포트를 작성해주세요."))
+                ));
+                history.add(Map.of(
+                    "role", "model", 
+                    "parts", List.of(Map.of("text", "네, 면접 결과를 엄격하고 정확하게 분석하여 리포트를 작성하겠습니다."))
+                ));
+            }
             
             history.add(Map.of(
                 "role", "user",
@@ -648,8 +823,17 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 "contents", history,
                 "generationConfig", Map.of(
                     "temperature", 0.3,
-                    "maxOutputTokens", 1000,
-                    "responseMimeType", "application/json"
+                    "maxOutputTokens", 4000,
+                    "responseMimeType", "application/json",
+                    "responseSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                            "strengths", Map.of("type", "string"),
+                            "areasToImprove", Map.of("type", "string"),
+                            "nextSteps", Map.of("type", "string")
+                        ),
+                        "required", List.of("strengths", "areasToImprove", "nextSteps")
+                    )
                 )
             );
 
@@ -684,7 +868,21 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 "parts", List.of(Map.of("text", responseText))
             ));
             
-            return om.readValue(responseText, Map.class);
+            // 안전한 JSON 파싱
+            try {
+                if (!responseText.trim().startsWith("{")) {
+                    throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + responseText.substring(0, Math.min(responseText.length(), 100)));
+                }
+                return om.readValue(responseText, Map.class);
+            } catch (Exception e) {
+                System.err.println("[Gemini] finalizeReport JSON 파싱 실패. 응답 텍스트: " + responseText);
+                // 폴백: 기본 응답 생성
+                return Map.of(
+                    "strengths", "논리 전개가 명확합니다.",
+                    "areasToImprove", "사례 기반 근거를 보강하세요.",
+                    "nextSteps", "핵심 경험을 STAR로 1분 요약하는 연습."
+                );
+            }
             
         } catch (Exception e) {
             System.err.println("[AI][Gemini] finalizeReport 실패: " + e.getMessage());

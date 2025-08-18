@@ -460,7 +460,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                     
                     **생성 요구사항:**
                     1. intent: 이 질문을 통해 무엇을 평가하려는지 1-2문장으로 명확히 설명
-                    2. guides: 좋은 답변을 위한 구체적인 가이드 5개를 배열로 제공
+                    2. guides: 좋은 답변을 위한 구체적인 가이드 3개를 배열로 제공
                     
                     **답변 가이드 작성 원칙:**
                     - 각 가이드는 구체적이고 실행 가능한 조언으로 작성
