@@ -94,7 +94,8 @@ public class NewsDataService {
 
         } catch (Exception e) {
             log.error("뉴스 데이터 처리 중 오류", e);
-            throw new RuntimeException("뉴스 데이터 처리 실패", e);
+            // RuntimeException을 던지지 않음 - 스케줄러가 계속 동작함
+//            throw new RuntimeException("뉴스 데이터 처리 실패", e);
         }
     }
 
