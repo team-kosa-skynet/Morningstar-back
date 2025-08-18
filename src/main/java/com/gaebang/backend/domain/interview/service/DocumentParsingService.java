@@ -5,7 +5,6 @@ import com.gaebang.backend.domain.interview.entity.UploadedDocument;
 import com.gaebang.backend.domain.interview.repository.UploadedDocumentRepository;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
@@ -39,14 +38,14 @@ public class DocumentParsingService {
     public String parseAndSaveDocument(MultipartFile file, Long memberId) throws Exception {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new IllegalArgumentException("회원을 찾을 수 없습니다: " + memberId));
-        
+
         String fileType = getFileType(file);
         String rawText = extractContent(file, fileType);
-        
+
         // 구조화된 정보 추출 (개인정보 제외)
         Map<String, Object> structuredInfo = documentContentExtractor.extractStructuredInfo(rawText);
         String structuredJson = objectMapper.writeValueAsString(structuredInfo);
-        
+
         UUID documentId = UUID.randomUUID();
         UploadedDocument document = UploadedDocument.create(
                 documentId,
@@ -56,9 +55,9 @@ public class DocumentParsingService {
                 file.getSize(),
                 structuredJson  // 원본 텍스트 대신 구조화된 정보 저장
         );
-        
+
         uploadedDocumentRepository.save(document);
-        
+
         return documentId.toString();
     }
 
@@ -84,29 +83,29 @@ public class DocumentParsingService {
     }
 
     private String extractFromPdf(MultipartFile file) throws Exception {
-        try (PDDocument document = Loader.loadPDF(file.getBytes())) {
-            
+        try (PDDocument document = PDDocument.load(file.getBytes())) {
+
             PDFTextStripper stripper = new PDFTextStripper();
-            
+
             // 텍스트 추출 옵션 설정
             stripper.setSortByPosition(true); // 위치 기반 정렬로 정확한 순서 보장
             stripper.setStartPage(1);
             stripper.setEndPage(document.getNumberOfPages());
-            
+
             String extractedText = stripper.getText(document);
-            
+
             return extractedText.replaceAll("\\n{3,}", "\n\n").trim();
         }
     }
 
     private String extractFromDocx(MultipartFile file) throws Exception {
         try (XWPFDocument document = new XWPFDocument(file.getInputStream())) {
-            
+
             XWPFWordExtractor extractor = new XWPFWordExtractor(document);
-            
+
             String extractedText = extractor.getText();
             extractor.close();
-            
+
             // 불필요한 공백 정리
             return extractedText.replaceAll("\\n{3,}", "\n\n").trim();
         }
