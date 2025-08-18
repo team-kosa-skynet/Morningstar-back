@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaebang.backend.domain.newsData.entity.NewsData;
 import com.gaebang.backend.domain.newsData.event.NewsCreatedEvent;
 import com.gaebang.backend.domain.newsData.repository.NewsDataRepository;
-import com.gaebang.backend.domain.question.openai.util.OpenaiQuestionProperties;
+import com.gaebang.backend.domain.question.gemini.util.GeminiQuestionProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -26,18 +26,17 @@ import java.util.*;
 public class PopularNewsDataService {
 
     private final RestClient restClient;
-    private final OpenaiQuestionProperties openaiQuestionProperties;
+    private final GeminiQuestionProperties geminiQuestionProperties;
     private final NewsDataRepository newsDataRepository;
     private final NewsImageService newsImageService;
 
-    // 뉴스 전체 조회 한 것 가공하기
+    // 뉴스 전체 조회 한 것 가공하기 - pubDate 추가
     public String getNewsData() {
         LocalDateTime now = LocalDateTime.now();
         LocalDateTime startOfYesterday = now.minusDays(1).toLocalDate().atStartOfDay();
         LocalDateTime endOfToday = now.toLocalDate().plusDays(1).atStartOfDay();
 
         List<NewsData> newsData = newsDataRepository.findNewsByDateRange(startOfYesterday, endOfToday);
-//        List<NewsData> newsData = newsDataRepository.findTop40ByOrderByPubDateDesc();
 
         log.info("뉴스 데이터 개수 확인 ({}부터 {}까지): {}",
                 startOfYesterday, endOfToday, newsData.size());
@@ -49,12 +48,14 @@ public class PopularNewsDataService {
             Long newsId = newsData.get(i).getNewsId();
             String title = escapeJsonString(newsData.get(i).getTitle());
             String description = escapeJsonString(newsData.get(i).getDescription());
+            String pubDate = newsData.get(i).getPubDate().toString();
 
             data.append(String.format("  {\n" +
                     "    \"newsId\": %d,\n" +
                     "    \"title\": \"%s\",\n" +
-                    "    \"description\": \"%s\"\n" +
-                    "  }", newsId, title, description));
+                    "    \"description\": \"%s\",\n" +
+                    "    \"pubDate\": \"%s\"\n" +
+                    "  }", newsId, title, description, pubDate));
 
             if (i < newsData.size() - 1) {
                 data.append(",");
@@ -76,14 +77,16 @@ public class PopularNewsDataService {
                 .replace("\t", "\\t");
     }
 
-    // content 작성하기
+    // content 작성하기 - 새로운 프롬프트
     private static String writeSystem() {
         return "SYSTEM: You are a Korean news deduplication expert.\n" +
                 "\n" +
                 "TASK:\n" +
                 "1. Analyze ALL news articles to find groups reporting the SAME EVENT/STORY.\n" +
-                "2. Look for groups of 2+ articles (mark 5+ as 'popular').\n" +
+                "2. Look for groups of 2+ articles (mark 3+ as 'popular').\n" +
                 "3. Focus on core elements: WHO did WHAT, WHEN, WHERE.\n" +
+                "4. Deactivate articles that are 90%+ English in title/description.\n" +
+                "5. For duplicate groups, keep only the OLDEST article active (is_active = 1), deactivate others (is_active = 0).\n" +
                 "\n" +
                 "DUPLICATE IDENTIFICATION RULES:\n" +
                 "- Same entity (company/person/organization) + same action/event\n" +
@@ -96,6 +99,13 @@ public class PopularNewsDataService {
                 "2. Identify main action/event for each article\n" +
                 "3. Group articles with matching entity+action combinations\n" +
                 "4. Verify timing consistency (same day/week)\n" +
+                "5. Check language composition (Korean vs English) in title/description\n" +
+                "6. Determine oldest article in each duplicate group for activation\n" +
+                "\n" +
+                "ACTIVATION RULES:\n" +
+                "- If title + description is 90%+ English: is_active = 0\n" +
+                "- In duplicate groups: oldest article gets is_active = 1, others get is_active = 0\n" +
+                "- Single articles (no duplicates): is_active = 1 (unless English rule applies)\n" +
                 "\n" +
                 "CRITICAL JSON FORMATTING RULES:\n" +
                 "- Output ONLY pure JSON, no markdown formatting\n" +
@@ -115,12 +125,22 @@ public class PopularNewsDataService {
                 "          \"newsId\": 123,\n" +
                 "          \"title\": \"article title\",\n" +
                 "          \"description\": \"article description\",\n" +
-                "          \"pubDate\": \"article date\"\n" +
+                "          \"pubDate\": \"article date\",\n" +
+                "          \"is_active\": 1\n" +
                 "        }\n" +
                 "      ],\n" +
                 "      \"articleCount\": 15,\n" +
                 "      \"earlyPubDateNewsId\": 123,\n" +
                 "      \"isPopular\": true\n" +
+                "    }\n" +
+                "  ],\n" +
+                "  \"deactivatedArticles\": [\n" +
+                "    {\n" +
+                "      \"newsId\": 456,\n" +
+                "      \"title\": \"English article title\",\n" +
+                "      \"description\": \"English description\",\n" +
+                "      \"reason\": \"90%+ English content\",\n" +
+                "      \"is_active\": 0\n" +
                 "    }\n" +
                 "  ]\n" +
                 "}\n" +
@@ -128,6 +148,7 @@ public class PopularNewsDataService {
                 "If no duplicates:\n" +
                 "{\n" +
                 "  \"duplicateGroups\": [],\n" +
+                "  \"deactivatedArticles\": [],\n" +
                 "  \"message\": \"중복 기사 없음\"\n" +
                 "}\n" +
                 "\n" +
@@ -149,7 +170,7 @@ public class PopularNewsDataService {
 
             // 2. 이미지 생성 (후순위)
             log.info("2단계: 이미지 생성 시작");
-            newsImageService.createNewsImages();
+//            newsImageService.createNewsImages();
             log.info("2단계: 이미지 생성 완료");
 
         } catch (Exception e) {
@@ -157,15 +178,15 @@ public class PopularNewsDataService {
         }
     }
 
-    // 중복된 기사 찾기
+    // 중복된 기사 찾기 - Gemini API 사용
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void getDuplatedNews() {
         try {
-            log.info("=== 중복 뉴스 탐지 시작 ===");
+            log.info("=== 중복 뉴스 탐지 시작 (Gemini API) ===");
 
-            String modelToUse = openaiQuestionProperties.getModelToUse("gpt-4o");
-            String openaiUrl = openaiQuestionProperties.getResponseUrl();
-            log.info("사용 모델: {}, API URL: {}", modelToUse, openaiUrl);
+            String modelToUse = geminiQuestionProperties.getModelToUse("gemini-2.5-flash");
+            String geminiUrl = geminiQuestionProperties.getResponseUrl(modelToUse);
+            log.info("사용 모델: {}, API URL: {}", modelToUse, geminiUrl);
 
             String promptSystem = writeSystem();
             String data = getNewsData();
@@ -173,35 +194,35 @@ public class PopularNewsDataService {
 
             log.info("전송할 프롬프트 길이: {} 문자", content.length());
 
-            // OpenAI API 요청 구조
-            Map<String, Object> message = new HashMap<>();
-            message.put("role", "user");
-            message.put("content", content);
+            // Gemini API 요청 구조
+            Map<String, Object> part = new HashMap<>();
+            part.put("text", content);
+
+            Map<String, Object> geminiContent = new HashMap<>();
+            geminiContent.put("role", "user");
+            geminiContent.put("parts", Arrays.asList(part));
 
             Map<String, Object> parameters = new HashMap<>();
-            parameters.put("model", modelToUse);
-            parameters.put("messages", Arrays.asList(message));
-            parameters.put("max_tokens", 4000);
-            parameters.put("temperature", 0);
+            parameters.put("contents", Arrays.asList(geminiContent));
 
-            log.info("OpenAI API 요청 파라미터: {}", parameters.keySet());
-            log.info("OpenAI API 호출 시작...");
+            log.info("Gemini API 요청 파라미터: {}", parameters.keySet());
+            log.info("Gemini API 호출 시작...");
 
             String response = restClient.post()
-                    .uri(openaiUrl)
-                    .header("Authorization", "Bearer " + openaiQuestionProperties.getApiKey())
+                    .uri(geminiUrl.replace(":streamGenerateContent?alt=sse", ":generateContent")) // 스트리밍이 아닌 일반 요청
+                    .header("x-goog-api-key", geminiQuestionProperties.getApiKey())
                     .header("Content-Type", "application/json")
                     .body(parameters)
                     .exchange((request, httpResponse) -> {
-                        log.info("OpenAI API 응답 상태 코드: {}", httpResponse.getStatusCode());
+                        log.info("Gemini API 응답 상태 코드: {}", httpResponse.getStatusCode());
 
                         if (Thread.currentThread().isInterrupted()) {
-                            log.warn("OpenAI Chat Completions API 스레드 인터럽트 감지 - API 호출 중단");
+                            log.warn("Gemini API 스레드 인터럽트 감지 - API 호출 중단");
                             return null;
                         }
 
                         if (!httpResponse.getStatusCode().is2xxSuccessful()) {
-                            log.error("OpenAI Chat Completions API 호출 실패: {}", httpResponse.getStatusCode());
+                            log.error("Gemini API 호출 실패: {}", httpResponse.getStatusCode());
                             try {
                                 String errorBody = new String(httpResponse.getBody().readAllBytes());
                                 log.error("오류 응답 본문: {}", errorBody);
@@ -213,7 +234,7 @@ public class PopularNewsDataService {
 
                         try {
                             String responseBody = new String(httpResponse.getBody().readAllBytes());
-                            log.info("OpenAI API 응답 길이: {} 문자", responseBody.length());
+                            log.info("Gemini API 응답 길이: {} 문자", responseBody.length());
                             return responseBody;
                         } catch (Exception e) {
                             log.error("응답 파싱 오류", e);
@@ -222,10 +243,10 @@ public class PopularNewsDataService {
                     });
 
             if (response != null) {
-                log.info("=== OpenAI API 응답 성공 ===");
+                log.info("=== Gemini API 응답 성공 ===");
                 processDuplicateNews(response);
             } else {
-                log.warn("=== OpenAI API 응답이 null ===");
+                log.warn("=== Gemini API 응답이 null ===");
             }
 
             log.info("=== 중복 뉴스 탐지 완료 ===");
@@ -235,31 +256,49 @@ public class PopularNewsDataService {
         }
     }
 
-    // 응답 파싱 메서드
+    // 응답 파싱 메서드 - Gemini 응답 형태에 맞게 수정
     private void processDuplicateNews(String response) {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode rootNode = objectMapper.readTree(response);
 
+            // Gemini 응답 구조: candidates[0].content.parts[0].text
             String contentJson = rootNode
-                    .path("choices")
+                    .path("candidates")
                     .get(0)
-                    .path("message")
                     .path("content")
+                    .path("parts")
+                    .get(0)
+                    .path("text")
                     .asText();
 
             log.info("추출된 content JSON: {}", contentJson);
 
             JsonNode contentNode = objectMapper.readTree(contentJson);
-            JsonNode duplicateGroups = contentNode.path("duplicateGroups");
 
+            // 1. 영어 콘텐츠 비활성화 처리
+            JsonNode deactivatedArticles = contentNode.path("deactivatedArticles");
+            if (deactivatedArticles.isArray()) {
+                for (JsonNode article : deactivatedArticles) {
+                    Long newsId = article.path("newsId").asLong();
+                    String reason = article.path("reason").asText();
+
+                    if ("90%+ English content".equals(reason)) {
+                        newsDataRepository.markAsActive(newsId);
+                        log.info("영어 콘텐츠 비활성화: newsId={}, reason={}", newsId, reason);
+                    }
+                }
+            }
+
+            // 2. 중복 그룹 처리
+            JsonNode duplicateGroups = contentNode.path("duplicateGroups");
             for (JsonNode group : duplicateGroups) {
                 int groupId = group.path("groupId").asInt();
                 Long earlyPubDateNewsId = group.path("earlyPubDateNewsId").asLong();
                 JsonNode articles = group.path("articles");
 
                 log.info("=== 중복 그룹 {} 처리 시작 (기사 {}개) ===", groupId, articles.size());
-                log.info("  - 가장 먼저 작성된 기사: newsId={}", earlyPubDateNewsId);
+                log.info("  - 가장 오래된 기사: newsId={}", earlyPubDateNewsId);
 
                 List<Long> allNewsIds = new ArrayList<>();
 
@@ -274,14 +313,14 @@ public class PopularNewsDataService {
 
                 log.info("  - 그룹 내 모든 기사: {}", allNewsIds);
 
-                // DB 업데이트 로직
+                // DB 업데이트 로직 - 3개 이상부터 인기글
                 if (earlyPubDateNewsId != null && allNewsIds.contains(earlyPubDateNewsId)) {
 
-                    if (articles.size() >= 5) {
-                        // 5개 이상: 인기글 처리 + 중복글 비활성화
-                        log.info("  📊 5개 이상 그룹 → 인기글 처리 + 중복글 비활성화");
+                    if (articles.size() >= 3) {
+                        // 3개 이상: 인기글 처리 + 중복글 비활성화
+                        log.info("  📊 3개 이상 그룹 → 인기글 처리 + 중복글 비활성화");
 
-                        // 가장 먼저 작성된 기사를 인기 기사로 설정
+                        // 가장 오래된 기사를 인기 기사로 설정
                         newsDataRepository.markAsPopular(earlyPubDateNewsId);
                         log.info("  ✅ 인기 기사로 설정: newsId = {}", earlyPubDateNewsId);
 
@@ -294,8 +333,8 @@ public class PopularNewsDataService {
                         }
 
                     } else {
-                        // 5개 미만: 인기글 처리 안함 + 중복글만 비활성화
-                        log.info("  📝 5개 미만 그룹 → 중복글만 비활성화 (인기글 처리 안함)");
+                        // 3개 미만: 인기글 처리 안함 + 중복글만 비활성화
+                        log.info("  📝 3개 미만 그룹 → 중복글만 비활성화 (인기글 처리 안함)");
 
                         // 인기글 처리는 하지 않고, 중복글만 비활성화
                         for (Long newsId : allNewsIds) {
@@ -304,7 +343,7 @@ public class PopularNewsDataService {
                                 log.info("  ❌ 비활성화 처리: newsId = {}", newsId);
                             }
                         }
-                        log.info("  ℹ️  가장 먼저 작성된 기사 유지 (인기글 아님): newsId = {}", earlyPubDateNewsId);
+                        log.info("  ℹ️  가장 오래된 기사 유지 (인기글 아님): newsId = {}", earlyPubDateNewsId);
                     }
 
                 } else {
