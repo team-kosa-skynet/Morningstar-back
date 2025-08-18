@@ -114,7 +114,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             ),
             "generationConfig", Map.of(
                 "temperature", 0.7,
-                "maxOutputTokens", 8000,
+                "maxOutputTokens", 10000,  // 질문+의도+가이드 생성을 위해 증가
                 "responseMimeType", "application/json",
                 "responseSchema", Map.of(
                     "type", "object",
@@ -126,9 +126,14 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                                 "properties", Map.of(
                                     "idx", Map.of("type", "integer"),
                                     "type", Map.of("type", "string"),
-                                    "text", Map.of("type", "string")
+                                    "text", Map.of("type", "string"),
+                                    "intent", Map.of("type", "string"),
+                                    "guides", Map.of(
+                                        "type", "array",
+                                        "items", Map.of("type", "string")
+                                    )
                                 ),
-                                "required", List.of("idx", "type", "text")
+                                "required", List.of("idx", "type", "text", "intent", "guides")
                             )
                         )
                     ),
@@ -185,20 +190,33 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 - 해당 역할의 기술 스택만 사용하여 질문 생성
                 - 다른 분야 기술은 절대 언급 금지
                 
-                🎯 **공통 생성 조건:**
-                1. 질문 유형: BEHAVIORAL, TECHNICAL, SYSTEM_DESIGN, TROUBLESHOOT, WRAPUP 중 선택
-                2. 난이도를 점진적으로 높여가며 10개 질문 생성
-                3. 실무 중심의 구체적이고 실용적인 질문
-                4. 마지막 질문은 WRAPUP 유형으로 마무리
-                5. 각 질문은 명확하고 답변 가능한 형태로 작성
+                🎯 **구조화된 질문 생성 조건:**
+                1. **구간별 질문 타입 (필수 준수):**
+                   - 1-2번: BEHAVIORAL (워밍업) - 자기소개, 동기, 기본 경험
+                   - 3-6번: TECHNICAL (핵심 역량) - 기술 구현, 코드 품질, 실무 경험  
+                   - 7-8번: SYSTEM_DESIGN (설계 사고) - 아키텍처, 확장성, 성능
+                   - 9번: TROUBLESHOOT (문제 해결) - 장애 대응, 디버깅, 근본 원인 분석
+                   - 10번: WRAPUP (마무리) - 궁금한 점, 어필 포인트
+                
+                2. **난이도 조절:** 점진적으로 높여가며 생성
+                3. **실무 중심:** 구체적이고 실용적인 질문
+                4. **질문별 추가 생성 요구사항:**
+                   - intent: 해당 질문의 평가 목적을 1-2문장으로 명확히 설명
+                   - guides: 좋은 답변을 위한 구체적인 가이드 정확히 3개 제공
                 
                 JSON 응답 형식:
                 {
                   "questions": [
-                    {"idx": 0, "type": "BEHAVIORAL", "text": "질문 내용"},
-                    {"idx": 1, "type": "TECHNICAL", "text": "질문 내용"},
+                    {
+                      "idx": 0, 
+                      "type": "BEHAVIORAL", 
+                      "text": "자기소개를 간단히 해주세요.",
+                      "intent": "지원자의 커뮤니케이션 능력과 핵심 경험을 파악합니다.",
+                      "guides": ["구체적인 경험과 성과를 바탕으로 간결하게 소개하세요.", "담당한 프로젝트와 기술 스택을 명확히 언급하세요.", "회사와 팀에 기여할 수 있는 강점을 어필하세요."]
+                    },
+                    {"idx": 1, "type": "BEHAVIORAL", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]},
                     ...
-                    {"idx": 9, "type": "WRAPUP", "text": "질문 내용"}
+                    {"idx": 9, "type": "WRAPUP", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]}
                   ]
                 }
                 """);

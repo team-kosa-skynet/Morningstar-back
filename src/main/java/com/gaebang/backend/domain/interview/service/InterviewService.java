@@ -150,18 +150,18 @@ public class InterviewService {
         String greeting = getAiGateway().generateGreeting(displayName);
         int totalQuestions = plan.questions().size();
 
-        // 첫 질문의 의도와 가이드 생성 (NextTurnResponseDto와 동일한 형식)
-        String questionIntent = null;
-        List<String> answerGuides = null;
-        try {
-            Map<String, Object> intentAndGuides = generateQuestionIntentAndGuidesWithRetry(
-                firstQuestionType, firstQuestion, role);
-            questionIntent = (String) intentAndGuides.get("intent");
-            answerGuides = (List<String>) intentAndGuides.get("guides");
-        } catch (Exception e) {
-            log.warn("[AI] 첫 질문 의도/가이드 생성 실패: {}", e.getMessage());
-            // 폴백값 설정 (NextTurnResponseDto와 동일한 스타일)
+        // 첫 질문의 의도와 가이드를 pre-generated 데이터에서 가져오기 (성능 최적화)
+        PlanQuestionDto firstQuestionDto = plan.questions().get(0);
+        String questionIntent = firstQuestionDto.intent();
+        List<String> answerGuides = firstQuestionDto.guides();
+        
+        // 레거시 planJson 호환성을 위한 폴백 로직
+        if (questionIntent == null || questionIntent.isBlank()) {
+            log.info("[FALLBACK] 첫 질문 intent가 없어 폴백값 사용 (레거시 planJson)");
             questionIntent = "이 질문을 통해 지원자의 역량을 평가합니다.";
+        }
+        if (answerGuides == null || answerGuides.isEmpty()) {
+            log.info("[FALLBACK] 첫 질문 guides가 없어 폴백값 사용 (레거시 planJson)");
             answerGuides = List.of(
                 "구체적인 상황과 배경을 명확히 설명하고, 당시 직면한 과제를 구체적으로 제시하세요.",
                 "문제 해결을 위해 취한 행동과 접근 방법을 단계별로 설명하고, 기술적 근거를 포함하세요.",
@@ -268,89 +268,54 @@ public class InterviewService {
         }
         String nextQuestion = done ? null : plan.questions().get(nextIndex).text();
         
-        // 🚀 병렬 처리: 질문 의도/가이드 생성과 TTS 합성을 동시에 실행
+        // 🚀 최적화: pre-generated 데이터에서 질문 의도/가이드 가져오기 + TTS 병렬 처리
         String questionIntent = null;
         List<String> answerGuides = null;
         TtsPayloadDto tts = null;
         
         if (!done && nextQuestion != null) {
-            long parallelStart = System.nanoTime();
+            long optimizedStart = System.nanoTime();
             
-            // 1️⃣ 질문 의도/가이드 생성 비동기 작업
-            CompletableFuture<Map<String, Object>> intentGuidesFuture = CompletableFuture.supplyAsync(() -> {
-                try {
-                    long intentStart = System.nanoTime();
-                    PlanQuestionDto nextQuestionDto = plan.questions().get(nextIndex);
-                    Map<String, Object> result = generateQuestionIntentAndGuidesWithRetry(
-                        nextQuestionDto.type(), 
-                        nextQuestion,
-                        session.getRole()
-                    );
-                    long intentMs = (System.nanoTime() - intentStart) / 1_000_000;
-                    log.info("[AI][parallel] 질문 의도/가이드 생성 완료: {} ms", intentMs);
-                    return result;
-                } catch (Exception e) {
-                    log.warn("[AI][parallel] 질문 의도/가이드 생성 실패: {}", e.getMessage());
-                    return Map.of(
-                        "intent", "이 질문을 통해 지원자의 역량을 평가합니다.",
-                        "guides", List.of(
-                            "구체적인 경험을 바탕으로 답변해주세요.",
-                            "STAR 방식(상황, 과제, 행동, 결과)을 활용하면 좋습니다.",
-                            "기술적 근거와 함께 설명해주세요."
-                        )
-                    );
-                }
-            });
-
-            // 2️⃣ TTS 합성 비동기 작업 (withAudio일 때만)
-            CompletableFuture<TtsPayloadDto> ttsFuture = null;
-            if (withAudio && !nextQuestion.isBlank()) {
-                ttsFuture = CompletableFuture.supplyAsync(() -> {
-                    try {
-                        long ttsStart = System.nanoTime();
-                        log.info("[TTS][parallel] starting synthesize for question: '{}'", nextQuestion);
-                        TtsPayloadDto result = ttsService.synthesize(nextQuestion, defaultTtsFormat);
-                        long ttsMs = (System.nanoTime() - ttsStart) / 1_000_000;
-                        log.info("[TTS][parallel] completed synthesize in {} ms", ttsMs);
-                        return result;
-                    } catch (Exception e) {
-                        log.warn("[TTS][parallel] synthesize failed: {}", e.getMessage());
-                        return null;
-                    }
-                });
-            }
-
-            // 3️⃣ 병렬 작업 완료 대기 및 결과 취합
-            try {
-                // 질문 의도/가이드 결과 취합
-                Map<String, Object> intentAndGuides = intentGuidesFuture.get();
-                questionIntent = (String) intentAndGuides.get("intent");
-                answerGuides = (List<String>) intentAndGuides.get("guides");
-
-                // TTS 결과 취합 (있을 경우에만)
-                if (ttsFuture != null) {
-                    tts = ttsFuture.get();
-                }
-
-                long parallelMs = (System.nanoTime() - parallelStart) / 1_000_000;
-                log.info("[PARALLEL] 전체 병렬 처리 완료: {} ms (의도/가이드 + TTS)", parallelMs);
-                
-            } catch (Exception e) {
-                log.error("[PARALLEL] 병렬 처리 중 예외 발생: {}", e.getMessage());
-                // 폴백: 기본값 설정
+            // 1️⃣ pre-generated 데이터에서 질문 의도/가이드 직접 가져오기 (LLM 호출 제거)
+            PlanQuestionDto nextQuestionDto = plan.questions().get(nextIndex);
+            questionIntent = nextQuestionDto.intent();
+            answerGuides = nextQuestionDto.guides();
+            
+            // 레거시 planJson 호환성을 위한 폴백 로직
+            if (questionIntent == null || questionIntent.isBlank()) {
+                log.info("[FALLBACK] 다음 질문 intent가 없어 폴백값 사용 (레거시 planJson)");
                 questionIntent = "이 질문을 통해 지원자의 역량을 평가합니다.";
+            }
+            if (answerGuides == null || answerGuides.isEmpty()) {
+                log.info("[FALLBACK] 다음 질문 guides가 없어 폴백값 사용 (레거시 planJson)");
                 answerGuides = List.of(
                     "구체적인 경험을 바탕으로 답변해주세요.",
                     "STAR 방식(상황, 과제, 행동, 결과)을 활용하면 좋습니다.",
                     "기술적 근거와 함께 설명해주세요."
                 );
-                tts = null;
             }
+
+            // 2️⃣ TTS 합성만 비동기 처리 (withAudio일 때만)
+            if (withAudio && !nextQuestion.isBlank()) {
+                try {
+                    long ttsStart = System.nanoTime();
+                    log.info("[TTS] starting synthesize for question: '{}'", nextQuestion);
+                    tts = ttsService.synthesize(nextQuestion, defaultTtsFormat);
+                    long ttsMs = (System.nanoTime() - ttsStart) / 1_000_000;
+                    log.info("[TTS] completed synthesize in {} ms", ttsMs);
+                } catch (Exception e) {
+                    log.warn("[TTS] synthesize failed: {}", e.getMessage());
+                    tts = null;
+                }
+            }
+
+            long optimizedMs = (System.nanoTime() - optimizedStart) / 1_000_000;
+            log.info("[OPTIMIZED] 질문 데이터 준비 완료: {} ms (pre-generated 방식)", optimizedMs);
         }
 
         // 🎯 전체 성능 측정 및 로깅
         long methodMs = (System.nanoTime() - methodStart) / 1_000_000;
-        log.info("[PERF] nextTurn 메서드 완료 - 전체 실행 시간: {} ms (AI: {} ms, 병렬처리)", 
+        log.info("[PERF] nextTurn 메서드 완료 - 전체 실행 시간: {} ms (AI: {} ms, 최적화됨)", 
                 methodMs, elapsedMs);
                 
         return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, scoreResult, nextIndex, done, tts);
