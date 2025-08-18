@@ -100,7 +100,7 @@ public class NewsDataService {
 
     // API 응답 조회
     private String getNewsApiResponse() throws Exception {
-        String encodedQuery = URLEncoder.encode("it+기술", StandardCharsets.UTF_8);
+        String encodedQuery = URLEncoder.encode("it", StandardCharsets.UTF_8);
         String apiUrl = buildApiUrl(encodedQuery, DEFAULT_DISPLAY_COUNT, 1, "sim");
         Map<String, String> headers = buildHeaders();
 
