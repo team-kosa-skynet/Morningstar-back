@@ -27,6 +27,7 @@ import com.gaebang.backend.domain.interview.util.PlanParser;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -46,7 +47,8 @@ public class InterviewService {
     private final InterviewAnswerRepository interviewAnswerRepository;
     private final MemberRepository memberRepository;
     private final UploadedDocumentRepository uploadedDocumentRepository;
-    private final InterviewerAiGateway ai;
+    private final InterviewerAiGateway openAiGateway;
+    private final InterviewerAiGateway geminiGateway;
     private final ObjectMapper om;
     private final PlanParser planParser;
     private final QuestionCatalog questionCatalog;
@@ -54,9 +56,13 @@ public class InterviewService {
     
     @Value("${tts.default-format:mp3}")
     private String defaultTtsFormat;
+    
+    @Value("${ai.provider:openai}")
+    private String aiProvider;
 
     public InterviewService(InterviewSessionRepository interviewSessionRepository,
-                            InterviewerAiGateway ai,
+                            @Qualifier("openAiInterviewerGateway") InterviewerAiGateway openAiGateway,
+                            @Qualifier("geminiInterviewerGateway") InterviewerAiGateway geminiGateway,
                             ObjectMapper objectMapper,
                             InterviewAnswerRepository interviewAnswerRepository,
                             MemberRepository memberRepository,
@@ -67,11 +73,19 @@ public class InterviewService {
         this.interviewAnswerRepository = interviewAnswerRepository;
         this.memberRepository = memberRepository;
         this.uploadedDocumentRepository = uploadedDocumentRepository;
-        this.ai = ai;
+        this.openAiGateway = openAiGateway;
+        this.geminiGateway = geminiGateway;
         this.om = objectMapper;
         this.planParser = planParser;
         this.questionCatalog = questionCatalog;
         this.ttsService = ttsService;
+    }
+    
+    /**
+     * 설정에 따라 AI 게이트웨이를 선택합니다.
+     */
+    private InterviewerAiGateway getAiGateway() {
+        return "gemini".equalsIgnoreCase(aiProvider) ? geminiGateway : openAiGateway;
     }
 
     @Transactional
@@ -115,7 +129,7 @@ public class InterviewService {
         List<Map<String,Object>> candidates =
                 questionCatalog.candidates(role, skills, 10);
 
-        Map<String, Object> planMap = ai.generatePlan(role, profileSnapshotJson, candidates);
+        Map<String, Object> planMap = getAiGateway().generatePlan(role, profileSnapshotJson, candidates);
         String planJson = om.writeValueAsString(planMap);
 
         UUID sessionId = UUID.randomUUID();
@@ -132,8 +146,30 @@ public class InterviewService {
 
         InterviewPlanDto plan = planParser.parse(planJson);
         String firstQuestion = plan.questions().get(0).text();
-        String greeting = ai.generateGreeting(displayName);
+        String firstQuestionType = plan.questions().get(0).type();
+        String greeting = getAiGateway().generateGreeting(displayName);
         int totalQuestions = plan.questions().size();
+
+        // 첫 질문의 의도와 가이드 생성 (NextTurnResponseDto와 동일한 형식)
+        String questionIntent = null;
+        List<String> answerGuides = null;
+        try {
+            Map<String, Object> intentAndGuides = generateQuestionIntentAndGuidesWithRetry(
+                firstQuestionType, firstQuestion, role);
+            questionIntent = (String) intentAndGuides.get("intent");
+            answerGuides = (List<String>) intentAndGuides.get("guides");
+        } catch (Exception e) {
+            log.warn("[AI] 첫 질문 의도/가이드 생성 실패: {}", e.getMessage());
+            // 폴백값 설정 (NextTurnResponseDto와 동일한 스타일)
+            questionIntent = "이 질문을 통해 지원자의 역량을 평가합니다.";
+            answerGuides = List.of(
+                "구체적인 상황과 배경을 명확히 설명하고, 당시 직면한 과제를 구체적으로 제시하세요.",
+                "문제 해결을 위해 취한 행동과 접근 방법을 단계별로 설명하고, 기술적 근거를 포함하세요.",
+                "사용한 기술 스택과 그 선택 이유를 명확히 하고, 각 기술의 장단점을 언급하세요.",
+                "최종 결과와 비즈니스 임팩트를 수치나 구체적 사례로 보여주세요.",
+                "해당 경험에서 얻은 핵심 인사이트와 향후 적용 방안을 언급하세요."
+            );
+        }
 
         // withAudio면 첫 질문(필요시 greeting 포함) 음성 생성
         TtsPayloadDto tts = null;
@@ -146,7 +182,7 @@ public class InterviewService {
             }
         }
 
-        return new StartSessionResponseDto(sessionId, greeting, firstQuestion, totalQuestions, tts);
+        return new StartSessionResponseDto(sessionId, greeting, firstQuestion, questionIntent, answerGuides, totalQuestions, 0, tts);
     }
 
     @Transactional
@@ -179,7 +215,7 @@ public class InterviewService {
         String prevResponseId = session.getLastResponseId();
 
         long t0 = System.nanoTime();
-        AiTurnFeedbackDto feedback = ai.nextTurn(
+        AiTurnFeedbackDto feedback = getAiGateway().nextTurn(
                 session.getPlanJson(),
                 req.questionIndex(),
                 req.transcript(),
@@ -404,7 +440,7 @@ public class InterviewService {
         // 5) OpenAI로 요약 3문장 생성 (체인 + facts). 실패 시 폴백.
         Map<String, Object> sum;
         try {
-            sum = ai.finalizeReport(sessionJson, previousResponseId);
+            sum = getAiGateway().finalizeReport(sessionJson, previousResponseId);
         } catch (Exception ex) {
             sum = Map.of(
                     "strengths", "논리 전개가 명확하고 핵심을 빠르게 제시합니다.",
@@ -461,7 +497,7 @@ public class InterviewService {
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 log.debug("[AI] 질문 의도/가이드 생성 시도 {}/2", attempt);
-                return ai.generateQuestionIntentAndGuides(questionType, questionText, role);
+                return getAiGateway().generateQuestionIntentAndGuides(questionType, questionText, role);
             } catch (Exception e) {
                 lastException = e;
                 log.warn("[AI] 질문 의도/가이드 생성 {}차 시도 실패: {}", attempt, e.getMessage());
