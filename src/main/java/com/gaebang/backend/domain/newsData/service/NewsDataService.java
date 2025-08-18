@@ -94,13 +94,14 @@ public class NewsDataService {
 
         } catch (Exception e) {
             log.error("뉴스 데이터 처리 중 오류", e);
-            throw new RuntimeException("뉴스 데이터 처리 실패", e);
+            // RuntimeException을 던지지 않음 - 스케줄러가 계속 동작함
+//            throw new RuntimeException("뉴스 데이터 처리 실패", e);
         }
     }
 
     // API 응답 조회
     private String getNewsApiResponse() throws Exception {
-        String encodedQuery = URLEncoder.encode("it+기술", StandardCharsets.UTF_8);
+        String encodedQuery = URLEncoder.encode("it", StandardCharsets.UTF_8);
         String apiUrl = buildApiUrl(encodedQuery, DEFAULT_DISPLAY_COUNT, 1, "sim");
         Map<String, String> headers = buildHeaders();
 

@@ -12,6 +12,7 @@ import com.gaebang.backend.domain.interview.service.DocumentParsingService;
 import com.gaebang.backend.domain.interview.service.InterviewScoreService;
 import com.gaebang.backend.domain.interview.service.InterviewService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
+import com.gaebang.backend.global.util.ResponseDTO;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -41,47 +42,56 @@ public class InterviewController {
     }
 
     @PostMapping("/session")
-    public ResponseEntity<StartSessionResponseDto> start(@Valid @RequestBody StartSessionRequestDto req,
-                                                         @AuthenticationPrincipal PrincipalDetails principalDetails,
-                                                         @RequestParam(required = false) Boolean withAudio
+    public ResponseEntity<ResponseDTO<StartSessionResponseDto>> start(@Valid @RequestBody StartSessionRequestDto req,
+                                                                       @AuthenticationPrincipal PrincipalDetails principalDetails,
+                                                                       @RequestParam(required = false) Boolean withAudio
     ) throws Exception {
         Long memberId = principalDetails.getMember().getId();
         boolean includeAudio = (withAudio != null) ? withAudio : defaultWithAudio;
-        return ResponseEntity.ok(interviewService.start(memberId, req, includeAudio));
+        StartSessionResponseDto result = interviewService.start(memberId, req, includeAudio);
+        ResponseDTO<StartSessionResponseDto> response = ResponseDTO.okWithData(result, "면접 세션이 성공적으로 시작되었습니다.");
+        return ResponseEntity.status(response.getCode()).body(response);
     }
 
     @PostMapping("/turn")
-    public ResponseEntity<NextTurnResponseDto> turn(@Valid @RequestBody TurnRequestDto req,
-                                                    @AuthenticationPrincipal PrincipalDetails principalDetails,
-                                                    @RequestParam(required = false) Boolean withAudio
+    public ResponseEntity<ResponseDTO<NextTurnResponseDto>> turn(@Valid @RequestBody TurnRequestDto req,
+                                                                 @AuthenticationPrincipal PrincipalDetails principalDetails,
+                                                                 @RequestParam(required = false) Boolean withAudio
     ) throws Exception {
         Long memberId = principalDetails.getMember().getId();
         boolean includeAudio = (withAudio != null) ? withAudio : defaultWithAudio;
-        return ResponseEntity.ok(interviewService.nextTurn(req, memberId, includeAudio));
+        NextTurnResponseDto result = interviewService.nextTurn(req, memberId, includeAudio);
+        ResponseDTO<NextTurnResponseDto> response = ResponseDTO.okWithData(result, "면접 답변이 성공적으로 처리되었습니다.");
+        return ResponseEntity.status(response.getCode()).body(response);
     }
 
     @PostMapping("/report/finalize")
-    public ResponseEntity<FinalizeReportResponseDto> finalizeReport(@RequestBody FinalizeReportRequestDto dto,
-                                                                    @AuthenticationPrincipal PrincipalDetails principalDetails) throws Exception {
+    public ResponseEntity<ResponseDTO<FinalizeReportResponseDto>> finalizeReport(@RequestBody FinalizeReportRequestDto dto,
+                                                                                 @AuthenticationPrincipal PrincipalDetails principalDetails) throws Exception {
         Long memberId = principalDetails.getMember().getId();
-        return ResponseEntity.ok(interviewService.finalizeReport(dto.sessionId(), memberId));
+        FinalizeReportResponseDto result = interviewService.finalizeReport(dto.sessionId(), memberId);
+        ResponseDTO<FinalizeReportResponseDto> response = ResponseDTO.okWithData(result, "면접 보고서가 성공적으로 생성되었습니다.");
+        return ResponseEntity.status(response.getCode()).body(response);
     }
 
     @GetMapping("/{sessionId}/scores")
-    public ScoresDto scores(@PathVariable UUID sessionId) {
-        return interviewScoreService.computeScores(sessionId);
+    public ResponseEntity<ResponseDTO<ScoresDto>> scores(@PathVariable UUID sessionId) {
+        ScoresDto result = interviewScoreService.computeScores(sessionId);
+        ResponseDTO<ScoresDto> response = ResponseDTO.okWithData(result, "점수 조회가 성공적으로 완료되었습니다.");
+        return ResponseEntity.status(response.getCode()).body(response);
     }
 
     @PostMapping("/context")
-    public ResponseEntity<Void> upsertContext(
+    public ResponseEntity<ResponseDTO<Void>> upsertContext(
             @RequestBody UpsertContextRequestDto req,
             @AuthenticationPrincipal PrincipalDetails principalDetails) throws Exception {
         interviewService.upsertContext(req, principalDetails.getMember().getId());
-        return ResponseEntity.ok().build();
+        ResponseDTO<Void> response = ResponseDTO.okWithMessage("면접 컨텍스트가 성공적으로 업데이트되었습니다.");
+        return ResponseEntity.status(response.getCode()).body(response);
     }
 
     @PostMapping("/documents/parse")
-    public ResponseEntity<String> parseDocument(
+    public ResponseEntity<ResponseDTO<String>> parseDocument(
             @RequestParam("file") MultipartFile file,
             @AuthenticationPrincipal PrincipalDetails principalDetails) throws Exception {
         
@@ -90,7 +100,8 @@ public class InterviewController {
         
         Long memberId = principalDetails.getMember().getId();
         String documentId = documentParsingService.parseAndSaveDocument(file, memberId);
-        return ResponseEntity.ok(documentId);
+        ResponseDTO<String> response = ResponseDTO.okWithData(documentId, "문서가 성공적으로 파싱되었습니다.");
+        return ResponseEntity.status(response.getCode()).body(response);
     }
 
     private void validateFile(MultipartFile file) {
