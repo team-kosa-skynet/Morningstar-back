@@ -6,6 +6,7 @@ public record StartSessionResponseDto(
         UUID sessionId,
         String greeting,
         String firstQuestion,
+        int totalQuestions,
         TtsPayloadDto tts
 ) {
 }

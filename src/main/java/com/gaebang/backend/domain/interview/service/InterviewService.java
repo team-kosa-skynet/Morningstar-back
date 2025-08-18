@@ -133,6 +133,7 @@ public class InterviewService {
         InterviewPlanDto plan = planParser.parse(planJson);
         String firstQuestion = plan.questions().get(0).text();
         String greeting = ai.generateGreeting(displayName);
+        int totalQuestions = plan.questions().size();
 
         // withAudio면 첫 질문(필요시 greeting 포함) 음성 생성
         TtsPayloadDto tts = null;
@@ -145,7 +146,7 @@ public class InterviewService {
             }
         }
 
-        return new StartSessionResponseDto(sessionId, greeting, firstQuestion, tts);
+        return new StartSessionResponseDto(sessionId, greeting, firstQuestion, totalQuestions, tts);
     }
 
     @Transactional
@@ -318,7 +319,7 @@ public class InterviewService {
         log.info("[PERF] nextTurn 메서드 완료 - 전체 실행 시간: {} ms (AI: {} ms, 병렬처리)", 
                 methodMs, elapsedMs);
                 
-        return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, scoreResult, done, tts);
+        return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, scoreResult, nextIndex, done, tts);
     }
 
     @Transactional(readOnly = true)
