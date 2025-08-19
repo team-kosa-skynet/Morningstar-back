@@ -1,5 +1,7 @@
 package com.gaebang.backend.domain.interview.service;
 
+import com.gaebang.backend.domain.interview.llm.InterviewerAiGateway;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -9,7 +11,58 @@ import java.util.regex.Pattern;
 @Component
 public class DocumentContentExtractor {
     
+    private final InterviewerAiGateway aiGateway;
+    
+    public DocumentContentExtractor(@Qualifier("geminiInterviewerGateway") InterviewerAiGateway aiGateway) {
+        this.aiGateway = aiGateway;
+    }
+    
     public Map<String, Object> extractStructuredInfo(String rawText) {
+        try {
+            // AI 기반 추출 시도
+            return extractStructuredInfoWithAI(rawText);
+        } catch (Exception e) {
+            System.err.println("[DocumentExtractor] AI 추출 실패, 정규식 폴백 사용: " + e.getMessage());
+            // 폴백: 기존 정규식 방식
+            return extractStructuredInfoWithRegex(rawText);
+        }
+    }
+    
+    /**
+     * AI 기반 문서 정보 추출
+     */
+    private Map<String, Object> extractStructuredInfoWithAI(String rawText) throws Exception {
+        // 개인정보 필터링 (이름, 연락처, 주소 등 제거)
+        String filteredText = filterPersonalInfo(rawText);
+        
+        // AI에게 구조화된 정보 추출 요청
+        return aiGateway.extractDocumentInfo(filteredText);
+    }
+    
+    /**
+     * 개인정보 필터링
+     */
+    private String filterPersonalInfo(String text) {
+        String filtered = text;
+        
+        // 전화번호 패턴 제거
+        filtered = filtered.replaceAll("\\d{2,3}-\\d{3,4}-\\d{4}", "[전화번호]");
+        filtered = filtered.replaceAll("010-?\\d{4}-?\\d{4}", "[전화번호]");
+        
+        // 이메일 패턴 제거
+        filtered = filtered.replaceAll("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "[이메일]");
+        
+        // 주소 패턴 제거 (시/구/동 포함)
+        filtered = filtered.replaceAll("\\S+시\\s+\\S+구\\s+\\S+동\\s*\\S*", "[주소]");
+        filtered = filtered.replaceAll("\\S+도\\s+\\S+시\\s+\\S+", "[주소]");
+        
+        return filtered;
+    }
+    
+    /**
+     * 정규식 기반 문서 정보 추출 (폴백)
+     */
+    private Map<String, Object> extractStructuredInfoWithRegex(String rawText) {
         // 1단계: 키워드 기반 섹션 분리
         Map<String, String> sections = extractSections(rawText);
         
