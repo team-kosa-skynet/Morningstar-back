@@ -150,7 +150,7 @@ public class InterviewService {
         String greeting = getAiGateway().generateGreeting(displayName);
         int totalQuestions = plan.questions().size();
 
-        // 첫 질문의 의도와 가이드를 pre-generated 데이터에서 가져오기 (성능 최적화)
+        // 첫 질문의 의도와 가이드를 pre-generated 데이터에서 가져오기
         PlanQuestionDto firstQuestionDto = plan.questions().get(0);
         String questionIntent = firstQuestionDto.intent();
         List<String> answerGuides = firstQuestionDto.guides();
@@ -222,7 +222,6 @@ public class InterviewService {
         );
         long elapsedMs = (System.nanoTime() - t0) / 1_000_000;
 
-        Map<String, Integer> scoreResult = feedback.scoreDelta(); // 이제 100점 만점 점수
         String coachingTips = normalizeTips(feedback.coachingTips());
         String llmResponseId = feedback.responseId();
 
@@ -231,7 +230,7 @@ public class InterviewService {
 
         Map<String, Object> metricsPayload = new HashMap<>();
         metricsPayload.put("coachingTips", coachingTips);
-        metricsPayload.put("scoreResult", scoreResult);
+        // scoreResult 제거 - 배치 평가로 이동
         String metricsJson = om.writeValueAsString(metricsPayload);
 
         InterviewAnswer answer = InterviewAnswer.create(
@@ -268,7 +267,7 @@ public class InterviewService {
         }
         String nextQuestion = done ? null : plan.questions().get(nextIndex).text();
         
-        // 🚀 최적화: pre-generated 데이터에서 질문 의도/가이드 가져오기 + TTS 병렬 처리
+        // pre-generated 데이터에서 질문 의도/가이드 가져오기 + TTS 병렬 처리
         String questionIntent = null;
         List<String> answerGuides = null;
         TtsPayloadDto tts = null;
@@ -276,7 +275,7 @@ public class InterviewService {
         if (!done && nextQuestion != null) {
             long optimizedStart = System.nanoTime();
             
-            // 1️⃣ pre-generated 데이터에서 질문 의도/가이드 직접 가져오기 (LLM 호출 제거)
+            // pre-generated 데이터에서 질문 의도/가이드 직접 가져오기
             PlanQuestionDto nextQuestionDto = plan.questions().get(nextIndex);
             questionIntent = nextQuestionDto.intent();
             answerGuides = nextQuestionDto.guides();
@@ -295,7 +294,7 @@ public class InterviewService {
                 );
             }
 
-            // 2️⃣ TTS 합성만 비동기 처리 (withAudio일 때만)
+            // TTS 합성 처리 (withAudio일 때만)
             if (withAudio && !nextQuestion.isBlank()) {
                 try {
                     long ttsStart = System.nanoTime();
@@ -313,12 +312,12 @@ public class InterviewService {
             log.info("[OPTIMIZED] 질문 데이터 준비 완료: {} ms (pre-generated 방식)", optimizedMs);
         }
 
-        // 🎯 전체 성능 측정 및 로깅
+        // 전체 성능 측정 및 로깅
         long methodMs = (System.nanoTime() - methodStart) / 1_000_000;
         log.info("[PERF] nextTurn 메서드 완료 - 전체 실행 시간: {} ms (AI: {} ms, 최적화됨)", 
                 methodMs, elapsedMs);
                 
-        return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, scoreResult, nextIndex, done, tts);
+        return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, nextIndex, done, tts);
     }
 
     @Transactional(readOnly = true)
@@ -332,21 +331,23 @@ public class InterviewService {
         List<InterviewAnswer> answers = interviewAnswerRepository
                 .findBySession_IdOrderByQuestionIndexAsc(sessionId);
 
-        // 1) 턴별 metricsJson에서 scoreResult 평균 계산 (100점 만점 시스템)
-        Map<String, List<Integer>> scoreHistory = new HashMap<>();
-        for (InterviewAnswer a : answers) {
-            Map<?, ?> metrics = om.readValue(a.getMetricsJson(), Map.class);
-            Object raw = metrics.get("scoreResult");
-            Map<String, Integer> scores =
-                    (raw instanceof Map)
-                            ? om.convertValue(raw, om.getTypeFactory().constructMapType(Map.class, String.class, Integer.class))
-                            : Collections.emptyMap();
-            for (Map.Entry<String, Integer> e : scores.entrySet()) {
-                scoreHistory.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(e.getValue());
-            }
+        // 1) 배치 평가: AI를 통해 전체 면접 세션 종합 점수 계산
+        Map<String, Integer> subscores;
+        try {
+            log.info("[BATCH] 배치 평가 시작 - session: {}, 답변 수: {}", sessionId, answers.size());
+            subscores = generateBatchEvaluation(answers, session);
+            log.info("[BATCH] 배치 평가 완료 - 점수: {}", subscores);
+        } catch (Exception e) {
+            log.warn("[BATCH] 배치 평가 실패, 폴백 점수 사용: {}", e.getMessage());
+            // 폴백: 기본 점수 (면접 완료 기본선)
+            subscores = Map.of(
+                "clarity", 45,
+                "structure_STAR", 40, 
+                "tech_depth", 50,
+                "tradeoff", 42,
+                "root_cause", 38
+            );
         }
-
-        Map<String, Integer> subscores = calculateAverageScores(scoreHistory);
 
         double overall = 0.0;
         for (Integer v : subscores.values()) overall += v;
@@ -448,6 +449,86 @@ public class InterviewService {
         }
 
         session.updateProfileSnapshotJson(om.writeValueAsString(snap));
+    }
+
+    /**
+     * 배치 평가: 전체 면접 세션을 종합하여 5지표 점수 계산
+     */
+    private Map<String, Integer> generateBatchEvaluation(List<InterviewAnswer> answers, InterviewSession session) throws Exception {
+        if (answers.isEmpty()) {
+            throw new IllegalArgumentException("답변이 없어 배치 평가를 수행할 수 없습니다");
+        }
+
+        // 면접 세션 요약 데이터 생성
+        StringBuilder evaluationData = new StringBuilder();
+        evaluationData.append(String.format("면접 역할: %s\n", session.getRole()));
+        evaluationData.append(String.format("답변 수: %d개\n\n", answers.size()));
+
+        for (InterviewAnswer answer : answers) {
+            evaluationData.append(String.format("Q%d [%s]: %s\n", 
+                answer.getQuestionIndex() + 1, 
+                answer.getQuestionType(), 
+                answer.getQuestionText()));
+            
+            String transcript = answer.getTranscript();
+            if (transcript != null && !transcript.isBlank()) {
+                // 긴 답변은 요약하여 전달 (배치 평가의 정확성을 위해)
+                String summary = transcript.length() > 500 
+                    ? transcript.substring(0, 500) + "..." 
+                    : transcript;
+                evaluationData.append(String.format("A%d: %s\n\n", 
+                    answer.getQuestionIndex() + 1, summary));
+            } else {
+                evaluationData.append(String.format("A%d: [답변 없음]\n\n", 
+                    answer.getQuestionIndex() + 1));
+            }
+        }
+
+        // AI를 통한 종합 점수 계산
+        Map<String, Object> batchResult = getAiGateway().generateBatchEvaluation(
+            evaluationData.toString(), 
+            session.getRole(),
+            session.getLastResponseId()
+        );
+
+        // 결과를 Integer Map으로 변환
+        Map<String, Integer> scores = new HashMap<>();
+        Object scoresRaw = batchResult.get("scores");
+        if (scoresRaw instanceof Map) {
+            Map<?, ?> scoresMap = (Map<?, ?>) scoresRaw;
+            for (Map.Entry<?, ?> entry : scoresMap.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                Object value = entry.getValue();
+                Integer score = null;
+                
+                if (value instanceof Number) {
+                    score = ((Number) value).intValue();
+                } else if (value instanceof String) {
+                    try {
+                        score = Integer.parseInt((String) value);
+                    } catch (NumberFormatException e) {
+                        log.warn("[BATCH] 점수 파싱 실패: {} = {}", key, value);
+                    }
+                }
+                
+                if (score != null) {
+                    // 0-100 범위로 제한
+                    score = Math.max(0, Math.min(100, score));
+                    scores.put(key, score);
+                }
+            }
+        }
+
+        // 필수 지표가 없는 경우 기본값 설정
+        String[] requiredMetrics = {"clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"};
+        for (String metric : requiredMetrics) {
+            if (!scores.containsKey(metric)) {
+                scores.put(metric, 45); // 기본값: 보통 수준
+                log.warn("[BATCH] 누락된 지표 {} 기본값 설정: 45점", metric);
+            }
+        }
+
+        return scores;
     }
 
     /**

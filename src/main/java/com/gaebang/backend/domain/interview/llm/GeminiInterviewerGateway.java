@@ -327,44 +327,20 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         PlanQuestionDto q = planParser.getQuestionByIndex(planJson, questionIndex);
 
         String prompt = """
-                당신은 전문 면접 코치입니다. 아래 정보를 바탕으로 건설적인 피드백과 지표별 점수를 반환하세요.
+                당신은 전문 면접 코치입니다. 아래 정보를 바탕으로 건설적인 피드백을 제공해주세요.
                 - 질문유형: %s
                 - 질문: %s
                 - 후보자 답변: %s
                 
-                평가 기준 (0-10점, 엄격하게 적용):
-                - 0점: 답변 없음, 완전히 잘못된 답변
-                - 1-2점: "잘 모르겠습니다", "모르겠어요" 등 회피 답변
-                - 3-4점: 기본 개념 부족, 피상적 답변
-                - 5-6점: 기본 수준, 평범한 답변
-                - 7-8점: 구체적이고 실무적인 좋은 답변
-                - 9-10점: 깊이 있고 통찰력 있는 완벽한 답변
-                
-                평가 지표별 세부 기준:
-                - clarity: 답변의 명확성과 이해도
-                - structure_STAR: STAR 방식 또는 체계적 구조
-                - tech_depth: 기술적 깊이와 전문성
-                - tradeoff: 장단점 분석, 의사결정 과정
-                - root_cause: 근본 원인 분석, 문제 해결 접근
-                
-                현실적 채점 규칙:
-                ⚠️ 중요: "잘 모르겠습니다", "모르겠어요" 등 회피 답변 → 모든 지표 반드시 1-2점 (기본값 금지!)
-                1) 완전 회피 답변 → 1-2점 (답변 시도는 인정)
-                2) 질문과 무관한 답변 → 해당 지표 0-1점
-                3) 해당 질문에서 평가할 수 없는 지표 → 0점 (평가 불가)
-                4) 기본 수준의 답변 → 2-3점 (최소 기본선)
-                5) coachingTips: 1~2문장으로 개선점 구체적 제시
+                피드백 제공 가이드라인:
+                1) 답변의 강점과 개선점을 균형있게 언급
+                2) 구체적이고 실행 가능한 조언 제시
+                3) 질문 유형에 맞는 맞춤형 피드백
+                4) 1-2문장으로 간결하고 명확하게 작성
                 
                 응답은 반드시 다음 JSON 형식으로만 작성해주세요:
                 {
-                  "coachingTips": "개선점 1-2문장",
-                  "scoreResult": {
-                    "clarity": 점수(0-10),
-                    "structure_STAR": 점수(0-10),
-                    "tech_depth": 점수(0-10),
-                    "tradeoff": 점수(0-10),
-                    "root_cause": 점수(0-10)
-                  }
+                  "coachingTips": "구체적인 개선점과 조언을 1-2문장으로"
                 }
                 """.formatted(q.type(), q.text(), transcript);
 
@@ -393,26 +369,17 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         Map<String, Object> requestBody = Map.of(
             "contents", history,
             "generationConfig", Map.of(
-                "temperature", 0.3,
-                "maxOutputTokens", 4000,
+                "temperature", 0.2,         // 0.3 → 0.2 (더 결정론적)
+                "maxOutputTokens", 2000,    // 4000 → 2000 (50% 감소)
+                "topK", 10,                 // 후보 단어 수 제한
+                "topP", 0.8,                // 확률 임계값 설정
                 "responseMimeType", "application/json",
                 "responseSchema", Map.of(
                     "type", "object",
                     "properties", Map.of(
-                        "coachingTips", Map.of("type", "string"),
-                        "scoreResult", Map.of(
-                            "type", "object",
-                            "properties", Map.of(
-                                "clarity", Map.of("type", "integer"),
-                                "structure_STAR", Map.of("type", "integer"),
-                                "tech_depth", Map.of("type", "integer"),
-                                "tradeoff", Map.of("type", "integer"),
-                                "root_cause", Map.of("type", "integer")
-                            ),
-                            "required", List.of("clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause")
-                        )
+                        "coachingTips", Map.of("type", "string")
                     ),
-                    "required", List.of("coachingTips", "scoreResult")
+                    "required", List.of("coachingTips")
                 )
             )
         );
@@ -506,34 +473,13 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             System.err.println("[Gemini] nextTurn JSON 파싱 실패. 응답 텍스트: " + responseText);
             // 폴백: 기본 응답 생성
             parsedResponse = Map.of(
-                "coachingTips", "답변을 더 구체적으로 보완해주세요.",
-                "scoreResult", Map.of(
-                    "clarity", 3, "structure_STAR", 3, "tech_depth", 3, "tradeoff", 3, "root_cause", 3
-                )
+                "coachingTips", "답변을 더 구체적으로 보완해주세요."
             );
         }
         
         String tips = (String) parsedResponse.getOrDefault("coachingTips", "핵심부터 1~2문장으로.");
-        Map<String, Integer> rawScores = (Map<String, Integer>) parsedResponse.getOrDefault("scoreResult", Map.of());
         
-        // 0-10점을 100점 만점으로 환산
-        String[] KEYS = {"clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"};
-        Map<String, Integer> scores = new HashMap<>();
-        
-        for (String k : KEYS) {
-            int rawScore = rawScores.getOrDefault(k, 2);
-            int finalScore;
-            if (rawScore == 0) {
-                finalScore = 0;
-            } else {
-                finalScore = 20 + (rawScore - 2) * 10;
-                finalScore = Math.max(10, finalScore);
-            }
-            finalScore = Math.max(0, Math.min(100, finalScore));
-            scores.put(k, finalScore);
-        }
-        
-        return new AiTurnFeedbackDto(tips, scores, responseId);
+        return new AiTurnFeedbackDto(tips, responseId);
     }
 
     @Override
@@ -777,6 +723,159 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         combined.addAll(questionTypeGuides);
         
         return combined.size() > 3 ? combined.subList(0, 3) : combined;
+    }
+
+    @Override
+    public Map<String, Object> generateBatchEvaluation(String evaluationData, String role, String previousResponseId) throws Exception {
+        try {
+            String prompt = """
+                    당신은 엄격한 시니어 면접관입니다. 아래 전체 면접 내용을 종합하여 정확한 점수를 산정해주세요.
+                    
+                    **평가 데이터:**
+                    %s
+                    
+                    **평가 지표 (0-100점):**
+                    - clarity: 명확한 의사소통 능력
+                    - structure_STAR: 체계적인 답변 구조 (상황-과제-행동-결과)
+                    - tech_depth: 기술적 깊이와 전문성
+                    - tradeoff: 트레이드오프 인식과 판단력
+                    - root_cause: 근본 원인 분석 능력
+                    
+                    **점수 기준:**
+                    - 0-20점: 매우 부족 (답변 회피, 기본 지식 부족)
+                    - 21-40점: 부족 (피상적 이해)
+                    - 41-60점: 보통 (기본 수준)
+                    - 61-80점: 좋음 (실무 활용 가능)
+                    - 81-100점: 우수 (깊이 있는 전문성)
+                    
+                    **주의사항:**
+                    - 전체 답변의 일관성과 패턴을 종합 고려
+                    - "잘 모르겠습니다" 답변은 해당 지표에서 감점
+                    - 역할(%s)에 맞는 기술적 깊이로 평가
+                    - 각 지표별로 구체적 근거와 함께 점수 산정
+                    
+                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
+                    {
+                      "scores": {
+                        "clarity": 45,
+                        "structure_STAR": 38,
+                        "tech_depth": 52,
+                        "tradeoff": 41,
+                        "root_cause": 36
+                      }
+                    }
+                    """.formatted(evaluationData, role);
+
+            // 컨텍스트 관리
+            String conversationKey = previousResponseId != null ? previousResponseId : "batch_" + evaluationData.hashCode();
+            List<Map<String, Object>> history = conversationHistory.computeIfAbsent(conversationKey, k -> new ArrayList<>());
+            
+            // 히스토리가 비어있으면 시스템 메시지 추가
+            if (history.isEmpty()) {
+                history.add(Map.of(
+                    "role", "user",
+                    "parts", List.of(Map.of("text", "당신은 엄격한 시니어 면접관입니다. 전체 면접 세션을 종합하여 정확한 점수를 산정해주세요."))
+                ));
+                history.add(Map.of(
+                    "role", "model", 
+                    "parts", List.of(Map.of("text", "네, 면접 전체를 종합하여 엄격하고 정확한 점수를 산정하겠습니다."))
+                ));
+            }
+            
+            history.add(Map.of(
+                "role", "user",
+                "parts", List.of(Map.of("text", prompt))
+            ));
+
+            Map<String, Object> requestBody = Map.of(
+                "contents", history,
+                "generationConfig", Map.of(
+                    "temperature", 0.1,           // 매우 결정론적
+                    "maxOutputTokens", 2000,      // 배치 평가용 충분한 토큰
+                    "responseMimeType", "application/json",
+                    "responseSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                            "scores", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                    "clarity", Map.of("type", "integer"),
+                                    "structure_STAR", Map.of("type", "integer"),
+                                    "tech_depth", Map.of("type", "integer"),
+                                    "tradeoff", Map.of("type", "integer"),
+                                    "root_cause", Map.of("type", "integer")
+                                ),
+                                "required", List.of("clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause")
+                            )
+                        ),
+                        "required", List.of("scores")
+                    )
+                )
+            );
+
+            String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            
+            JsonNode root = om.readTree(response.getBody());
+            JsonNode candidates = root.path("candidates");
+            
+            if (candidates.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
+            }
+            
+            JsonNode content = candidates.get(0).path("content");
+            JsonNode parts = content.path("parts");
+            
+            if (parts.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+            }
+            
+            String responseText = parts.get(0).path("text").asText();
+            
+            // 응답을 히스토리에 추가
+            history.add(Map.of(
+                "role", "model",
+                "parts", List.of(Map.of("text", responseText))
+            ));
+            
+            // 안전한 JSON 파싱
+            try {
+                if (!responseText.trim().startsWith("{")) {
+                    throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + responseText.substring(0, Math.min(responseText.length(), 100)));
+                }
+                return om.readValue(responseText, Map.class);
+            } catch (Exception e) {
+                System.err.println("[Gemini] generateBatchEvaluation JSON 파싱 실패. 응답 텍스트: " + responseText);
+                // 폴백: 기본 점수 반환
+                return Map.of(
+                    "scores", Map.of(
+                        "clarity", 45,
+                        "structure_STAR", 40,
+                        "tech_depth", 50,
+                        "tradeoff", 42,
+                        "root_cause", 38
+                    )
+                );
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[AI][Gemini] generateBatchEvaluation 실패: " + e.getMessage());
+            return Map.of(
+                "scores", Map.of(
+                    "clarity", 45,
+                    "structure_STAR", 40,
+                    "tech_depth", 50,
+                    "tradeoff", 42,
+                    "root_cause", 38
+                )
+            );
+        }
     }
 
     @Override
