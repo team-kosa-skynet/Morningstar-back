@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -32,49 +33,78 @@ public class NewsImageService {
     private final NewsDataRepository newsDataRepository;
     private final S3ImageService s3ImageService;
 
+    // 전역 상태 관리
+    private volatile boolean apiQuotaExceeded = false;
+    private volatile LocalDateTime quotaResetTime = null;
+
     // 이미지가 없는 뉴스 데이터만 조회
     public List<NewsData> getNewsWithoutImages() {
-         List<NewsData> newsData = newsDataRepository.findAllByImageUrlIsNullOrEmpty();
+        List<NewsData> newsData = newsDataRepository.findAllByImageUrlIsNullOrEmpty();
         log.info("이미지가 없는 뉴스 데이터 개수: {}", newsData.size());
         return newsData;
     }
 
     // 개별 뉴스의 제목과 설명으로 프롬프트 생성 (크기별 분기)
     private String createImagePrompt(String title, String description, boolean isPopular) {
-        String sizeInstruction = isPopular ?
-                "Create a high-quality, detailed thumbnail image at 500x324 resolution. " :
-                "Create a simple thumbnail image at standard resolution. ";
+        String sizeInstruction = isPopular ? "Create a high-quality, detailed thumbnail image at 500x324 resolution. " : "Create a simple thumbnail image at standard resolution. ";
 
-        return String.format(
-                sizeInstruction +
-                        "The image should match the mood and atmosphere of this news article. " +
-                        "I don't want the news content itself in the image, just a simple image that fits the general vibe.\n\n" +
-                        "News title: %s\n" +
-                        "News description: %s\n\n" +
-                        "Generate a clean, atmospheric image that complements this news topic. " +
-                        "Keep it simple and mood-appropriate. " +
-                        "No text, no letters, no Korean characters, no written content. " +
-                        "Just a simple visual that matches the general feeling of the article.",
-                title, description
-        );
+        return String.format(sizeInstruction + "The image should match the mood and atmosphere of this news article. " + "I don't want the news content itself in the image, just a simple image that fits the general vibe.\n\n" + "News title: %s\n" + "News description: %s\n\n" + "Generate a clean, atmospheric image that complements this news topic. " + "Keep it simple and mood-appropriate. " + "No text, no letters, no Korean characters, no written content. " + "Just a simple visual that matches the general feeling of the article.", title, description);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void createNewsImages() {
-        try {
-            log.info("=== 개별 뉴스 이미지 생성 시작 ===");
 
-            List<NewsData> newsWithoutImages = getNewsWithoutImages();
-            if (newsWithoutImages.isEmpty()) {
+        // 쿼터 초과 상태 체크
+        if (isQuotaExceeded()) {
+            log.warn("API 쿼터 초과 상태 - 이미지 생성 스킵");
+            return; // 즉시 종료
+        }
+
+
+        try {
+            log.info("=== 배치 단위 뉴스 이미지 생성 시작 ===");
+
+            Long totalCount = newsDataRepository.countNewsWithoutImages();
+            if (totalCount == 0) {
                 log.info("이미지 생성할 뉴스가 없습니다.");
                 return;
             }
 
+            final int BATCH_SIZE = 35; // 배치 사이즈 35개로 설정
+            int totalBatches = (int) Math.ceil((double) totalCount / BATCH_SIZE);
+
+            log.info("총 {}개 뉴스를 {}개 배치로 나누어 처리합니다. (배치 크기: {})", totalCount, totalBatches, BATCH_SIZE);
+
+            for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+                int offset = batchIndex * BATCH_SIZE;
+
+                log.info("=== 배치 {}/{} 처리 시작 (offset: {}) ===", batchIndex + 1, totalBatches, offset);
+
+                List<NewsData> batchNews = newsDataRepository.findNewsWithoutImagesByBatch(BATCH_SIZE, offset);
+
+                if (batchNews.isEmpty()) {
+                    log.info("배치 {}: 처리할 뉴스가 없습니다.", batchIndex + 1);
+                    continue;
+                }
+
+                processBatch(batchNews, batchIndex + 1, totalBatches);
+            }
+
+            log.info("=== 모든 배치 뉴스 이미지 생성 완료 - 총 {}개 처리 ===", totalCount);
+
+        } catch (Exception e) {
+            log.error("배치 뉴스 이미지 생성 중 예외 발생", e);
+        }
+    }
+
+    // 배치 단위로 뉴스 처리
+    private void processBatch(List<NewsData> batchNews, int batchNumber, int totalBatches) {
+        try {
             // 인기글과 일반글 분리
             List<NewsData> popularNews = new ArrayList<>();
             List<NewsData> regularNews = new ArrayList<>();
 
-            for (NewsData news : newsWithoutImages) {
+            for (NewsData news : batchNews) {
                 if (news.getIsPopular() == 1) {
                     popularNews.add(news);
                 } else {
@@ -82,8 +112,7 @@ public class NewsImageService {
                 }
             }
 
-            log.info("총 {}개 뉴스 (인기글: {}개, 일반글: {}개)에 대한 이미지 생성을 시작합니다.",
-                    newsWithoutImages.size(), popularNews.size(), regularNews.size());
+            log.info("배치 {}/{}: 총 {}개 뉴스 (인기글: {}개, 일반글: {}개) 처리 시작", batchNumber, totalBatches, batchNews.size(), popularNews.size(), regularNews.size());
 
             ExecutorService executor = Executors.newFixedThreadPool(5);
 
@@ -96,22 +125,20 @@ public class NewsImageService {
                     int delay = delayCounter * 2;
                     delayCounter++;
 
-                    CompletableFuture<Void> future = CompletableFuture
-                            .runAsync(() -> {
-                                try {
-                                    Thread.sleep(delay * 1000);
-                                    generateImageForNews(news, true); // 인기글 플래그
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    log.warn("스레드 인터럽트: 뉴스 ID {}", news.getNewsId());
-                                } catch (Exception e) {
-                                    log.error("인기글 뉴스 ID {} 처리 실패", news.getNewsId(), e);
-                                }
-                            }, executor)
-                            .exceptionally(throwable -> {
-                                log.error("인기글 CompletableFuture 예외", throwable);
-                                return null;
-                            });
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        try {
+                            Thread.sleep(delay * 1000);
+                            generateImageForNews(news, true);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            log.warn("배치 {} - 인기글 스레드 인터럽트: 뉴스 ID {}", batchNumber, news.getNewsId());
+                        } catch (Exception e) {
+                            log.error("배치 {} - 인기글 뉴스 ID {} 처리 실패", batchNumber, news.getNewsId(), e);
+                        }
+                    }, executor).exceptionally(throwable -> {
+                        log.error("배치 {} - 인기글 CompletableFuture 예외", batchNumber, throwable);
+                        return null;
+                    });
 
                     futures.add(future);
                 }
@@ -121,41 +148,42 @@ public class NewsImageService {
                     int delay = delayCounter * 2;
                     delayCounter++;
 
-                    CompletableFuture<Void> future = CompletableFuture
-                            .runAsync(() -> {
-                                try {
-                                    Thread.sleep(delay * 1000);
-                                    generateImageForNews(news, false); // 일반글 플래그
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    log.warn("스레드 인터럽트: 뉴스 ID {}", news.getNewsId());
-                                } catch (Exception e) {
-                                    log.error("일반글 뉴스 ID {} 처리 실패", news.getNewsId(), e);
-                                }
-                            }, executor)
-                            .exceptionally(throwable -> {
-                                log.error("일반글 CompletableFuture 예외", throwable);
-                                return null;
-                            });
+                    CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
+                        try {
+                            Thread.sleep(delay * 1000);
+                            generateImageForNews(news, false);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            log.warn("배치 {} - 일반글 스레드 인터럽트: 뉴스 ID {}", batchNumber, news.getNewsId());
+                        } catch (Exception e) {
+                            log.error("배치 {} - 일반글 뉴스 ID {} 처리 실패", batchNumber, news.getNewsId(), e);
+                        }
+                    }, executor).exceptionally(throwable -> {
+                        log.error("배치 {} - 일반글 CompletableFuture 예외", batchNumber, throwable);
+                        return null;
+                    });
 
                     futures.add(future);
                 }
 
+                // 배치 내 모든 작업 완료 대기
                 CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
             } finally {
                 executor.shutdown();
-                if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                if (!executor.awaitTermination(180, TimeUnit.SECONDS)) { // 3분으로 연장
+                    log.warn("배치 {} - Executor 정상 종료 실패, 강제 종료", batchNumber);
                     executor.shutdownNow();
                 }
             }
 
-            log.info("=== 개별 뉴스 이미지 생성 완료 - 총 {}개 처리 ===", newsWithoutImages.size());
+            log.info("배치 {}/{} 처리 완료 - {}개 뉴스 처리됨", batchNumber, totalBatches, batchNews.size());
 
         } catch (Exception e) {
-            log.error("뉴스 이미지 생성 중 예외 발생", e);
+            log.error("배치 {} 처리 중 예외 발생", batchNumber, e);
         }
     }
+
 
     // 개별 뉴스에 대한 이미지 생성 (인기글 여부에 따른 크기 설정)
     private void generateImageForNews(NewsData news, boolean isPopular) {
@@ -163,8 +191,7 @@ public class NewsImageService {
             String newsType = isPopular ? "인기글" : "일반글";
             String sizeInfo = isPopular ? "500x324" : "기본 크기";
 
-            log.info("뉴스 ID {} 이미지 생성 시작 ({}, {}): {}",
-                    news.getNewsId(), newsType, sizeInfo, news.getTitle());
+            log.info("뉴스 ID {} 이미지 생성 시작 ({}, {}): {}", news.getNewsId(), newsType, sizeInfo, news.getTitle());
 
             String imagenUrl = geminiQuestionProperties.getCreateImageUrl();
             String prompt = createImagePrompt(news.getTitle(), news.getDescription(), isPopular);
@@ -186,42 +213,82 @@ public class NewsImageService {
             requestBody.put("instances", Arrays.asList(instance));
             requestBody.put("parameters", parameters);
 
-            log.info("Imagen 4.0 API 요청 파라미터: prompt 길이={}, 타입={}",
-                    prompt.length(), newsType);
+            log.info("Imagen 4.0 API 요청 파라미터: prompt 길이={}, 타입={}", prompt.length(), newsType);
 
-            // API 호출
-            String response = restClient.post()
-                    .uri(imagenUrl)
-                    .header("x-goog-api-key", geminiQuestionProperties.getApiKey())
-                    .header("Content-Type", "application/json")
-                    .body(requestBody)
-                    .exchange((request, httpResponse) -> {
-                        if (!httpResponse.getStatusCode().is2xxSuccessful()) {
-                            log.error("Imagen 4.0 API 호출 실패: {}", httpResponse.getStatusCode());
-                            try {
-                                String errorBody = new String(httpResponse.getBody().readAllBytes());
-                                log.error("오류 응답 본문: {}", errorBody);
-                            } catch (Exception e) {
-                                log.error("오류 응답 읽기 실패", e);
-                            }
-                            return null;
-                        }
-                        try {
-                            return new String(httpResponse.getBody().readAllBytes());
-                        } catch (Exception e) {
-                            log.error("응답 파싱 오류", e);
-                            return null;
-                        }
-                    });
+            // 재시도 로직 적용된 API 호출
+            String response = callApiWithRetry(requestBody, imagenUrl, news.getNewsId());
 
             if (response != null) {
                 processImagen4Response(response, news.getNewsId(), isPopular);
+            } else {
+                log.error("뉴스 ID {} 이미지 생성 최종 실패", news.getNewsId());
             }
 
         } catch (Exception e) {
             log.error("뉴스 ID {} 이미지 생성 실패", news.getNewsId(), e);
         }
     }
+
+    private boolean isQuotaExceeded() {
+        if (!apiQuotaExceeded) return false;
+
+        // 다음날 자정에 리셋 체크
+        if (quotaResetTime != null && LocalDateTime.now().isAfter(quotaResetTime)) {
+            apiQuotaExceeded = false;
+            quotaResetTime = null;
+            log.info("API 쿼터 상태 리셋됨");
+            return false;
+        }
+        return true;
+    }
+
+
+    // 재시도 로직이 포함된 API 호출 메서드
+    private String callApiWithRetry(Map<String, Object> requestBody, String imagenUrl, Long newsId) {
+        final int MAX_RETRIES = 3;
+
+        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                String response = restClient.post().uri(imagenUrl).header("x-goog-api-key", geminiQuestionProperties.getApiKey()).header("Content-Type", "application/json").body(requestBody).exchange((request, httpResponse) -> {
+                    if (!httpResponse.getStatusCode().is2xxSuccessful()) {
+                        int status = httpResponse.getStatusCode().value();
+
+                        // 429 쿼터 초과 체크를 먼저 처리
+                        if (status == 429) {
+                            apiQuotaExceeded = true;
+                            quotaResetTime = LocalDateTime.now().plusDays(1).withHour(0).withMinute(0);
+                            log.error("API 쿼터 초과 감지 - 다음날까지 이미지 생성 중단");
+                            return null; // 재시도 안함
+                        }
+
+
+                        // 재시도 가능한 에러 (429 Rate Limit, 5xx Server Errors)
+                        if (status == 429 || status >= 500) {
+                            throw new RuntimeException("Retryable error: " + status);
+                        }
+                        return null; // 재시도 불가능한 에러 (4xx)
+                    }
+                    try {
+                        return new String(httpResponse.getBody().readAllBytes());
+                    } catch (Exception e) {
+                        throw new RuntimeException("Response parsing error", e);
+                    }
+                });
+
+                if (response != null) {
+                    log.info("뉴스 ID {} - API 성공 (시도 {})", newsId, attempt);
+                    return response; // 성공
+                }
+
+            } catch (Exception e) {
+                log.warn("뉴스 ID {} - API 시도 {}/{} 실패: {}", newsId, attempt, MAX_RETRIES, e.getMessage());
+            }
+        }
+
+        log.error("뉴스 ID {} - 모든 재시도 실패", newsId);
+        return null;
+    }
+
 
     // 개별 뉴스 이미지 처리 (크기 정보 포함)
     private void processImagen4Response(String response, Long newsId, boolean isPopular) {
@@ -263,8 +330,7 @@ public class NewsImageService {
             }
 
             String newsType = isPopular ? "인기글" : "일반글";
-            log.info("뉴스 ID {} - Imagen 4.0 이미지 발견 ({}): mimeType={}, 데이터 크기={} bytes",
-                    newsId, newsType, mimeType, base64Data.length());
+            log.info("뉴스 ID {} - Imagen 4.0 이미지 발견 ({}): mimeType={}, 데이터 크기={} bytes", newsId, newsType, mimeType, base64Data.length());
 
             // Base64 이미지를 S3에 업로드
             String imageUrl = uploadBase64ImageToS3(base64Data, mimeType, isPopular);
@@ -316,8 +382,7 @@ public class NewsImageService {
         String filename = sizePrefix + "-news-image-" + UUID.randomUUID().toString().substring(0, 8) + extension;
 
         // Spring의 MockMultipartFile 사용
-        return new MockMultipartFile(
-                "file",           // name
+        return new MockMultipartFile("file",           // name
                 filename,         // originalFilename
                 mimeType,         // contentType
                 imageBytes        // content
