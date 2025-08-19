@@ -20,15 +20,14 @@ public class PaymentRedirectController {
     public String handlePaymentSuccess(
             @RequestParam("pg_token") String pgToken,
             @RequestParam("partner_order_id") String partnerOrderId) {
-        log.info("카카오페이 결제 성공 리디렉션 - pg_token: {}, partner_order_id: {}", pgToken, partnerOrderId);
 
         try {
             paymentService.paymentApproveByPgToken(pgToken, partnerOrderId);
-            log.info("결제 승인 완료 - pg_token: {}, partner_order_id: {}", pgToken, partnerOrderId);
-            return "redirect:http://localhost:3000/payment/success";
+            log.info("결제 승인 완료 - partner_order_id: {}", partnerOrderId);
+            return "redirect:https://gaebang.site/payment/success";
         } catch (Exception e) {
-            log.error("결제 승인 실패 - pg_token: {}, partner_order_id: {}, 오류: {}", pgToken, partnerOrderId, e.getMessage());
-            return "redirect:http://localhost:3000/payment/fail";
+            log.error("결제 승인 실패 - partner_order_id: {}, 오류: {}", partnerOrderId, e.getMessage());
+            return "redirect:https://gaebang.site/payment/fail";
         }
     }
 
@@ -36,13 +35,13 @@ public class PaymentRedirectController {
     @GetMapping("/fail")
     public String handlePaymentFail() {
         log.info("카카오페이 결제 실패 리디렉션");
-        return "redirect:http://localhost:3000/payment/fail";
+        return "redirect:https://gaebang.site/payment/fail";
     }
 
     @GetMapping("/cancel")
     public String handlePaymentCancel() {
         log.info("카카오페이 결제 취소 리디렉션");
-        return "redirect:http://localhost:3000/payment/cancel";
+        return "redirect:https://gaebang.site/payment/cancel";
     }
 }
 
