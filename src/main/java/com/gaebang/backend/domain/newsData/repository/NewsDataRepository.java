@@ -56,6 +56,14 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     @Query("SELECT n FROM NewsData n WHERE (n.imageUrl IS NULL OR n.imageUrl = '') AND n.isActive = 1 ORDER BY n.pubDate DESC")
     List<NewsData> findAllByImageUrlIsNullOrEmpty();
 
+    // 배치 처리를 위한 페이징 조회 메서드
+    @Query(value = "SELECT * FROM news WHERE (image_url IS NULL OR image_url = '') AND is_active = 1 ORDER BY pub_date DESC LIMIT :batchSize OFFSET :offset", nativeQuery = true)
+    List<NewsData> findNewsWithoutImagesByBatch(@Param("batchSize") int batchSize, @Param("offset") int offset);
+
+    // 이미지가 없는 뉴스 총 개수 조회
+    @Query("SELECT COUNT(n) FROM NewsData n WHERE (n.imageUrl IS NULL OR n.imageUrl = '') AND n.isActive = 1")
+    Long countNewsWithoutImages();
+
     // test용도
     List<NewsData> findTop40ByOrderByPubDateDesc();
 

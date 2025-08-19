@@ -170,7 +170,7 @@ public class PopularNewsDataService {
 
             // 2. 이미지 생성 (후순위)
             log.info("2단계: 이미지 생성 시작");
-//            newsImageService.createNewsImages();
+            newsImageService.createNewsImages();
             log.info("2단계: 이미지 생성 완료");
 
         } catch (Exception e) {
