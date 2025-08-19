@@ -93,8 +93,8 @@ public class PaymentService {
         parameters.put("vat_amount", String.valueOf(vatAmount));
         parameters.put("tax_free_amount", "0");
         parameters.put("approval_url", "https://gaebang.site/api/payment/redirect/success" + "?partner_order_id=" + partnerOrderId);
-        parameters.put("fail_url", "https://gaebang.site/api/payment/redirect/success");
-        parameters.put("cancel_url", "https://gaebang.site/api/payment/redirect/success");
+        parameters.put("fail_url", "https://gaebang.site/api/payment/redirect/fail");
+        parameters.put("cancel_url", "https://gaebang.site/api/payment/redirect/cancel");
 
         HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(parameters, this.getHeaders());
 
