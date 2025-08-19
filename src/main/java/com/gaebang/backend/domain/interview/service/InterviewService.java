@@ -494,8 +494,10 @@ public class InterviewService {
         // 결과를 Integer Map으로 변환
         Map<String, Integer> scores = new HashMap<>();
         Object scoresRaw = batchResult.get("scores");
+        
         if (scoresRaw instanceof Map) {
             Map<?, ?> scoresMap = (Map<?, ?>) scoresRaw;
+            
             for (Map.Entry<?, ?> entry : scoresMap.entrySet()) {
                 String key = String.valueOf(entry.getKey());
                 Object value = entry.getValue();

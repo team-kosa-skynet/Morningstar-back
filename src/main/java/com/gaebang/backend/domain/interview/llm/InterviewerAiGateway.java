@@ -17,4 +17,7 @@ public interface InterviewerAiGateway {
     
     // 배치 평가: 전체 면접 세션을 종합하여 5지표 점수 계산
     Map<String, Object> generateBatchEvaluation(String evaluationData, String role, String previousResponseId) throws Exception;
+    
+    // 문서 정보 추출: 포트폴리오/자소서에서 구조화된 정보 추출
+    Map<String, Object> extractDocumentInfo(String documentText) throws Exception;
 }

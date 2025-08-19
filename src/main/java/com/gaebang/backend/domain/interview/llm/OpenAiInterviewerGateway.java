@@ -232,7 +232,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                    - 3-6번: TECHNICAL (핵심 역량) - 기술 구현, 코드 품질, 실무 경험  
                    - 7-8번: SYSTEM_DESIGN (설계 사고) - 아키텍처, 확장성, 성능
                    - 9번: TROUBLESHOOT (문제 해결) - 장애 대응, 디버깅, 근본 원인 분석
-                   - 10번: WRAPUP (마무리) - 궁금한 점, 어필 포인트
+                   - 10번: TECHNICAL (종합 역량) - 도전적 문제 해결, 기술적 성장
                 
                 2. **난이도 조절:** 점진적으로 높여가며 생성
                 3. **실무 중심:** 구체적이고 실용적인 질문
@@ -333,7 +333,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         Map<String, Object> q6 = Map.of("idx", 6, "type", "TROUBLESHOOT", "text", "장애 상황에서 어떻게 대응하시나요?");
         Map<String, Object> q7 = Map.of("idx", 7, "type", "BEHAVIORAL", "text", "새로운 기술 학습 방법을 설명해주세요.");
         Map<String, Object> q8 = Map.of("idx", 8, "type", "TECHNICAL", "text", "성능 최적화 경험을 공유해주세요.");
-        Map<String, Object> q9 = Map.of("idx", 9, "type", "WRAPUP", "text", "궁금한 점이나 마지막으로 어필하고 싶은 부분이 있나요?");
+        Map<String, Object> q9 = Map.of("idx", 9, "type", "TECHNICAL", "text", "지금까지 참여한 프로젝트 중 가장 도전적이었던 기술적 문제와 해결 과정을 설명해주세요.");
 
         return Map.of("questions", List.of(q0, q1, q2, q3, q4, q5, q6, q7, q8, q9));
     }
@@ -555,13 +555,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                 - 재발 방지 대책
                 - 팀 커뮤니케이션 과정
                 """;
-            case "WRAPUP" -> """
-                마무리 질문으로서 다음을 강조:
-                - 핵심 강점과 차별화 포인트
-                - 회사/팀에 기여할 수 있는 부분
-                - 성장 계획과 학습 의지
-                - 궁금한 점에 대한 적극적 질문
-                """;
             default -> "해당 질문의 의도에 맞는 구체적이고 체계적인 답변 가이드 제공";
         };
     }
@@ -586,7 +579,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
             case "TECHNICAL" -> "지원자의 기술적 깊이와 실무 적용 능력을 확인합니다.";
             case "SYSTEM_DESIGN" -> "대규모 시스템 설계 능력과 아키텍처 이해도를 평가합니다.";
             case "TROUBLESHOOT" -> "문제 상황에서의 분석 능력과 해결 과정을 확인합니다.";
-            case "WRAPUP" -> "지원자의 핵심 강점과 회사에 대한 관심도를 파악합니다.";
             default -> "지원자의 역량과 적합성을 종합적으로 평가합니다.";
         };
 
@@ -747,6 +739,117 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                     "root_cause", 38
                 )
             );
+        }
+    }
+
+    @Override
+    public Map<String, Object> extractDocumentInfo(String documentText) throws Exception {
+        try {
+            String prompt = """
+                    당신은 전문 HR 담당자입니다. 아래 문서에서 면접에 필요한 정보를 추출해주세요.
+                    
+                    **문서 내용:**
+                    %s
+                    
+                    **추출할 정보:**
+                    1. **기술 스택**: 모든 프로그래밍 언어, 프레임워크, 라이브러리, 도구
+                       - 다양한 표현 인식: "React.js", "리액트", "ReactJS" 모두 "React"로 통합
+                       - 버전 정보 포함: "Java 17", "Spring Boot 3.x" 등
+                    
+                    2. **프로젝트 경험**: 개발 프로젝트 정보
+                       - 기간: 시작-종료 날짜 또는 기간
+                       - 역할: 팀장, 리더, 백엔드, 프론트엔드, 풀스택 등
+                       - 규모: 팀 규모나 프로젝트 규모 (있는 경우)
+                    
+                    3. **경력 정보**: 실무 경험 (회사명 제외)
+                       - 기간: 총 경력 또는 각 회사별 기간
+                       - 직무: 개발자, 엔지니어, 팀장 등
+                       - 수준: 신입, 경력, 시니어 등
+                    
+                    **중요 지침:**
+                    - 개인 식별 정보 절대 포함 금지 (이름, 회사명, 학교명 등)
+                    - 맥락을 고려한 정확한 정보만 추출
+                    - 애매한 정보는 포함하지 않음
+                    - 기술 스택은 표준 명칭으로 통일
+                    """.formatted(documentText);
+
+            Map<String, Object> schema = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                    "techStacks", Map.of(
+                        "type", "array",
+                        "items", Map.of("type", "string")
+                    ),
+                    "projects", Map.of(
+                        "type", "array", 
+                        "items", Map.of(
+                            "type", "object",
+                            "properties", Map.of(
+                                "duration", Map.of("type", "string"),
+                                "role", Map.of("type", "string"),
+                                "scale", Map.of("type", "string")
+                            )
+                        )
+                    ),
+                    "careers", Map.of(
+                        "type", "array",
+                        "items", Map.of(
+                            "type", "object", 
+                            "properties", Map.of(
+                                "duration", Map.of("type", "string"),
+                                "role", Map.of("type", "string"),
+                                "level", Map.of("type", "string")
+                            )
+                        )
+                    )
+                ),
+                "required", List.of("techStacks", "projects", "careers")
+            );
+
+            Map<String, Object> format = Map.of(
+                "type", "json_schema",
+                "json_schema", Map.of(
+                    "name", "DocumentExtractionSchema",
+                    "schema", schema,
+                    "strict", true
+                )
+            );
+
+            // OpenAI API 직접 호출
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            Map<String, Object> requestBody = Map.of(
+                "model", "gpt-4o-mini",
+                "messages", List.of(
+                    Map.of("role", "user", "content", prompt)
+                ),
+                "temperature", 0.1,
+                "max_tokens", 3000,
+                "response_format", format
+            );
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<String> apiResponse = restTemplate.postForEntity(
+                "https://api.openai.com/v1/chat/completions", entity, String.class);
+
+            JsonNode root = om.readTree(apiResponse.getBody());
+            JsonNode choices = root.path("choices");
+            
+            if (choices.isEmpty()) {
+                throw new RuntimeException("OpenAI 응답에 choices가 없습니다");
+            }
+            
+            String content = choices.get(0).path("message").path("content").asText();
+            Map<String, Object> parsed = om.readValue(content, Map.class);
+            System.out.println("[AI][OpenAI] 문서 추출 완료");
+            
+            return parsed;
+
+        } catch (Exception e) {
+            System.err.println("[AI][OpenAI] extractDocumentInfo 실패: " + e.getMessage());
+            throw e; // 상위에서 폴백 처리
         }
     }
 

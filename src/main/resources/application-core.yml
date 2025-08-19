@@ -51,7 +51,9 @@ ai:
 gemini:
   api:
     key: ${GEMINI_API_KEY}
-    model: gemini-1.5-flash
+    models:
+      realtime: gemini-1.5-flash      # generatePlan, nextTurn
+      analysis: gemini-2.5-flash      # 나머지 분석 작업
     base-url: https://generativelanguage.googleapis.com/v1beta
 
 tts:

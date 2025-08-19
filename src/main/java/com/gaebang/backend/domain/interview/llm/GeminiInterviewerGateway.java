@@ -6,6 +6,7 @@ import com.gaebang.backend.domain.interview.dto.internal.AiTurnFeedbackDto;
 import com.gaebang.backend.domain.interview.dto.internal.PlanQuestionDto;
 import com.gaebang.backend.domain.interview.util.PlanParser;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
@@ -14,12 +15,14 @@ import org.springframework.web.client.RestTemplate;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Component("geminiInterviewerGateway")
 public class GeminiInterviewerGateway implements InterviewerAiGateway {
 
     private final RestTemplate restTemplate;
     private final String apiKey;
-    private final String model;
+    private final String realtimeModel;
+    private final String analysisModel;
     private final String baseUrl;
     private final PlanParser planParser;
     private final ObjectMapper om;
@@ -29,14 +32,16 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
 
     public GeminiInterviewerGateway(
             @Value("${gemini.api.key}") String apiKey,
-            @Value("${gemini.api.model:gemini-2.5-flash}") String model,
+            @Value("${gemini.api.models.realtime:gemini-1.5-flash}") String realtimeModel,
+            @Value("${gemini.api.models.analysis:gemini-2.5-flash}") String analysisModel,
             @Value("${gemini.api.base-url:https://generativelanguage.googleapis.com/v1beta}") String baseUrl,
             PlanParser planParser,
             ObjectMapper objectMapper
     ) {
         this.restTemplate = new RestTemplate();
         this.apiKey = apiKey;
-        this.model = model;
+        this.realtimeModel = realtimeModel;
+        this.analysisModel = analysisModel;
         this.baseUrl = baseUrl;
         this.planParser = planParser;
         this.om = objectMapper;
@@ -44,10 +49,19 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
 
     @PostConstruct
     void log() {
-        System.out.println("[AI] Using GeminiInterviewerGateway");
+        System.out.println("[AI] Using GeminiInterviewerGateway with Dynamic Model Selection");
         System.out.println("[AI] API Key status: " + (apiKey != null && !apiKey.isBlank() ? "OK (length: " + apiKey.length() + ")" : "MISSING"));
-        System.out.println("[AI] Model: " + model);
+        System.out.println("[AI] Realtime Model: " + realtimeModel);
+        System.out.println("[AI] Analysis Model: " + analysisModel);
         System.out.println("[AI] Base URL: " + baseUrl);
+    }
+    
+    private String getOptimalModel(String methodName) {
+        return switch (methodName) {
+            case "nextTurn" -> realtimeModel;
+            case "generatePlan" -> analysisModel;
+            default -> analysisModel;
+        };
     }
 
     @Override
@@ -142,7 +156,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             )
         );
 
-        String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+        String selectedModel = getOptimalModel("generatePlan");
+        String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
         
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -196,7 +211,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                    - 3-6번: TECHNICAL (핵심 역량) - 기술 구현, 코드 품질, 실무 경험  
                    - 7-8번: SYSTEM_DESIGN (설계 사고) - 아키텍처, 확장성, 성능
                    - 9번: TROUBLESHOOT (문제 해결) - 장애 대응, 디버깅, 근본 원인 분석
-                   - 10번: WRAPUP (마무리) - 궁금한 점, 어필 포인트
+                   - 10번: TECHNICAL (종합 역량) - 도전적 문제 해결, 기술적 성장
                 
                 2. **난이도 조절:** 점진적으로 높여가며 생성
                 3. **실무 중심:** 구체적이고 실용적인 질문
@@ -314,7 +329,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         Map<String, Object> q6 = Map.of("idx", 6, "type", "TROUBLESHOOT", "text", "장애 상황에서 어떻게 대응하시나요?");
         Map<String, Object> q7 = Map.of("idx", 7, "type", "BEHAVIORAL", "text", "새로운 기술 학습 방법을 설명해주세요.");
         Map<String, Object> q8 = Map.of("idx", 8, "type", "TECHNICAL", "text", "성능 최적화 경험을 공유해주세요.");
-        Map<String, Object> q9 = Map.of("idx", 9, "type", "WRAPUP", "text", "궁금한 점이나 마지막으로 어필하고 싶은 부분이 있나요?");
+        Map<String, Object> q9 = Map.of("idx", 9, "type", "TECHNICAL", "text", "지금까지 참여한 프로젝트 중 가장 도전적이었던 기술적 문제와 해결 과정을 설명해주세요.");
 
         return Map.of("questions", List.of(q0, q1, q2, q3, q4, q5, q6, q7, q8, q9));
     }
@@ -389,7 +404,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             throw new IllegalStateException("[Gemini] API key is missing. Check GEMINI_API_KEY environment variable");
         }
         
-        String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+        String selectedModel = getOptimalModel("nextTurn");
+        String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
         
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -535,7 +551,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 ),
                 "generationConfig", Map.of(
                     "temperature", 0.3,
-                    "maxOutputTokens", 4000,
+                    "maxOutputTokens", 6000,  // 4000 → 6000 (MAX_TOKENS 해결)
                     "responseMimeType", "application/json",
                     "responseSchema", Map.of(
                         "type", "object",
@@ -551,7 +567,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 )
             );
 
-            String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+            String selectedModel = getOptimalModel("generateQuestionIntentAndGuides");
+            String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -656,13 +673,6 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 - 재발 방지 대책
                 - 팀 커뮤니케이션 과정
                 """;
-            case "WRAPUP" -> """
-                마무리 질문으로서 다음을 강조:
-                - 핵심 강점과 차별화 포인트
-                - 회사/팀에 기여할 수 있는 부분
-                - 성장 계획과 학습 의지
-                - 궁금한 점에 대한 적극적 질문
-                """;
             default -> "해당 질문의 의도에 맞는 구체적이고 체계적인 답변 가이드 제공";
         };
     }
@@ -673,7 +683,6 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             case "TECHNICAL" -> "지원자의 기술적 깊이와 실무 적용 능력을 확인합니다.";
             case "SYSTEM_DESIGN" -> "대규모 시스템 설계 능력과 아키텍처 이해도를 평가합니다.";
             case "TROUBLESHOOT" -> "문제 상황에서의 분석 능력과 해결 과정을 확인합니다.";
-            case "WRAPUP" -> "지원자의 핵심 강점과 회사에 대한 관심도를 파악합니다.";
             default -> "지원자의 역량과 적합성을 종합적으로 평가합니다.";
         };
 
@@ -729,7 +738,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
     public Map<String, Object> generateBatchEvaluation(String evaluationData, String role, String previousResponseId) throws Exception {
         try {
             String prompt = """
-                    당신은 엄격한 시니어 면접관입니다. 아래 전체 면접 내용을 종합하여 정확한 점수를 산정해주세요.
+                    당신은 전문적이고 관대한 면접관입니다. 아래 전체 면접 내용을 종합하여 격려적이고 현실적인 점수를 산정해주세요.
                     
                     **평가 데이터:**
                     %s
@@ -741,27 +750,29 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                     - tradeoff: 트레이드오프 인식과 판단력
                     - root_cause: 근본 원인 분석 능력
                     
-                    **점수 기준:**
-                    - 0-20점: 매우 부족 (답변 회피, 기본 지식 부족)
-                    - 21-40점: 부족 (피상적 이해)
-                    - 41-60점: 보통 (기본 수준)
-                    - 61-80점: 좋음 (실무 활용 가능)
-                    - 81-100점: 우수 (깊이 있는 전문성)
+                    **점수 기준 (관대한 기준):**
+                    - 0-39점: 부족 (답변 회피, 기본 지식 심각한 부족)
+                    - 40-60점: 보통 (기본적 이해, 실무 학습으로 보완 가능)
+                    - 61-75점: 좋음 (실무에서 충분히 활용 가능한 수준)
+                    - 76-90점: 우수 (깊이 있는 전문성, 뛰어난 역량)
+                    - 91-100점: 최우수 (탁월한 전문성, 리더십 수준)
                     
-                    **주의사항:**
-                    - 전체 답변의 일관성과 패턴을 종합 고려
-                    - "잘 모르겠습니다" 답변은 해당 지표에서 감점
-                    - 역할(%s)에 맞는 기술적 깊이로 평가
-                    - 각 지표별로 구체적 근거와 함께 점수 산정
+                    **관대한 평가 원칙:**
+                    - ChatGPT나 AI 답변 수준이면 65-75점 범위로 평가
+                    - 기본적인 답변이라도 논리적 흐름이 있으면 60점 이상
+                    - 완벽하지 않더라도 실무에서 학습 가능한 수준이면 좋음 점수
+                    - 역할(%s)에 맞는 현실적이고 격려적인 관점으로 평가
+                    - 성장 가능성과 학습 의지를 긍정적으로 인정
+                    - 각 지표별로 60점 이상을 기본 출발점으로 고려
                     
                     응답은 반드시 다음 JSON 형식으로만 작성해주세요:
                     {
                       "scores": {
-                        "clarity": 45,
-                        "structure_STAR": 38,
-                        "tech_depth": 52,
-                        "tradeoff": 41,
-                        "root_cause": 36
+                        "clarity": 68,
+                        "structure_STAR": 64,
+                        "tech_depth": 72,
+                        "tradeoff": 66,
+                        "root_cause": 62
                       }
                     }
                     """.formatted(evaluationData, role);
@@ -774,11 +785,11 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             if (history.isEmpty()) {
                 history.add(Map.of(
                     "role", "user",
-                    "parts", List.of(Map.of("text", "당신은 엄격한 시니어 면접관입니다. 전체 면접 세션을 종합하여 정확한 점수를 산정해주세요."))
+                    "parts", List.of(Map.of("text", "당신은 전문적이고 관대한 면접관입니다. 전체 면접 세션을 종합하여 현실적이고 격려적인 점수를 산정해주세요."))
                 ));
                 history.add(Map.of(
                     "role", "model", 
-                    "parts", List.of(Map.of("text", "네, 면접 전체를 종합하여 엄격하고 정확한 점수를 산정하겠습니다."))
+                    "parts", List.of(Map.of("text", "네, 면접 전체를 종합하여 현실적이고 격려적인 관점에서 점수를 산정하겠습니다."))
                 ));
             }
             
@@ -790,8 +801,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             Map<String, Object> requestBody = Map.of(
                 "contents", history,
                 "generationConfig", Map.of(
-                    "temperature", 0.1,           // 매우 결정론적
-                    "maxOutputTokens", 2000,      // 배치 평가용 충분한 토큰
+                    "temperature", 0.1,
+                    "maxOutputTokens", 8000,
                     "responseMimeType", "application/json",
                     "responseSchema", Map.of(
                         "type", "object",
@@ -810,16 +821,24 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                         ),
                         "required", List.of("scores")
                     )
+                ),
+                "safetySettings", List.of(
+                    Map.of("category", "HARM_CATEGORY_HARASSMENT", "threshold", "BLOCK_NONE"),
+                    Map.of("category", "HARM_CATEGORY_HATE_SPEECH", "threshold", "BLOCK_NONE"),
+                    Map.of("category", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold", "BLOCK_NONE"),
+                    Map.of("category", "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold", "BLOCK_NONE")
                 )
             );
 
-            String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+            String selectedModel = getOptimalModel("generateBatchEvaluation");
+            String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
+            String maskedUrl = url.replaceAll("key=[^&]+", "key=***MASKED***");
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
             
             JsonNode root = om.readTree(response.getBody());
@@ -829,11 +848,22 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
             }
             
-            JsonNode content = candidates.get(0).path("content");
+            // 디버깅: finishReason과 token 사용량 로깅
+            JsonNode firstCandidate = candidates.get(0);
+            String finishReason = firstCandidate.path("finishReason").asText("UNKNOWN");
+            JsonNode usageMetadata = root.path("usageMetadata");
+            int thoughtsTokenCount = usageMetadata.path("thoughtsTokenCount").asInt(0);
+            int totalTokenCount = usageMetadata.path("totalTokenCount").asInt(0);
+            
+            log.info("[AI] Gemini generateBatchEvaluation - finishReason: {}, thoughtsTokens: {}, totalTokens: {}", 
+                    finishReason, thoughtsTokenCount, totalTokenCount);
+            
+            JsonNode content = firstCandidate.path("content");
             JsonNode parts = content.path("parts");
             
             if (parts.isEmpty()) {
-                throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+                throw new RuntimeException("Gemini 응답에 parts가 없습니다 - finishReason: " + finishReason + 
+                        ", thoughtsTokens: " + thoughtsTokenCount + ", totalTokens: " + totalTokenCount);
             }
             
             String responseText = parts.get(0).path("text").asText();
@@ -879,36 +909,274 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
     }
 
     @Override
-    public Map<String, Object> finalizeReport(String sessionJson, String previousResponseId) {
+    public Map<String, Object> extractDocumentInfo(String documentText) throws Exception {
         try {
             String prompt = """
-                    당신은 엄격한 시니어 면접 코치입니다. 아래 facts는 서버가 계산/정리한 공식 정보이므로 사실로 간주하고 반드시 반영하세요.
+                    당신은 전문 HR 담당자입니다. 아래 문서에서 면접에 필요한 종합적인 정보를 추출해주세요.
                     
-                    점수 기준 (100점 만점):
-                    - 0-20점: 매우 부족 (답변 회피, 기본 지식 부족)
-                    - 21-40점: 부족 (피상적 이해)
-                    - 41-60점: 보통 (기본 수준)
-                    - 61-80점: 좋음 (실무 활용 가능)
-                    - 81-100점: 우수 (깊이 있는 전문성)
+                    **문서 내용:**
+                    %s
                     
-                    엄격한 평가 원칙:
-                    1. overallScore와 subscores를 정확히 반영하여 평가
-                    2. 낮은 점수(40점 이하)에는 긍정적 표현 금지
-                    3. "잘 모르겠습니다" 답변 시 실제 문제점 지적
-                    4. 실제 답변 내용(transcriptExcerpt)을 근거로 평가
+                    **추출할 정보:**
+                    1. **기술 스택**: 모든 프로그래밍 언어, 프레임워크, 라이브러리, 도구
+                       - 다양한 표현 인식: "React.js", "리액트", "ReactJS" 모두 "React"로 통합
+                       - 버전 정보 포함: "Java 17", "Spring Boot 3.x" 등
                     
-                    작성 요구사항:
-                    - strengths: 실제 높은 점수를 받은 지표만 언급. 낮은 점수(40점 이하)에는 "기본기 부족으로 강점을 찾기 어려움" 표현
-                    - areasToImprove: 낮은 점수 지표를 중심으로 구체적 문제점 지적
-                    - nextSteps: 점수에 맞는 현실적 개선 방안 (기초부터 or 심화 학습)
-                    - 각 항목 2-3문장, 한국어, 존댓말 없이 간결하게
-                    - 점수와 모순되는 긍정적 표현 절대 금지
+                    2. **프로젝트 경험**: 개발 프로젝트 정보
+                       - 기간: 시작-종료 날짜 또는 기간
+                       - 역할: 팀장, 리더, 백엔드, 프론트엔드, 풀스택 등
+                       - 규모: 팀 규모나 프로젝트 규모 (있는 경우)
+                    
+                    3. **경력 정보**: 실무 경험 (회사명 제외)
+                       - 기간: 총 경력 또는 각 회사별 기간
+                       - 직무: 개발자, 엔지니어, 팀장 등
+                       - 수준: 신입, 경력, 시니어 등
+                    
+                    4. **학력 정보**: 교육 배경 (학교명 제외)
+                       - 학위: 학사, 석사, 박사 등
+                       - 전공: 컴퓨터공학, 소프트웨어학과 등
+                       - 상태: 졸업, 재학, 수료 등
+                    
+                    5. **자격증/인증**: 보유 자격증 및 인증
+                       - IT 자격증: 정보처리기사, 네트워크관리사 등
+                       - 클라우드 인증: AWS, Azure, GCP 등
+                       - 기타 전문 인증: PMP, SCRUM 등
+                    
+                    6. **성과/수상**: 수상 경력 및 특별한 성과
+                       - 해커톤, 공모전, 경진대회 수상
+                       - 논문 발표, 특허 출원
+                       - 오픈소스 기여, 커뮤니티 활동
+                    
+                    7. **포트폴리오**: 온라인 활동 및 포트폴리오
+                       - GitHub 활동 여부
+                       - 기술 블로그 운영 여부  
+                       - 개인 웹사이트/포트폴리오 사이트
+                    
+                    8. **언어 능력**: 구사 가능한 언어
+                       - 한국어, 영어, 일본어, 중국어 등
+                       - 수준: 원어민, 비즈니스, 일상회화 등
+                    
+                    9. **전문 분야**: 관심 영역 및 전문성
+                       - 백엔드, 프론트엔드, DevOps, 데이터 등
+                       - AI/ML, 블록체인, IoT 등 신기술
+                       - 도메인 전문성: 핀테크, 이커머스 등
+                    
+                    10. **개발 선호도**: 선호하는 도구나 방법론
+                        - 개발 도구: IDE, 에디터
+                        - 협업 도구: Git, Slack, Notion 등
+                        - 방법론: Agile, Scrum, TDD 등
+                    
+                    **중요 지침:**
+                    - 개인 식별 정보 절대 포함 금지 (이름, 회사명, 학교명 등)
+                    - 맥락을 고려한 정확한 정보만 추출
+                    - 애매하거나 확실하지 않은 정보는 포함하지 않음
+                    - 각 항목은 빈 배열로라도 반드시 포함
+                    - 기술 스택은 표준 명칭으로 통일
                     
                     응답은 반드시 다음 JSON 형식으로만 작성해주세요:
                     {
-                      "strengths": "강점 분석",
-                      "areasToImprove": "개선점 분석",
-                      "nextSteps": "다음 단계 가이드"
+                      "techStacks": ["Java", "Spring Boot", "React", "MySQL"],
+                      "projects": [
+                        {
+                          "duration": "2023년 3월 ~ 2023년 12월",
+                          "role": "백엔드 개발자",
+                          "scale": "5명 팀"
+                        }
+                      ],
+                      "careers": [
+                        {
+                          "duration": "3년 6개월",
+                          "role": "백엔드 개발자",
+                          "level": "경력"
+                        }
+                      ],
+                      "education": [
+                        {
+                          "degree": "학사",
+                          "major": "컴퓨터공학",
+                          "status": "졸업"
+                        }
+                      ],
+                      "certifications": ["정보처리기사", "AWS SAA", "리눅스마스터"],
+                      "achievements": ["해커톤 1위", "오픈소스 기여 100+ commits", "기술블로그 월 평균 1만 조회수"],
+                      "portfolio": {
+                        "github": "활발한 활동",
+                        "blog": "기술 블로그 운영",
+                        "website": "개인 포트폴리오 사이트"
+                      },
+                      "languages": ["한국어(원어민)", "영어(비즈니스)", "일본어(일상회화)"],
+                      "specialties": ["백엔드 개발", "클라우드 인프라", "데이터베이스 설계"],
+                      "preferences": ["IntelliJ IDEA", "Git/GitHub", "Agile 방법론", "TDD"]
+                    }
+                    """.formatted(documentText);
+
+            Map<String, Object> requestBody = Map.of(
+                "contents", List.of(
+                    Map.of(
+                        "parts", List.of(
+                            Map.of("text", prompt)
+                        )
+                    )
+                ),
+                "generationConfig", Map.of(
+                    "temperature", 0.1,           // 매우 결정론적
+                    "maxOutputTokens", 3000,      // 문서 추출용 충분한 토큰
+                    "responseMimeType", "application/json",
+                    "responseSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                            "techStacks", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "projects", Map.of(
+                                "type", "array", 
+                                "items", Map.of(
+                                    "type", "object",
+                                    "properties", Map.of(
+                                        "duration", Map.of("type", "string"),
+                                        "role", Map.of("type", "string"),
+                                        "scale", Map.of("type", "string")
+                                    )
+                                )
+                            ),
+                            "careers", Map.of(
+                                "type", "array",
+                                "items", Map.of(
+                                    "type", "object", 
+                                    "properties", Map.of(
+                                        "duration", Map.of("type", "string"),
+                                        "role", Map.of("type", "string"),
+                                        "level", Map.of("type", "string")
+                                    )
+                                )
+                            ),
+                            "education", Map.of(
+                                "type", "array",
+                                "items", Map.of(
+                                    "type", "object",
+                                    "properties", Map.of(
+                                        "degree", Map.of("type", "string"),
+                                        "major", Map.of("type", "string"),
+                                        "status", Map.of("type", "string")
+                                    )
+                                )
+                            ),
+                            "certifications", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "achievements", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "portfolio", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                    "github", Map.of("type", "string"),
+                                    "blog", Map.of("type", "string"),
+                                    "website", Map.of("type", "string")
+                                )
+                            ),
+                            "languages", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "specialties", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "preferences", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            )
+                        ),
+                        "required", List.of("techStacks", "projects", "careers", "education", "certifications", "achievements", "portfolio", "languages", "specialties", "preferences")
+                    )
+                )
+            );
+
+            String selectedModel = getOptimalModel("extractDocumentInfo");
+            String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            
+            JsonNode root = om.readTree(response.getBody());
+            JsonNode candidates = root.path("candidates");
+            
+            if (candidates.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
+            }
+            
+            JsonNode content = candidates.get(0).path("content");
+            JsonNode parts = content.path("parts");
+            
+            if (parts.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+            }
+            
+            String responseText = parts.get(0).path("text").asText();
+            
+            // 안전한 JSON 파싱
+            try {
+                if (!responseText.trim().startsWith("{")) {
+                    throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + responseText.substring(0, Math.min(responseText.length(), 100)));
+                }
+                return om.readValue(responseText, Map.class);
+            } catch (Exception e) {
+                System.err.println("[Gemini] extractDocumentInfo JSON 파싱 실패. 응답 텍스트: " + responseText);
+                // 폴백: 빈 구조 반환
+                return Map.of(
+                    "techStacks", List.of(),
+                    "projects", List.of(),
+                    "careers", List.of()
+                );
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[AI][Gemini] extractDocumentInfo 실패: " + e.getMessage());
+            throw e; // 상위에서 폴백 처리
+        }
+    }
+
+    @Override
+    public Map<String, Object> finalizeReport(String sessionJson, String previousResponseId) {
+        try {
+            String prompt = """
+                    당신은 전문적이고 격려적인 면접 코치입니다. 아래 facts는 서버가 계산/정리한 공식 정보이므로 사실로 간주하고 반드시 반영하세요.
+                    
+                    점수 기준 (100점 만점, 관대한 기준):
+                    - 0-39점: 부족 (답변 회피, 기본 지식 심각한 부족)
+                    - 40-60점: 보통 (기본적 이해, 실무 학습으로 보완 가능)
+                    - 61-75점: 좋음 (실무에서 충분히 활용 가능한 수준)
+                    - 76-90점: 우수 (깊이 있는 전문성, 뛰어난 역량)
+                    - 91-100점: 최우수 (탁월한 전문성, 리더십 수준)
+                    
+                    격려적 평가 원칙:
+                    1. overallScore와 subscores를 반영하되 성장 가능성을 강조한 긍정적 관점
+                    2. 60점 이상이면 실무 활용 가능한 좋은 수준으로 인정
+                    3. 강점을 적극적으로 발견하고 개선점도 학습 기회로 제시
+                    4. 실제 답변 내용을 근거로 구체적이고 건설적인 피드백 제공
+                    5. ChatGPT 수준 답변도 65-75점 범위의 좋은 평가로 인정
+                    
+                    작성 요구사항:
+                    - strengths: 점수와 관계없이 긍정적 측면을 적극 발견하여 상세히 분석
+                    - areasToImprove: 개선점을 학습과 성장 기회로 프레이밍하여 격려적으로 설명
+                    - nextSteps: 현재 수준을 인정하고 한 단계 더 발전할 수 있는 현실적 방안 제시
+                    - 각 항목 3-4문장으로 상세하고 구체적으로 작성
+                    - 한국어, 존댓말 없이 전문적이면서도 격려적이고 따뜻한 톤 유지
+                    - 점수에 관계없이 응시자의 노력과 성장 가능성을 인정하는 피드백
+                    
+                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
+                    {
+                      "strengths": "강점 분석 (3-4문장)",
+                      "areasToImprove": "개선점 분석 (3-4문장)",
+                      "nextSteps": "다음 단계 가이드 (3-4문장)"
                     }
                     
                     [facts JSON]
@@ -940,7 +1208,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 "contents", history,
                 "generationConfig", Map.of(
                     "temperature", 0.3,
-                    "maxOutputTokens", 4000,
+                    "maxOutputTokens", 6000,  // 4000 → 6000 (MAX_TOKENS 해결)
                     "responseMimeType", "application/json",
                     "responseSchema", Map.of(
                         "type", "object",
@@ -954,7 +1222,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 )
             );
 
-            String url = baseUrl + "/models/" + model + ":generateContent?key=" + apiKey;
+            String selectedModel = getOptimalModel("finalizeReport");
+            String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
