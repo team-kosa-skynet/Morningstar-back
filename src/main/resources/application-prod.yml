@@ -10,15 +10,23 @@ spring:
     password: ${DB_PASSWORD}
 
   jpa:
-    show-sql: true
+    show-sql: false
     hibernate:
       ddl-auto: update
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
         dialect: org.hibernate.dialect.MySQLDialect
+      # OSIV(Open Session In View)를 비활성화하여 성능을 최적화
+      open-in-view: false
 
 logging:
   level:
-    "[org.springframework.security]": DEBUG
+    # [변경] 전반적인 로그 레벨을 INFO로 설정
+    root: INFO
+    # [변경] Security 로그를 DEBUG에서 INFO로 변경하여 과도한 로그 생성을 방지.
+    org.springframework.security: INFO
+    # [추가] Hibernate 관련 로그 레벨을 WARN으로 설정하여 불필요한 INFO 로그를 줄임.
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql: WARN
 
