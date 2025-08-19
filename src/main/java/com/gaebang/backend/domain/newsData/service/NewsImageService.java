@@ -254,7 +254,7 @@ public class NewsImageService {
                         int status = httpResponse.getStatusCode().value();
 
                         // 429 쿼터 초과 체크를 먼저 처리
-                        if (status == 429) {
+                        if (status == 429 || status == 500) {
                             apiQuotaExceeded = true;
                             quotaResetTime = LocalDateTime.now().plusDays(1).withHour(0).withMinute(0);
                             log.error("API 쿼터 초과 감지 - 다음날까지 이미지 생성 중단");
@@ -263,9 +263,10 @@ public class NewsImageService {
 
 
                         // 재시도 가능한 에러 (429 Rate Limit, 5xx Server Errors)
-                        if (status == 429 || status >= 500) {
+                        if (status >= 501) {
                             throw new RuntimeException("Retryable error: " + status);
                         }
+
                         return null; // 재시도 불가능한 에러 (4xx)
                     }
                     try {
