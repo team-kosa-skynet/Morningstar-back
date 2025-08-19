@@ -24,10 +24,10 @@ public class PaymentRedirectController {
         try {
             paymentService.paymentApproveByPgToken(pgToken, partnerOrderId);
             log.info("결제 승인 완료 - partner_order_id: {}", partnerOrderId);
-            return "redirect:https://gaebang.site/payment/success";
+            return "redirect:https://gaebang.site/#/payment/success";
         } catch (Exception e) {
             log.error("결제 승인 실패 - partner_order_id: {}, 오류: {}", partnerOrderId, e.getMessage());
-            return "redirect:https://gaebang.site/payment/fail";
+            return "redirect:https://gaebang.site/#/payment/fail";
         }
     }
 
