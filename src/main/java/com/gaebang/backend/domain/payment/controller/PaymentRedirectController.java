@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 @Controller
-@RequestMapping("/api/payment")
+@RequestMapping("/api/payment/redirect")
 @RequiredArgsConstructor
 @Slf4j
 public class PaymentRedirectController {
@@ -20,12 +20,13 @@ public class PaymentRedirectController {
     public String handlePaymentSuccess(
             @RequestParam("pg_token") String pgToken,
             @RequestParam("partner_order_id") String partnerOrderId) {
+        log.info("카카오페이 결제 성공 리디렉션 - pg_token: {}, partner_order_id: {}", pgToken, partnerOrderId);
 
         try {
             paymentService.paymentApproveByPgToken(pgToken, partnerOrderId);
-            return "redirect:https://gaebang.site/payment/success";
+            return "redirect:https://gaebang.site/payment/redirect/success";
         } catch (Exception e) {
-            return "redirect:https://gaebang.site/payment/fail";
+            return "redirect:https://gaebang.site/payment/redirect/fail";
         }
     }
 
@@ -33,13 +34,13 @@ public class PaymentRedirectController {
     @GetMapping("/fail")
     public String handlePaymentFail() {
         log.info("카카오페이 결제 실패 리디렉션");
-        return "redirect:https://gaebang.site/payment/fail";
+        return "redirect:https://gaebang.site/payment/redirect/fail";
     }
 
     @GetMapping("/cancel")
     public String handlePaymentCancel() {
         log.info("카카오페이 결제 취소 리디렉션");
-        return "redirect:https://gaebang.site/payment/cancel";
+        return "redirect:https://gaebang.site/payment/redirect/cancel";
     }
 }
 
