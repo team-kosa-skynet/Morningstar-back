@@ -24,9 +24,9 @@ public class PaymentRedirectController {
 
         try {
             paymentService.paymentApproveByPgToken(pgToken, partnerOrderId);
-            return "redirect:https://gaebang.site/api/payment/redirect/success";
+            return "redirect:https://www.gaebang.site/payment/success";
         } catch (Exception e) {
-            return "redirect:https://gaebang.site/api/payment/redirect/fail";
+            return "redirect:https://www.gaebang.site/payment/fail";
         }
     }
 
@@ -34,13 +34,13 @@ public class PaymentRedirectController {
     @GetMapping("/fail")
     public String handlePaymentFail() {
         log.info("카카오페이 결제 실패 리디렉션");
-        return "redirect:https://gaebang.site/api/payment/redirect/fail";
+        return "redirect:https://www.gaebang.site/payment/fail";
     }
 
     @GetMapping("/cancel")
     public String handlePaymentCancel() {
         log.info("카카오페이 결제 취소 리디렉션");
-        return "redirect:https://gaebang.site/api/payment/redirect/cancel";
+        return "redirect:https://www.gaebang.site/payment/cancel";
     }
 }
 
