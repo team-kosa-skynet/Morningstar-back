@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.BufferedReader;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.Base64;
 
 @Service
 @RequiredArgsConstructor
@@ -34,49 +36,66 @@ public class GeminiQuestionService {
     private final RestClient restClient;
     private final MemberRepository memberRepository;
     private final ObjectMapper objectMapper;
-    private final ConversationService conversationService; // ConversationService 주입 추가
+    private final ConversationService conversationService;
 
     /**
-     * 특정 대화방에서 Gemini 질문 스트리밍을 생성합니다
-     * 이전 대화 히스토리를 포함하여 연속적인 대화가 가능합니다
+     * 파일과 함께 Gemini 질문 스트리밍을 생성합니다
      */
-    public SseEmitter createQuestionStream(
+    public SseEmitter createQuestionStreamWithFiles(
             Long conversationId,
-            String model, // 쿼리 파라미터로 받은 모델
+            String model,
             GeminiQuestionRequestDto geminiQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
         Member member = validateAndGetMember(principalDetails);
         SseEmitter emitter = new SseEmitter(300000L); // 5분
 
+        // 파일 정보를 포함한 질문 내용 생성
+        String questionContent = buildQuestionContentWithFiles(geminiQuestionRequestDto);
+
         // 사용자 질문을 대화방에 먼저 저장
-        AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(geminiQuestionRequestDto.content());
+        AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(questionContent);
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-            performApiCall(emitter, conversationId, model, geminiQuestionRequestDto, member); // 모델 파라미터 추가
+        performApiCallWithFiles(emitter, conversationId, model, geminiQuestionRequestDto, member);
 
         setupEmitterCallbacksWithCancellation(emitter, "Gemini");
         return emitter;
     }
 
     /**
-     * Gemini API를 호출하고 스트리밍 응답을 처리합니다
-     * 대화 히스토리를 포함하여 이전 맥락을 유지합니다
+     * 파일 정보를 포함한 질문 내용 생성
      */
-    private void performApiCall(SseEmitter emitter, Long conversationId, String requestModel,
-                                GeminiQuestionRequestDto requestDto, Member member) {
-        StringBuilder fullResponse = new StringBuilder(); // 전체 응답 저장용
+    private String buildQuestionContentWithFiles(GeminiQuestionRequestDto requestDto) {
+        StringBuilder content = new StringBuilder(requestDto.getContent());
+
+        if (requestDto.getFiles() != null && !requestDto.getFiles().isEmpty()) {
+            content.append("\n\n[첨부된 파일들:]");
+            for (MultipartFile file : requestDto.getFiles()) {
+                content.append("\n- ").append(file.getOriginalFilename())
+                        .append(" (크기: ").append(file.getSize()).append(" bytes)");
+            }
+        }
+
+        return content.toString();
+    }
+
+    /**
+     * 파일을 포함한 Gemini API 호출
+     */
+    private void performApiCallWithFiles(SseEmitter emitter, Long conversationId, String requestModel,
+                                         GeminiQuestionRequestDto requestDto, Member member) {
+        StringBuilder fullResponse = new StringBuilder();
 
         try {
-            // 사용할 모델 결정 (쿼리 파라미터로 받은 모델 또는 기본값)
             String modelToUse = geminiQuestionProperties.getModelToUse(requestModel);
             log.info("Gemini API 호출 - 사용 모델: {} (요청 모델: {})", modelToUse, requestModel);
 
-            // 대화 히스토리 조회 (이전 대화 맥락 포함)
+            // 대화 히스토리 조회
             ConversationHistoryDto historyDto = conversationService.getConversationHistory(
                     conversationId,
                     member.getId(),
-                    null // 전체 히스토리 사용 (토큰 제한 고려시 숫자 설정)
+                    null
             );
 
             // Gemini API용 contents 배열 생성
@@ -87,7 +106,6 @@ public class GeminiQuestionService {
                 String role = (String) historyMessage.get("role");
                 String content = (String) historyMessage.get("content");
 
-                // Gemini API는 role을 다르게 매핑 (user: user, assistant: model)
                 String geminiRole = "user".equals(role) ? "user" : "model";
 
                 Map<String, Object> geminiContent = new HashMap<>();
@@ -96,14 +114,9 @@ public class GeminiQuestionService {
                 contents.add(geminiContent);
             }
 
-            // 현재 질문이 히스토리에 없으면 추가 (안전장치)
-            if (contents.isEmpty() ||
-                    !isLastMessageEqual(contents, requestDto.content())) {
-                Map<String, Object> currentContent = new HashMap<>();
-                currentContent.put("role", "user");
-                currentContent.put("parts", List.of(Map.of("text", requestDto.content())));
-                contents.add(currentContent);
-            }
+            // 현재 질문을 파일과 함께 구성
+            Map<String, Object> currentContent = buildContentWithFiles(requestDto);
+            contents.add(currentContent);
 
             Map<String, Object> parameters = createRequestParameters(contents);
 
@@ -116,13 +129,11 @@ public class GeminiQuestionService {
                     .header("Content-Type", "application/json")
                     .body(parameters)
                     .exchange((request, response) -> {
-                        // 취소 신호 확인
                         if (Thread.currentThread().isInterrupted()) {
                             log.info("Gemini 스레드 인터럽트 감지 - API 호출 중단");
                             return null;
                         }
 
-                        // HTTP 상태 코드 검증
                         if (!response.getStatusCode().is2xxSuccessful()) {
                             String errorMessage = String.format("Gemini API 호출 실패: %s", response.getStatusCode());
                             log.error(errorMessage);
@@ -135,7 +146,6 @@ public class GeminiQuestionService {
 
                             String line;
                             while ((line = reader.readLine()) != null) {
-                                // 주기적으로 취소 신호 확인
                                 if (Thread.currentThread().isInterrupted()) {
                                     log.info("Gemini 스레드 인터럽트 감지 - 스트리밍 중단");
                                     break;
@@ -144,13 +154,12 @@ public class GeminiQuestionService {
                                 line = line.trim();
                                 if (line.isEmpty()) continue;
 
-                                // SSE 형태로 오는 데이터 파싱: "data: {json}"
                                 if (line.startsWith("data: ")) {
-                                    String jsonData = line.substring(6); // "data: " 제거
+                                    String jsonData = line.substring(6);
                                     if (!jsonData.equals("[DONE]")) {
                                         String content = parseGeminiJsonResponse(jsonData);
                                         if (content != null && !content.isEmpty()) {
-                                            fullResponse.append(content); // 전체 응답에 추가
+                                            fullResponse.append(content);
 
                                             try {
                                                 emitter.send(SseEmitter.event()
@@ -166,11 +175,10 @@ public class GeminiQuestionService {
                             }
 
                             if (!Thread.currentThread().isInterrupted()) {
-                                // 스트리밍 완료 후 전체 응답을 대화방에 저장 (실제 사용된 모델명으로)
                                 if (fullResponse.length() > 0) {
                                     AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
                                             fullResponse.toString(),
-                                            modelToUse // 실제 사용된 모델명 저장
+                                            modelToUse
                                     );
                                     conversationService.addAnswer(conversationId, member.getId(), answerRequest);
                                     log.info("Gemini 답변 저장 완료 - 모델: {}", modelToUse);
@@ -199,9 +207,57 @@ public class GeminiQuestionService {
         }
     }
 
+    /**
+     * 파일을 포함한 Content 구성 (Gemini 형식)
+     */
+    private Map<String, Object> buildContentWithFiles(GeminiQuestionRequestDto requestDto) {
+        Map<String, Object> content = new HashMap<>();
+        content.put("role", "user");
 
-    private void setupEmitterCallbacksWithCancellation(SseEmitter emitter,
-                                                       String serviceName) {
+        List<Map<String, Object>> parts = new ArrayList<>();
+
+        // 텍스트 부분
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("text", requestDto.getContent());
+        parts.add(textPart);
+
+        // 파일 부분들 (이미지인 경우만 처리)
+        if (requestDto.getFiles() != null && !requestDto.getFiles().isEmpty()) {
+            for (MultipartFile file : requestDto.getFiles()) {
+                if (isImageFile(file)) {
+                    try {
+                        Map<String, Object> imagePart = new HashMap<>();
+
+                        // Gemini 이미지 형식
+                        Map<String, Object> inlineData = new HashMap<>();
+                        inlineData.put("mime_type", file.getContentType());
+                        inlineData.put("data", Base64.getEncoder().encodeToString(file.getBytes()));
+
+                        imagePart.put("inline_data", inlineData);
+                        parts.add(imagePart);
+
+                        log.info("이미지 파일 추가됨: {}", file.getOriginalFilename());
+                    } catch (IOException e) {
+                        log.error("이미지 파일 처리 실패: {}", file.getOriginalFilename(), e);
+                    }
+                }
+            }
+        }
+
+        content.put("parts", parts);
+        return content;
+    }
+
+    /**
+     * 이미지 파일인지 확인
+     */
+    private boolean isImageFile(MultipartFile file) {
+        String contentType = file.getContentType();
+        return contentType != null && contentType.startsWith("image/");
+    }
+
+    // 기존 메서드들 유지
+    private void setupEmitterCallbacksWithCancellation(SseEmitter emitter, String serviceName) {
         emitter.onTimeout(() -> {
             log.warn("{} 스트리밍 타임아웃", serviceName);
             emitter.complete();
@@ -225,33 +281,10 @@ public class GeminiQuestionService {
                 .orElseThrow(() -> new UserNotFoundException());
     }
 
-    /**
-     * Gemini API 요청 파라미터 생성 (히스토리 포함)
-     */
     private Map<String, Object> createRequestParameters(List<Map<String, Object>> contents) {
         Map<String, Object> parameters = new HashMap<>();
-        parameters.put("contents", contents); // 전체 히스토리 포함
+        parameters.put("contents", contents);
         return parameters;
-    }
-
-    /**
-     * 마지막 메시지가 현재 질문과 같은지 확인하는 헬퍼 메서드
-     */
-    private boolean isLastMessageEqual(List<Map<String, Object>> contents, String currentQuestion) {
-        if (contents.isEmpty()) {
-            return false;
-        }
-
-        Map<String, Object> lastContent = contents.get(contents.size() - 1);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> parts = (List<Map<String, Object>>) lastContent.get("parts");
-
-        if (parts == null || parts.isEmpty()) {
-            return false;
-        }
-
-        String lastText = (String) parts.get(0).get("text");
-        return currentQuestion.equals(lastText);
     }
 
     private String parseGeminiJsonResponse(String jsonResponse) {
