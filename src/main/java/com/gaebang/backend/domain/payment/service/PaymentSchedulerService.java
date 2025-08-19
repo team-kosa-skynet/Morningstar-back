@@ -21,7 +21,7 @@ public class PaymentSchedulerService {
     private final PaymentRepository paymentRepository;
     private static final int PAYMENT_TIMEOUT_MINUTES = 3; // 3분 타임아웃
 
-    @Scheduled(fixedRate = 60000) // 1분마다 실행
+//    @Scheduled(fixedRate = 60000) // 1분마다 실행
     public void processExpiredPayments() {
         LocalDateTime expiredTime = LocalDateTime.now().minusMinutes(PAYMENT_TIMEOUT_MINUTES);
 
