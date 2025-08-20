@@ -1020,7 +1020,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 ),
                 "generationConfig", Map.of(
                     "temperature", 0.1,           // 매우 결정론적
-                    "maxOutputTokens", 3000,      // 문서 추출용 충분한 토큰
+                    "maxOutputTokens", 7000,      // 문서 추출용 충분한 토큰 (5000 → 7000)
                     "responseMimeType", "application/json",
                     "responseSchema", Map.of(
                         "type", "object",
@@ -1113,11 +1113,22 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
             }
             
-            JsonNode content = candidates.get(0).path("content");
+            // 디버깅: finishReason과 token 사용량 로깅
+            JsonNode firstCandidate = candidates.get(0);
+            String finishReason = firstCandidate.path("finishReason").asText("UNKNOWN");
+            JsonNode usageMetadata = root.path("usageMetadata");
+            int thoughtsTokenCount = usageMetadata.path("thoughtsTokenCount").asInt(0);
+            int totalTokenCount = usageMetadata.path("totalTokenCount").asInt(0);
+            
+            log.info("[AI] Gemini extractDocumentInfo - finishReason: {}, thoughtsTokens: {}, totalTokens: {}", 
+                    finishReason, thoughtsTokenCount, totalTokenCount);
+            
+            JsonNode content = firstCandidate.path("content");
             JsonNode parts = content.path("parts");
             
             if (parts.isEmpty()) {
-                throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+                throw new RuntimeException("Gemini 응답에 parts가 없습니다 - finishReason: " + finishReason + 
+                        ", thoughtsTokens: " + thoughtsTokenCount + ", totalTokens: " + totalTokenCount);
             }
             
             String responseText = parts.get(0).path("text").asText();
@@ -1130,11 +1141,18 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 return om.readValue(responseText, Map.class);
             } catch (Exception e) {
                 System.err.println("[Gemini] extractDocumentInfo JSON 파싱 실패. 응답 텍스트: " + responseText);
-                // 폴백: 빈 구조 반환
+                // 폴백: 10개 항목 빈 구조 반환
                 return Map.of(
                     "techStacks", List.of(),
                     "projects", List.of(),
-                    "careers", List.of()
+                    "careers", List.of(),
+                    "education", List.of(),
+                    "certifications", List.of(),
+                    "achievements", List.of(),
+                    "portfolio", Map.of("github", "정보 없음", "blog", "정보 없음", "website", "정보 없음"),
+                    "languages", List.of(),
+                    "specialties", List.of(),
+                    "preferences", List.of()
                 );
             }
             

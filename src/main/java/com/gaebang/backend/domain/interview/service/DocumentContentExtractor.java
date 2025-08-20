@@ -81,6 +81,19 @@ public class DocumentContentExtractor {
         List<Map<String, String>> careers = extractCareers(sections);
         structuredInfo.put("careers", careers);
         
+        // 나머지 7개 항목 기본값으로 추가
+        structuredInfo.put("education", List.of());
+        structuredInfo.put("certifications", List.of());
+        structuredInfo.put("achievements", List.of());
+        structuredInfo.put("portfolio", Map.of(
+            "github", "정보 없음",
+            "blog", "정보 없음", 
+            "website", "정보 없음"
+        ));
+        structuredInfo.put("languages", List.of());
+        structuredInfo.put("specialties", List.of());
+        structuredInfo.put("preferences", List.of());
+        
         return structuredInfo;
     }
     
