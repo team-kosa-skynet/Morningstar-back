@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.interview.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gaebang.backend.domain.community.service.ModerationService;
 import com.gaebang.backend.domain.interview.dto.internal.AiTurnFeedbackDto;
 import com.gaebang.backend.domain.interview.dto.internal.PlanQuestionDto;
 import com.gaebang.backend.domain.interview.util.PlanParser;
@@ -1295,6 +1296,98 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                     "areasToImprove", "사례 기반 근거를 보강하세요.",
                     "nextSteps", "핵심 경험을 STAR로 1분 요약하는 연습."
             );
+        }
+    }
+
+    /**
+     * 컨텐츠 검열을 위한 메서드
+     * @param content 검열할 텍스트 내용
+     * @return ModerationResult 검열 결과
+     */
+    public ModerationService.ModerationResult moderateContent(String content) {
+        try {
+            String prompt = """
+                    당신은 커뮤니티 컨텐츠 검열 전문가입니다. 다음 텍스트가 부적절한 내용을 포함하고 있는지 판단해주세요.
+                    
+                    **검열 기준:**
+                    1. 욕설, 비속어, 모욕적 표현
+                    2. 성적인 내용이나 음란물
+                    3. 폭력적이거나 위협적인 내용
+                    4. 혐오 발언 (인종, 성별, 종교 등)
+                    5. 스팸성 광고나 홍보 내용
+                    6. 불법적이거나 범죄를 조장하는 내용
+                    
+                    **검열 대상 텍스트:**
+                    %s
+                    
+                    **응답 요구사항:**
+                    - inappropriate: true/false (부적절한 내용 포함 여부)
+                    - reason: 부적절한 경우 구체적인 사유, 적절한 경우 null
+                    
+                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
+                    {
+                      "inappropriate": true,
+                      "reason": "구체적인 검열 사유"
+                    }
+                    또는
+                    {
+                      "inappropriate": false,
+                      "reason": null
+                    }
+                    """.formatted(content);
+
+            Map<String, Object> requestBody = Map.of(
+                "contents", List.of(
+                    Map.of(
+                        "parts", List.of(
+                            Map.of("text", prompt)
+                        )
+                    )
+                ),
+                "generationConfig", Map.of(
+                    "maxOutputTokens", 1000,
+                    "temperature", 0.1  // 일관성 있는 검열을 위해 낮은 temperature
+                )
+            );
+
+            String url = baseUrl + "/models/" + analysisModel + ":generateContent?key=" + apiKey;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+            String responseBody = response.getBody();
+            
+            JsonNode root = om.readTree(responseBody);
+            JsonNode candidates = root.path("candidates");
+            
+            if (candidates.isArray() && candidates.size() > 0) {
+                JsonNode candidateTextNode = candidates.get(0).path("content").path("parts").get(0).path("text");
+                String responseText = candidateTextNode.asText();
+                
+                try {
+                    Map<String, Object> moderationResult = om.readValue(responseText, Map.class);
+                    boolean inappropriate = (Boolean) moderationResult.get("inappropriate");
+                    String reason = (String) moderationResult.get("reason");
+                    
+                    log.debug("컨텐츠 검열 완료 - 부적절함: {}, 사유: {}", inappropriate, reason);
+                    return new ModerationService.ModerationResult(inappropriate, reason);
+                    
+                } catch (Exception e) {
+                    log.error("검열 응답 파싱 실패: {}", responseText);
+                    // 파싱 실패 시 안전하게 승인 처리
+                    return new ModerationService.ModerationResult(false, null);
+                }
+            } else {
+                log.warn("Gemini API 응답에서 candidates가 없습니다.");
+                return new ModerationService.ModerationResult(false, null);
+            }
+            
+        } catch (Exception e) {
+            log.error("컨텐츠 검열 중 오류 발생: {}", e.getMessage(), e);
+            // 오류 발생 시 안전하게 승인 처리
+            return new ModerationService.ModerationResult(false, null);
         }
     }
 }

@@ -84,3 +84,25 @@ interview:
   features:
     realtime-enabled: false
     server-stt-enabled: false
+
+# 컨텐츠 검열 및 도배 방지 설정
+moderation:
+  enabled: true
+  censorship:
+    title-replacement: "검열된 게시글입니다"
+    content-template: |
+      이 게시글은 부적절한 내용으로 인해 검열되었습니다.
+      
+      검열 사유: {reason}
+      문의: admin@morningstar.com
+  async:
+    core-pool-size: 5
+    max-pool-size: 10
+    queue-capacity: 100
+    keep-alive-seconds: 60
+
+# 게시글 작성 제한 설정
+rate-limit:
+  post:
+    max-count: 3
+    window-minutes: 5

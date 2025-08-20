@@ -29,6 +29,7 @@ public class CommentService {
     private final BoardRepository boardRepository;
     private final PointService pointService;
     private final MemberService memberService;
+    private final ModerationService moderationService;
 
     // 게시판에 엮인 댓글 조회
     public Page<CommentResponseDto> getCommentsByBoardId(Long boardId, Pageable pageable, PrincipalDetails principalDetails) {
@@ -58,13 +59,16 @@ public class CommentService {
 
         Comment createComment = commentRequestDto.toEntity(loginMember, findBoard);
 
-        commentRepository.save(createComment);
+        Comment savedComment = commentRepository.save(createComment);
 
         PointRequestDto pointRequestDto = PointRequestDto.builder()
                 .type(PointType.COMMENT)
                 .amount(5)
                 .build();
         pointService.createPoint(pointRequestDto, principalDetails);
+        
+        // 🆕 비동기 검열 시작
+        moderationService.moderateCommentAsync(savedComment.getId());
     }
 
     // 댓글 삭제
