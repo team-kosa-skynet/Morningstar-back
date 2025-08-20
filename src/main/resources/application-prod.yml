@@ -30,3 +30,8 @@ logging:
     org.hibernate.SQL: WARN
     org.hibernate.type.descriptor.sql: WARN
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "prometheus,health"

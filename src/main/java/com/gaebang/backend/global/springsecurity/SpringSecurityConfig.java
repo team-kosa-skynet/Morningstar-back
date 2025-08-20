@@ -116,6 +116,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/ai-recommend/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ai-news/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ai-updates/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/actuator/**")).permitAll()
                 .anyRequest().authenticated());
 
         /**

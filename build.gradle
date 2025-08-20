@@ -110,6 +110,12 @@ dependencies {
 	// tika
 	implementation 'org.apache.tika:tika-core:2.9.2'
 	implementation 'org.apache.tika:tika-parsers-standard-package:2.9.2'
+
+	// Spring Boot Actuator
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+	// Micrometer Prometheus Registry
+	implementation 'io.micrometer:micrometer-registry-prometheus'
 }
 
 tasks.named('test') {
