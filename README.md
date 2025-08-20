@@ -25,7 +25,12 @@
 ![Spring WebFlux](https://img.shields.io/badge/Spring%20WebFlux-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
 ![SSE](https://img.shields.io/badge/SSE-6DB33F?style=for-the-badge)
 ![Lombok](https://img.shields.io/badge/Lombok-FFA518?style=for-the-badge&logo=lombok&logoColor=white)
-![H2](https://img.shields.io/badge/H2%20Database-4479A1?style=for-the-badge&logo=h2&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+
+#### 🤖 AI 통합
+![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white)
+![Google Gemini](https://img.shields.io/badge/Google%20Gemini-4285F4?style=for-the-badge&logo=google&logoColor=white)
+![Google Cloud TTS](https://img.shields.io/badge/Google%20Cloud%20TTS-4285F4?style=for-the-badge&logo=google-cloud&logoColor=white)
 
 ---
 

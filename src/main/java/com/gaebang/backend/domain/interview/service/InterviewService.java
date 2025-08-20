@@ -150,24 +150,22 @@ public class InterviewService {
         String greeting = getAiGateway().generateGreeting(displayName);
         int totalQuestions = plan.questions().size();
 
-        // 첫 질문의 의도와 가이드 생성 (NextTurnResponseDto와 동일한 형식)
-        String questionIntent = null;
-        List<String> answerGuides = null;
-        try {
-            Map<String, Object> intentAndGuides = generateQuestionIntentAndGuidesWithRetry(
-                firstQuestionType, firstQuestion, role);
-            questionIntent = (String) intentAndGuides.get("intent");
-            answerGuides = (List<String>) intentAndGuides.get("guides");
-        } catch (Exception e) {
-            log.warn("[AI] 첫 질문 의도/가이드 생성 실패: {}", e.getMessage());
-            // 폴백값 설정 (NextTurnResponseDto와 동일한 스타일)
+        // 첫 질문의 의도와 가이드를 pre-generated 데이터에서 가져오기
+        PlanQuestionDto firstQuestionDto = plan.questions().get(0);
+        String questionIntent = firstQuestionDto.intent();
+        List<String> answerGuides = firstQuestionDto.guides();
+        
+        // 레거시 planJson 호환성을 위한 폴백 로직
+        if (questionIntent == null || questionIntent.isBlank()) {
+            log.info("[FALLBACK] 첫 질문 intent가 없어 폴백값 사용 (레거시 planJson)");
             questionIntent = "이 질문을 통해 지원자의 역량을 평가합니다.";
+        }
+        if (answerGuides == null || answerGuides.isEmpty()) {
+            log.info("[FALLBACK] 첫 질문 guides가 없어 폴백값 사용 (레거시 planJson)");
             answerGuides = List.of(
                 "구체적인 상황과 배경을 명확히 설명하고, 당시 직면한 과제를 구체적으로 제시하세요.",
                 "문제 해결을 위해 취한 행동과 접근 방법을 단계별로 설명하고, 기술적 근거를 포함하세요.",
-                "사용한 기술 스택과 그 선택 이유를 명확히 하고, 각 기술의 장단점을 언급하세요.",
-                "최종 결과와 비즈니스 임팩트를 수치나 구체적 사례로 보여주세요.",
-                "해당 경험에서 얻은 핵심 인사이트와 향후 적용 방안을 언급하세요."
+                "최종 결과와 비즈니스 임팩트를 수치나 구체적 사례로 보여주고, 얻은 인사이트를 언급하세요."
             );
         }
 
@@ -224,7 +222,6 @@ public class InterviewService {
         );
         long elapsedMs = (System.nanoTime() - t0) / 1_000_000;
 
-        Map<String, Integer> scoreResult = feedback.scoreDelta(); // 이제 100점 만점 점수
         String coachingTips = normalizeTips(feedback.coachingTips());
         String llmResponseId = feedback.responseId();
 
@@ -233,7 +230,7 @@ public class InterviewService {
 
         Map<String, Object> metricsPayload = new HashMap<>();
         metricsPayload.put("coachingTips", coachingTips);
-        metricsPayload.put("scoreResult", scoreResult);
+        // scoreResult 제거 - 배치 평가로 이동
         String metricsJson = om.writeValueAsString(metricsPayload);
 
         InterviewAnswer answer = InterviewAnswer.create(
@@ -270,92 +267,57 @@ public class InterviewService {
         }
         String nextQuestion = done ? null : plan.questions().get(nextIndex).text();
         
-        // 🚀 병렬 처리: 질문 의도/가이드 생성과 TTS 합성을 동시에 실행
+        // pre-generated 데이터에서 질문 의도/가이드 가져오기 + TTS 병렬 처리
         String questionIntent = null;
         List<String> answerGuides = null;
         TtsPayloadDto tts = null;
         
         if (!done && nextQuestion != null) {
-            long parallelStart = System.nanoTime();
+            long optimizedStart = System.nanoTime();
             
-            // 1️⃣ 질문 의도/가이드 생성 비동기 작업
-            CompletableFuture<Map<String, Object>> intentGuidesFuture = CompletableFuture.supplyAsync(() -> {
-                try {
-                    long intentStart = System.nanoTime();
-                    PlanQuestionDto nextQuestionDto = plan.questions().get(nextIndex);
-                    Map<String, Object> result = generateQuestionIntentAndGuidesWithRetry(
-                        nextQuestionDto.type(), 
-                        nextQuestion,
-                        session.getRole()
-                    );
-                    long intentMs = (System.nanoTime() - intentStart) / 1_000_000;
-                    log.info("[AI][parallel] 질문 의도/가이드 생성 완료: {} ms", intentMs);
-                    return result;
-                } catch (Exception e) {
-                    log.warn("[AI][parallel] 질문 의도/가이드 생성 실패: {}", e.getMessage());
-                    return Map.of(
-                        "intent", "이 질문을 통해 지원자의 역량을 평가합니다.",
-                        "guides", List.of(
-                            "구체적인 경험을 바탕으로 답변해주세요.",
-                            "STAR 방식(상황, 과제, 행동, 결과)을 활용하면 좋습니다.",
-                            "기술적 근거와 함께 설명해주세요."
-                        )
-                    );
-                }
-            });
-
-            // 2️⃣ TTS 합성 비동기 작업 (withAudio일 때만)
-            CompletableFuture<TtsPayloadDto> ttsFuture = null;
-            if (withAudio && !nextQuestion.isBlank()) {
-                ttsFuture = CompletableFuture.supplyAsync(() -> {
-                    try {
-                        long ttsStart = System.nanoTime();
-                        log.info("[TTS][parallel] starting synthesize for question: '{}'", nextQuestion);
-                        TtsPayloadDto result = ttsService.synthesize(nextQuestion, defaultTtsFormat);
-                        long ttsMs = (System.nanoTime() - ttsStart) / 1_000_000;
-                        log.info("[TTS][parallel] completed synthesize in {} ms", ttsMs);
-                        return result;
-                    } catch (Exception e) {
-                        log.warn("[TTS][parallel] synthesize failed: {}", e.getMessage());
-                        return null;
-                    }
-                });
-            }
-
-            // 3️⃣ 병렬 작업 완료 대기 및 결과 취합
-            try {
-                // 질문 의도/가이드 결과 취합
-                Map<String, Object> intentAndGuides = intentGuidesFuture.get();
-                questionIntent = (String) intentAndGuides.get("intent");
-                answerGuides = (List<String>) intentAndGuides.get("guides");
-
-                // TTS 결과 취합 (있을 경우에만)
-                if (ttsFuture != null) {
-                    tts = ttsFuture.get();
-                }
-
-                long parallelMs = (System.nanoTime() - parallelStart) / 1_000_000;
-                log.info("[PARALLEL] 전체 병렬 처리 완료: {} ms (의도/가이드 + TTS)", parallelMs);
-                
-            } catch (Exception e) {
-                log.error("[PARALLEL] 병렬 처리 중 예외 발생: {}", e.getMessage());
-                // 폴백: 기본값 설정
+            // pre-generated 데이터에서 질문 의도/가이드 직접 가져오기
+            PlanQuestionDto nextQuestionDto = plan.questions().get(nextIndex);
+            questionIntent = nextQuestionDto.intent();
+            answerGuides = nextQuestionDto.guides();
+            
+            // 레거시 planJson 호환성을 위한 폴백 로직
+            if (questionIntent == null || questionIntent.isBlank()) {
+                log.info("[FALLBACK] 다음 질문 intent가 없어 폴백값 사용 (레거시 planJson)");
                 questionIntent = "이 질문을 통해 지원자의 역량을 평가합니다.";
+            }
+            if (answerGuides == null || answerGuides.isEmpty()) {
+                log.info("[FALLBACK] 다음 질문 guides가 없어 폴백값 사용 (레거시 planJson)");
                 answerGuides = List.of(
                     "구체적인 경험을 바탕으로 답변해주세요.",
                     "STAR 방식(상황, 과제, 행동, 결과)을 활용하면 좋습니다.",
                     "기술적 근거와 함께 설명해주세요."
                 );
-                tts = null;
             }
+
+            // TTS 합성 처리 (withAudio일 때만)
+            if (withAudio && !nextQuestion.isBlank()) {
+                try {
+                    long ttsStart = System.nanoTime();
+                    log.info("[TTS] starting synthesize for question: '{}'", nextQuestion);
+                    tts = ttsService.synthesize(nextQuestion, defaultTtsFormat);
+                    long ttsMs = (System.nanoTime() - ttsStart) / 1_000_000;
+                    log.info("[TTS] completed synthesize in {} ms", ttsMs);
+                } catch (Exception e) {
+                    log.warn("[TTS] synthesize failed: {}", e.getMessage());
+                    tts = null;
+                }
+            }
+
+            long optimizedMs = (System.nanoTime() - optimizedStart) / 1_000_000;
+            log.info("[OPTIMIZED] 질문 데이터 준비 완료: {} ms (pre-generated 방식)", optimizedMs);
         }
 
-        // 🎯 전체 성능 측정 및 로깅
+        // 전체 성능 측정 및 로깅
         long methodMs = (System.nanoTime() - methodStart) / 1_000_000;
-        log.info("[PERF] nextTurn 메서드 완료 - 전체 실행 시간: {} ms (AI: {} ms, 병렬처리)", 
+        log.info("[PERF] nextTurn 메서드 완료 - 전체 실행 시간: {} ms (AI: {} ms, 최적화됨)", 
                 methodMs, elapsedMs);
                 
-        return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, scoreResult, nextIndex, done, tts);
+        return new NextTurnResponseDto(nextQuestion, questionIntent, answerGuides, coachingTips, nextIndex, done, tts);
     }
 
     @Transactional(readOnly = true)
@@ -369,21 +331,23 @@ public class InterviewService {
         List<InterviewAnswer> answers = interviewAnswerRepository
                 .findBySession_IdOrderByQuestionIndexAsc(sessionId);
 
-        // 1) 턴별 metricsJson에서 scoreResult 평균 계산 (100점 만점 시스템)
-        Map<String, List<Integer>> scoreHistory = new HashMap<>();
-        for (InterviewAnswer a : answers) {
-            Map<?, ?> metrics = om.readValue(a.getMetricsJson(), Map.class);
-            Object raw = metrics.get("scoreResult");
-            Map<String, Integer> scores =
-                    (raw instanceof Map)
-                            ? om.convertValue(raw, om.getTypeFactory().constructMapType(Map.class, String.class, Integer.class))
-                            : Collections.emptyMap();
-            for (Map.Entry<String, Integer> e : scores.entrySet()) {
-                scoreHistory.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(e.getValue());
-            }
+        // 1) 배치 평가: AI를 통해 전체 면접 세션 종합 점수 계산
+        Map<String, Integer> subscores;
+        try {
+            log.info("[BATCH] 배치 평가 시작 - session: {}, 답변 수: {}", sessionId, answers.size());
+            subscores = generateBatchEvaluation(answers, session);
+            log.info("[BATCH] 배치 평가 완료 - 점수: {}", subscores);
+        } catch (Exception e) {
+            log.warn("[BATCH] 배치 평가 실패, 폴백 점수 사용: {}", e.getMessage());
+            // 폴백: 기본 점수 (면접 완료 기본선)
+            subscores = Map.of(
+                "clarity", 45,
+                "structure_STAR", 40, 
+                "tech_depth", 50,
+                "tradeoff", 42,
+                "root_cause", 38
+            );
         }
-
-        Map<String, Integer> subscores = calculateAverageScores(scoreHistory);
 
         double overall = 0.0;
         for (Integer v : subscores.values()) overall += v;
@@ -485,6 +449,88 @@ public class InterviewService {
         }
 
         session.updateProfileSnapshotJson(om.writeValueAsString(snap));
+    }
+
+    /**
+     * 배치 평가: 전체 면접 세션을 종합하여 5지표 점수 계산
+     */
+    private Map<String, Integer> generateBatchEvaluation(List<InterviewAnswer> answers, InterviewSession session) throws Exception {
+        if (answers.isEmpty()) {
+            throw new IllegalArgumentException("답변이 없어 배치 평가를 수행할 수 없습니다");
+        }
+
+        // 면접 세션 요약 데이터 생성
+        StringBuilder evaluationData = new StringBuilder();
+        evaluationData.append(String.format("면접 역할: %s\n", session.getRole()));
+        evaluationData.append(String.format("답변 수: %d개\n\n", answers.size()));
+
+        for (InterviewAnswer answer : answers) {
+            evaluationData.append(String.format("Q%d [%s]: %s\n", 
+                answer.getQuestionIndex() + 1, 
+                answer.getQuestionType(), 
+                answer.getQuestionText()));
+            
+            String transcript = answer.getTranscript();
+            if (transcript != null && !transcript.isBlank()) {
+                // 긴 답변은 요약하여 전달 (배치 평가의 정확성을 위해)
+                String summary = transcript.length() > 500 
+                    ? transcript.substring(0, 500) + "..." 
+                    : transcript;
+                evaluationData.append(String.format("A%d: %s\n\n", 
+                    answer.getQuestionIndex() + 1, summary));
+            } else {
+                evaluationData.append(String.format("A%d: [답변 없음]\n\n", 
+                    answer.getQuestionIndex() + 1));
+            }
+        }
+
+        // AI를 통한 종합 점수 계산
+        Map<String, Object> batchResult = getAiGateway().generateBatchEvaluation(
+            evaluationData.toString(), 
+            session.getRole(),
+            session.getLastResponseId()
+        );
+
+        // 결과를 Integer Map으로 변환
+        Map<String, Integer> scores = new HashMap<>();
+        Object scoresRaw = batchResult.get("scores");
+        
+        if (scoresRaw instanceof Map) {
+            Map<?, ?> scoresMap = (Map<?, ?>) scoresRaw;
+            
+            for (Map.Entry<?, ?> entry : scoresMap.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                Object value = entry.getValue();
+                Integer score = null;
+                
+                if (value instanceof Number) {
+                    score = ((Number) value).intValue();
+                } else if (value instanceof String) {
+                    try {
+                        score = Integer.parseInt((String) value);
+                    } catch (NumberFormatException e) {
+                        log.warn("[BATCH] 점수 파싱 실패: {} = {}", key, value);
+                    }
+                }
+                
+                if (score != null) {
+                    // 0-100 범위로 제한
+                    score = Math.max(0, Math.min(100, score));
+                    scores.put(key, score);
+                }
+            }
+        }
+
+        // 필수 지표가 없는 경우 기본값 설정
+        String[] requiredMetrics = {"clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"};
+        for (String metric : requiredMetrics) {
+            if (!scores.containsKey(metric)) {
+                scores.put(metric, 45); // 기본값: 보통 수준
+                log.warn("[BATCH] 누락된 지표 {} 기본값 설정: 45점", metric);
+            }
+        }
+
+        return scores;
     }
 
     /**

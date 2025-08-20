@@ -144,9 +144,14 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                                     "properties", Map.of(
                                         "idx", Map.of("type", "integer"),
                                         "type", Map.of("type", "string"),
-                                        "text", Map.of("type", "string")
+                                        "text", Map.of("type", "string"),
+                                        "intent", Map.of("type", "string"),
+                                        "guides", Map.of(
+                                            "type", "array",
+                                            "items", Map.of("type", "string")
+                                        )
                                     ),
-                                    "required", List.of("idx", "type", "text"),
+                                    "required", List.of("idx", "type", "text", "intent", "guides"),
                                     "additionalProperties", false
                                 )
                             )
@@ -157,7 +162,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                 )
             ),
             "temperature", 0.8,  // 다양성을 위해 temperature 증가
-            "max_tokens", 2000
+            "max_tokens", 6000   // 질문+의도+가이드 생성을 위해 대폭 증가
         );
 
         // API 키 검증
@@ -215,20 +220,39 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         
         prompt.append("""
                 
-                🎯 **공통 생성 조건:**
-                1. 질문 유형: BEHAVIORAL, TECHNICAL, SYSTEM_DESIGN, TROUBLESHOOT, WRAPUP 중 선택
-                2. 난이도를 점진적으로 높여가며 10개 질문 생성
-                3. 실무 중심의 구체적이고 실용적인 질문
-                4. 마지막 질문은 WRAPUP 유형으로 마무리
-                5. 각 질문은 명확하고 답변 가능한 형태로 작성
+                🎯 **필수 역할 준수 조건:**
+                ⚠️ 경고: 역할과 맞지 않는 기술 질문 시 면접 무효 처리됩니다!
+                - 현재 역할: """ + role + """
+                - 해당 역할의 기술 스택만 사용하여 질문 생성
+                - 다른 분야 기술은 절대 언급 금지
+                
+                🎯 **구조화된 질문 생성 조건:**
+                1. **구간별 질문 타입 (필수 준수):**
+                   - 1-2번: BEHAVIORAL (워밍업) - 자기소개, 동기, 기본 경험
+                   - 3-6번: TECHNICAL (핵심 역량) - 기술 구현, 코드 품질, 실무 경험  
+                   - 7-8번: SYSTEM_DESIGN (설계 사고) - 아키텍처, 확장성, 성능
+                   - 9번: TROUBLESHOOT (문제 해결) - 장애 대응, 디버깅, 근본 원인 분석
+                   - 10번: TECHNICAL (종합 역량) - 도전적 문제 해결, 기술적 성장
+                
+                2. **난이도 조절:** 점진적으로 높여가며 생성
+                3. **실무 중심:** 구체적이고 실용적인 질문
+                4. **질문별 추가 생성 요구사항:**
+                   - intent: 해당 질문의 평가 목적을 1-2문장으로 명확히 설명
+                   - guides: 좋은 답변을 위한 구체적인 가이드 정확히 3개 제공
                 
                 JSON 응답 형식:
                 {
                   "questions": [
-                    {"idx": 0, "type": "BEHAVIORAL", "text": "질문 내용"},
-                    {"idx": 1, "type": "TECHNICAL", "text": "질문 내용"},
+                    {
+                      "idx": 0, 
+                      "type": "BEHAVIORAL", 
+                      "text": "자기소개를 간단히 해주세요.",
+                      "intent": "지원자의 커뮤니케이션 능력과 핵심 경험을 파악합니다.",
+                      "guides": ["구체적인 경험과 성과를 바탕으로 간결하게 소개하세요.", "담당한 프로젝트와 기술 스택을 명확히 언급하세요.", "회사와 팀에 기여할 수 있는 강점을 어필하세요."]
+                    },
+                    {"idx": 1, "type": "BEHAVIORAL", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]},
                     ...
-                    {"idx": 9, "type": "WRAPUP", "text": "질문 내용"}
+                    {"idx": 9, "type": "WRAPUP", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]}
                   ]
                 }
                 """);
@@ -238,23 +262,36 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
     
     private String getRoleSpecificPrompt(String role) {
         return switch (role) {
-            case "BACKEND_DEVELOPER" -> """
-                백엔드 개발자 면접을 진행합니다.
-                - 서버 아키텍처, 데이터베이스 설계, API 개발 중심
-                - Spring Framework, JPA, 동시성 처리, 성능 최적화
-                - 시스템 설계, 장애 대응, 코드 품질 관리
-                - MSA, 캐싱, 보안, 모니터링 관련 질문 포함
+            case "BACKEND", "BACKEND_DEVELOPER" -> """
+                🚨 중요: 당신은 백엔드 개발자 전문 면접관입니다. 반드시 백엔드 기술만 다루세요.
+                
+                ❌ 절대 금지: JavaScript, React, Vue, 프론트엔드 기술 관련 질문
+                ✅ 필수 포함: 
+                - Java, Spring Boot/Framework, JPA/Hibernate
+                - 서버 아키텍처, REST API 설계, 데이터베이스 (MySQL, PostgreSQL)
+                - 동시성 처리, 멀티스레딩, 성능 최적화
+                - 시스템 설계, MSA, 캐싱 (Redis), 메시지큐
+                - 장애 대응, 모니터링, 보안, 인증/인가
+                - Spring Security, JUnit 테스트, CI/CD
+                
+                역할 확인: 백엔드 개발자는 서버사이드 개발만 담당합니다.
                 """;
                 
-            case "FRONTEND_DEVELOPER" -> """
-                프론트엔드 개발자 면접을 진행합니다.
-                - React/Vue, JavaScript ES6+, TypeScript 중심
-                - 컴포넌트 설계, 상태 관리, 성능 최적화
+            case "FRONTEND", "FRONTEND_DEVELOPER" -> """
+                🚨 중요: 당신은 프론트엔드 개발자 전문 면접관입니다. 반드시 프론트엔드 기술만 다루세요.
+                
+                ❌ 절대 금지: Java, Spring, 서버사이드 기술 관련 질문
+                ✅ 필수 포함:
+                - JavaScript ES6+, TypeScript, React/Vue
+                - 컴포넌트 설계, 상태 관리 (Redux, Vuex)
                 - 브라우저 호환성, 웹 접근성, SEO
-                - 빌드 도구, 테스팅, 사용자 경험 개선 관련 질문 포함
+                - Webpack, Vite, 빌드 도구, Jest 테스팅
+                - 사용자 경험, 성능 최적화, 반응형 디자인
+                
+                역할 확인: 프론트엔드 개발자는 클라이언트사이드 개발만 담당합니다.
                 """;
                 
-            case "FULLSTACK_DEVELOPER" -> """
+            case "FULLSTACK", "FULLSTACK_DEVELOPER" -> """
                 풀스택 개발자 면접을 진행합니다.
                 - 프론트엔드와 백엔드 기술 스택 모두 다룸
                 - 전체 서비스 아키텍처 설계 능력 평가
@@ -296,7 +333,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         Map<String, Object> q6 = Map.of("idx", 6, "type", "TROUBLESHOOT", "text", "장애 상황에서 어떻게 대응하시나요?");
         Map<String, Object> q7 = Map.of("idx", 7, "type", "BEHAVIORAL", "text", "새로운 기술 학습 방법을 설명해주세요.");
         Map<String, Object> q8 = Map.of("idx", 8, "type", "TECHNICAL", "text", "성능 최적화 경험을 공유해주세요.");
-        Map<String, Object> q9 = Map.of("idx", 9, "type", "WRAPUP", "text", "궁금한 점이나 마지막으로 어필하고 싶은 부분이 있나요?");
+        Map<String, Object> q9 = Map.of("idx", 9, "type", "TECHNICAL", "text", "지금까지 참여한 프로젝트 중 가장 도전적이었던 기술적 문제와 해결 과정을 설명해주세요.");
 
         return Map.of("questions", List.of(q0, q1, q2, q3, q4, q5, q6, q7, q8, q9));
     }
@@ -308,25 +345,13 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
 
         PlanQuestionDto q = planParser.getQuestionByIndex(planJson, questionIndex);
 
-        // JSON Schema (0-10점 직접 평가 시스템)
+        // JSON Schema (코칭팁만 생성)
         Map<String, Object> schema = Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "coachingTips", Map.of("type", "string"),
-                        "scoreResult", Map.of(
-                                "type", "object",
-                                "properties", Map.of(
-                                        "clarity", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2),
-                                        "structure_STAR", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2),
-                                        "tech_depth", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2),
-                                        "tradeoff", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2),
-                                        "root_cause", Map.of("type", "integer", "minimum", 0, "maximum", 10, "default", 2)
-                                ),
-                                "required", List.of("clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"),
-                                "additionalProperties", false
-                        )
+                        "coachingTips", Map.of("type", "string")
                 ),
-                "required", List.of("coachingTips", "scoreResult"),
+                "required", List.of("coachingTips"),
                 "additionalProperties", false
         );
 
@@ -338,35 +363,12 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         );
 
         String prompt = """
-                당신은 엄격한 모의면접 코치입니다. 아래 정보를 바탕으로 간단 코칭과 지표별 점수를 반환하세요.
-                - 질문유형: %s
-                - 질문: %s
-                - 후보자 답변: %s
+                면접 코치로서 간결한 피드백을 제공하세요.
+                질문: %s
+                답변: %s
                 
-                평가 기준 (0-10점, 엄격하게 적용):
-                - 0점: 답변 없음, 완전히 잘못된 답변
-                - 1-2점: "잘 모르겠습니다", "모르겠어요" 등 회피 답변
-                - 3-4점: 기본 개념 부족, 피상적 답변
-                - 5-6점: 기본 수준, 평범한 답변
-                - 7-8점: 구체적이고 실무적인 좋은 답변
-                - 9-10점: 깊이 있고 통찰력 있는 완벽한 답변
-                
-                평가 지표별 세부 기준:
-                - clarity: 답변의 명확성과 이해도
-                - structure_STAR: STAR 방식 또는 체계적 구조
-                - tech_depth: 기술적 깊이와 전문성
-                - tradeoff: 장단점 분석, 의사결정 과정
-                - root_cause: 근본 원인 분석, 문제 해결 접근
-                
-                현실적 채점 규칙:
-                ⚠️ 중요: "잘 모르겠습니다", "모르겠어요" 등 회피 답변 → 모든 지표 반드시 1-2점 (기본값 금지!)
-                1) 완전 회피 답변 → 1-2점 (답변 시도는 인정)
-                2) 질문과 무관한 답변 → 해당 지표 0-1점
-                3) 해당 질문에서 평가할 수 없는 지표 → 0점 (평가 불가)
-                4) 기본 수준의 답변 → 2-3점 (최소 기본선)
-                5) coachingTips: 1~2문장으로 개선점 구체적 제시
-                6) 반드시 지정된 JSON 스키마로 출력
-                """.formatted(q.type(), q.text(), transcript);
+                1-2문장으로 구체적인 개선점을 제시하세요.
+                """.formatted(q.text(), transcript);
 
         Map<String, Object> body = new HashMap<>();
         body.put("model", model);
@@ -389,31 +391,11 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
 
         if (parsed != null && !parsed.isMissingNode() && !parsed.isNull()) {
             String tips = parsed.path("coachingTips").asText("핵심부터 1~2문장으로.").trim();
-
-            // 5개 키 모두 채우기 (0-10점 직접 점수를 100점 만점으로 환산)
-            String[] KEYS = {"clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause"};
-            Map<String, Integer> scores = new HashMap<>();
-            JsonNode sr = parsed.path("scoreResult");
-            for (String k : KEYS) {
-                int rawScore = (sr.has(k) && sr.get(k).isInt()) ? sr.get(k).asInt() : 2; // 기본값 2점 (최소 20점 보장)
-                // 0-10점을 100점 만점으로 환산: 절충형 20점 기준
-                // 0점 → 0점 (답변 없음), 1점 → 10점 (회피), 2점 → 20점 (기본선), 5점 → 50점, 10점 → 100점
-                int finalScore;
-                if (rawScore == 0) {
-                    finalScore = 0;
-                } else {
-                    finalScore = 20 + (rawScore - 2) * 10;
-                    finalScore = Math.max(10, finalScore);
-                }
-                finalScore = Math.max(0, Math.min(100, finalScore));
-                scores.put(k, finalScore);
-            }
-            return new AiTurnFeedbackDto(tips, scores, responseId);
+            return new AiTurnFeedbackDto(tips, responseId);
         }
 
         String text = findText(root);
-        Map<String, Integer> fallbackScores = Map.of("clarity", 20, "structure_STAR", 20, "tech_depth", 20, "tradeoff", 20, "root_cause", 20);
-        return new AiTurnFeedbackDto(text.isBlank() ? "핵심부터 1~2문장으로." : text, fallbackScores, responseId);
+        return new AiTurnFeedbackDto(text.isBlank() ? "핵심부터 1~2문장으로." : text, responseId);
     }
 
     @Override
@@ -460,7 +442,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                     
                     **생성 요구사항:**
                     1. intent: 이 질문을 통해 무엇을 평가하려는지 1-2문장으로 명확히 설명
-                    2. guides: 좋은 답변을 위한 구체적인 가이드 5개를 배열로 제공
+                    2. guides: 좋은 답변을 위한 구체적인 가이드 3개를 배열로 제공
                     
                     **답변 가이드 작성 원칙:**
                     - 각 가이드는 구체적이고 실행 가능한 조언으로 작성
@@ -516,21 +498,23 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
 
     private String getRoleSpecificGuidePrompt(String role) {
         return switch (role) {
-            case "BACKEND_DEVELOPER" -> """
-                백엔드 개발자로서 다음 관점에서 답변하도록 가이드:
-                - 서버 아키텍처, 성능, 확장성 관점
-                - 데이터베이스 설계 및 최적화
-                - API 설계 원칙과 보안 고려사항
-                - 장애 대응 및 모니터링 경험
+            case "BACKEND", "BACKEND_DEVELOPER" -> """
+                🔹 백엔드 개발자 전용 가이드 (서버사이드 개발만):
+                - Java/Spring 기반 서버 아키텍처, 성능, 확장성 관점
+                - 데이터베이스 설계, JPA/Hibernate, SQL 최적화
+                - REST API 설계, Spring Security, 인증/인가
+                - 멀티스레딩, 동시성, 시스템 장애 대응
+                ❌ 금지: JavaScript, React, 프론트엔드 관련 내용
                 """;
-            case "FRONTEND_DEVELOPER" -> """
-                프론트엔드 개발자로서 다음 관점에서 답변하도록 가이드:
+            case "FRONTEND", "FRONTEND_DEVELOPER" -> """
+                🔹 프론트엔드 개발자 전용 가이드 (클라이언트사이드 개발만):
                 - 사용자 경험(UX)과 성능 최적화
                 - 컴포넌트 설계 및 상태 관리
                 - 브라우저 호환성 및 접근성
                 - 최신 프론트엔드 기술 트렌드 활용
+                ❌ 금지: Java, Spring, 서버사이드 관련 내용
                 """;
-            case "FULLSTACK_DEVELOPER" -> """
+            case "FULLSTACK", "FULLSTACK_DEVELOPER" -> """
                 풀스택 개발자로서 다음 관점에서 답변하도록 가이드:
                 - 전체 시스템 아키텍처 이해도
                 - 프론트엔드-백엔드 연동 경험
@@ -571,13 +555,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                 - 재발 방지 대책
                 - 팀 커뮤니케이션 과정
                 """;
-            case "WRAPUP" -> """
-                마무리 질문으로서 다음을 강조:
-                - 핵심 강점과 차별화 포인트
-                - 회사/팀에 기여할 수 있는 부분
-                - 성장 계획과 학습 의지
-                - 궁금한 점에 대한 적극적 질문
-                """;
             default -> "해당 질문의 의도에 맞는 구체적이고 체계적인 답변 가이드 제공";
         };
     }
@@ -602,7 +579,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
             case "TECHNICAL" -> "지원자의 기술적 깊이와 실무 적용 능력을 확인합니다.";
             case "SYSTEM_DESIGN" -> "대규모 시스템 설계 능력과 아키텍처 이해도를 평가합니다.";
             case "TROUBLESHOOT" -> "문제 상황에서의 분석 능력과 해결 과정을 확인합니다.";
-            case "WRAPUP" -> "지원자의 핵심 강점과 회사에 대한 관심도를 파악합니다.";
             default -> "지원자의 역량과 적합성을 종합적으로 평가합니다.";
         };
 
@@ -622,15 +598,15 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         );
 
         List<String> roleSpecificGuides = switch (role) {
-            case "BACKEND_DEVELOPER" -> List.of(
-                "서버 아키텍처와 데이터베이스 설계 관점에서 기술적 결정 사항을 구체적으로 설명하세요.",
-                "성능 최적화나 확장성 고려사항을 포함하여 비즈니스 임팩트를 수치로 보여주세요."
+            case "BACKEND", "BACKEND_DEVELOPER" -> List.of(
+                "Java/Spring 기반 서버 아키텍처와 데이터베이스 설계 관점에서 기술적 결정을 구체적으로 설명하세요.",
+                "JPA/Hibernate, 멀티스레딩, 성능 최적화 경험을 포함하여 비즈니스 임팩트를 수치로 보여주세요."
             );
-            case "FRONTEND_DEVELOPER" -> List.of(
-                "사용자 경험과 성능 최적화 관점에서 기술적 접근 방법을 구체적으로 설명하세요.",
-                "브라우저 호환성이나 접근성을 고려한 설계 결정과 그 결과를 보여주세요."
+            case "FRONTEND", "FRONTEND_DEVELOPER" -> List.of(
+                "React/Vue, JavaScript 기반 사용자 경험과 성능 최적화 관점에서 기술적 접근을 설명하세요.",
+                "브라우저 호환성, 번들링, 접근성을 고려한 설계 결정과 그 결과를 보여주세요."
             );
-            case "FULLSTACK_DEVELOPER" -> List.of(
+            case "FULLSTACK", "FULLSTACK_DEVELOPER" -> List.of(
                 "프론트엔드와 백엔드를 아우르는 전체 시스템 관점에서 기술적 의사결정을 설명하세요.",
                 "다양한 기술 스택 선택의 근거와 트레이드오프를 구체적으로 언급하세요."
             );
@@ -648,12 +624,233 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
             default -> List.of("최종 성과와 그 과정에서 배운 핵심 인사이트를 구체적으로 언급하세요.");
         };
 
-        // 공통 + 역할별 + 질문유형별 가이드 조합 (최대 5개)
+        // 공통 + 역할별 + 질문유형별 가이드 조합 (최대 3개)
         List<String> combined = new java.util.ArrayList<>(commonGuides);
         combined.addAll(roleSpecificGuides);
         combined.addAll(questionTypeGuides);
         
-        return combined.size() > 5 ? combined.subList(0, 5) : combined;
+        return combined.size() > 3 ? combined.subList(0, 3) : combined;
+    }
+
+    @Override
+    public Map<String, Object> generateBatchEvaluation(String evaluationData, String role, String previousResponseId) throws Exception {
+        try {
+            String prompt = """
+                    당신은 엄격한 시니어 면접관입니다. 아래 전체 면접 내용을 종합하여 정확한 점수를 산정해주세요.
+                    
+                    **평가 데이터:**
+                    %s
+                    
+                    **평가 지표 (0-100점):**
+                    - clarity: 명확한 의사소통 능력
+                    - structure_STAR: 체계적인 답변 구조 (상황-과제-행동-결과)
+                    - tech_depth: 기술적 깊이와 전문성
+                    - tradeoff: 트레이드오프 인식과 판단력
+                    - root_cause: 근본 원인 분석 능력
+                    
+                    **점수 기준:**
+                    - 0-20점: 매우 부족 (답변 회피, 기본 지식 부족)
+                    - 21-40점: 부족 (피상적 이해)
+                    - 41-60점: 보통 (기본 수준)
+                    - 61-80점: 좋음 (실무 활용 가능)
+                    - 81-100점: 우수 (깊이 있는 전문성)
+                    
+                    **주의사항:**
+                    - 전체 답변의 일관성과 패턴을 종합 고려
+                    - "잘 모르겠습니다" 답변은 해당 지표에서 감점
+                    - 역할(%s)에 맞는 기술적 깊이로 평가
+                    - 각 지표별로 구체적 근거와 함께 점수 산정
+                    """.formatted(evaluationData, role);
+
+            Map<String, Object> schema = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                    "scores", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                            "clarity", Map.of("type", "integer"),
+                            "structure_STAR", Map.of("type", "integer"),
+                            "tech_depth", Map.of("type", "integer"),
+                            "tradeoff", Map.of("type", "integer"),
+                            "root_cause", Map.of("type", "integer")
+                        ),
+                        "required", List.of("clarity", "structure_STAR", "tech_depth", "tradeoff", "root_cause")
+                    )
+                ),
+                "required", List.of("scores")
+            );
+
+            Map<String, Object> format = Map.of(
+                "type", "json_schema",
+                "json_schema", Map.of(
+                    "name", "BatchEvaluationSchema",
+                    "schema", schema,
+                    "strict", true
+                )
+            );
+
+            // OpenAI Responses API 사용
+            String responseId = null;
+            if (previousResponseId != null && !previousResponseId.isBlank()) {
+                responseId = previousResponseId;
+            }
+
+            // OpenAI API 직접 호출 (배치 평가용)
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            Map<String, Object> requestBody = Map.of(
+                "model", "gpt-4o-mini",
+                "messages", List.of(
+                    Map.of("role", "user", "content", prompt)
+                ),
+                "temperature", 0.1,
+                "max_tokens", 2000,
+                "response_format", format
+            );
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<String> apiResponse = restTemplate.postForEntity(
+                "https://api.openai.com/v1/chat/completions", entity, String.class);
+
+            JsonNode root = om.readTree(apiResponse.getBody());
+            JsonNode choices = root.path("choices");
+            
+            if (choices.isEmpty()) {
+                throw new RuntimeException("OpenAI 응답에 choices가 없습니다");
+            }
+            
+            String content = choices.get(0).path("message").path("content").asText();
+            Map<String, Object> parsed = om.readValue(content, Map.class);
+            System.out.println("[AI][batch] OpenAI 배치 평가 완료");
+            
+            return parsed;
+
+        } catch (Exception e) {
+            System.err.println("[AI][OpenAI] generateBatchEvaluation 실패: " + e.getMessage());
+            // 폴백: 기본 점수 반환
+            return Map.of(
+                "scores", Map.of(
+                    "clarity", 45,
+                    "structure_STAR", 40,
+                    "tech_depth", 50,
+                    "tradeoff", 42,
+                    "root_cause", 38
+                )
+            );
+        }
+    }
+
+    @Override
+    public Map<String, Object> extractDocumentInfo(String documentText) throws Exception {
+        try {
+            String prompt = """
+                    당신은 전문 HR 담당자입니다. 아래 문서에서 면접에 필요한 정보를 추출해주세요.
+                    
+                    **문서 내용:**
+                    %s
+                    
+                    **추출할 정보:**
+                    1. **기술 스택**: 모든 프로그래밍 언어, 프레임워크, 라이브러리, 도구
+                       - 다양한 표현 인식: "React.js", "리액트", "ReactJS" 모두 "React"로 통합
+                       - 버전 정보 포함: "Java 17", "Spring Boot 3.x" 등
+                    
+                    2. **프로젝트 경험**: 개발 프로젝트 정보
+                       - 기간: 시작-종료 날짜 또는 기간
+                       - 역할: 팀장, 리더, 백엔드, 프론트엔드, 풀스택 등
+                       - 규모: 팀 규모나 프로젝트 규모 (있는 경우)
+                    
+                    3. **경력 정보**: 실무 경험 (회사명 제외)
+                       - 기간: 총 경력 또는 각 회사별 기간
+                       - 직무: 개발자, 엔지니어, 팀장 등
+                       - 수준: 신입, 경력, 시니어 등
+                    
+                    **중요 지침:**
+                    - 개인 식별 정보 절대 포함 금지 (이름, 회사명, 학교명 등)
+                    - 맥락을 고려한 정확한 정보만 추출
+                    - 애매한 정보는 포함하지 않음
+                    - 기술 스택은 표준 명칭으로 통일
+                    """.formatted(documentText);
+
+            Map<String, Object> schema = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                    "techStacks", Map.of(
+                        "type", "array",
+                        "items", Map.of("type", "string")
+                    ),
+                    "projects", Map.of(
+                        "type", "array", 
+                        "items", Map.of(
+                            "type", "object",
+                            "properties", Map.of(
+                                "duration", Map.of("type", "string"),
+                                "role", Map.of("type", "string"),
+                                "scale", Map.of("type", "string")
+                            )
+                        )
+                    ),
+                    "careers", Map.of(
+                        "type", "array",
+                        "items", Map.of(
+                            "type", "object", 
+                            "properties", Map.of(
+                                "duration", Map.of("type", "string"),
+                                "role", Map.of("type", "string"),
+                                "level", Map.of("type", "string")
+                            )
+                        )
+                    )
+                ),
+                "required", List.of("techStacks", "projects", "careers")
+            );
+
+            Map<String, Object> format = Map.of(
+                "type", "json_schema",
+                "json_schema", Map.of(
+                    "name", "DocumentExtractionSchema",
+                    "schema", schema,
+                    "strict", true
+                )
+            );
+
+            // OpenAI API 직접 호출
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            Map<String, Object> requestBody = Map.of(
+                "model", "gpt-4o-mini",
+                "messages", List.of(
+                    Map.of("role", "user", "content", prompt)
+                ),
+                "temperature", 0.1,
+                "max_tokens", 3000,
+                "response_format", format
+            );
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<String> apiResponse = restTemplate.postForEntity(
+                "https://api.openai.com/v1/chat/completions", entity, String.class);
+
+            JsonNode root = om.readTree(apiResponse.getBody());
+            JsonNode choices = root.path("choices");
+            
+            if (choices.isEmpty()) {
+                throw new RuntimeException("OpenAI 응답에 choices가 없습니다");
+            }
+            
+            String content = choices.get(0).path("message").path("content").asText();
+            Map<String, Object> parsed = om.readValue(content, Map.class);
+            System.out.println("[AI][OpenAI] 문서 추출 완료");
+            
+            return parsed;
+
+        } catch (Exception e) {
+            System.err.println("[AI][OpenAI] extractDocumentInfo 실패: " + e.getMessage());
+            throw e; // 상위에서 폴백 처리
+        }
     }
 
     @Override
