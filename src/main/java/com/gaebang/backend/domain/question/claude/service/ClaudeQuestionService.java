@@ -102,11 +102,24 @@ public class ClaudeQuestionService {
             parameters.put("max_tokens", 4096);
             parameters.put("stream", true);
 
-            List<Map<String, Object>> messages = new ArrayList<>(historyDto.messages());
+            List<Map<String, Object>> messages = new ArrayList<>();
+
+            // Claude용 대화 히스토리 처리 (OpenAI/Gemini와 유사하게)
+            List<Map<String, Object>> historyMessages = historyDto.messages();
+            for (Map<String, Object> message : historyMessages) {
+                String role = (String) message.get("role");
+                String content = (String) message.get("content");
+
+                Map<String, Object> claudeMessage = new HashMap<>();
+                claudeMessage.put("role", "user".equals(role) ? "user" : "assistant");
+                claudeMessage.put("content", List.of(Map.of("type", "text", "text", content)));
+                messages.add(claudeMessage);
+            }
+
 
             // 파일이 있거나 새로운 텍스트일 때 createContentWithFiles 호출
             if (messages.isEmpty() ||
-                    !requestDto.content().equals(messages.get(messages.size() - 1).get("content")) ||
+                    !requestDto.content().equals(getLastUserMessage(historyMessages)) ||
                     (requestDto.files() != null && !requestDto.files().isEmpty())) {
 
                 List<Map<String, Object>> content = createContentWithFiles(
@@ -358,6 +371,16 @@ public class ClaudeQuestionService {
             log.warn("Claude API 스트리밍 응답 파싱 실패: {}", e.getMessage());
             return null;
         }
+    }
+
+    private String getLastUserMessage(List<Map<String, Object>> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Map<String, Object> message = messages.get(i);
+            if ("user".equals(message.get("role"))) {
+                return (String) message.get("content");
+            }
+        }
+        return "";
     }
 
     private void handleStreamError(SseEmitter emitter, Exception e) {
