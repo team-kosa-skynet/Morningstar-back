@@ -28,10 +28,10 @@ public class HttpClientConfig {
         connectionManager.setMaxTotal(100);                    // 전체 최대 연결 수
         connectionManager.setDefaultMaxPerRoute(20);           // 경로당 최대 연결 수
 
-        // Request 설정 (타임아웃)
+        // Request 설정 (타임아웃) - 이미지 생성 API를 위해 타임아웃 대폭 증가
         RequestConfig requestConfig = RequestConfig.custom()
-                .setConnectionRequestTimeout(Timeout.ofSeconds(10))  // Connection Pool에서 연결 대기 시간
-                .setResponseTimeout(Timeout.ofSeconds(60))           // 응답 대기 시간 (Read Timeout)
+                .setConnectionRequestTimeout(Timeout.ofSeconds(30))  // Connection Pool에서 연결 대기 시간
+                .setResponseTimeout(Timeout.ofSeconds(600))          // 응답 대기 시간 (10분으로 증가)
                 .build();
 
         // HttpClient 생성
@@ -43,10 +43,10 @@ public class HttpClientConfig {
                 .evictIdleConnections(Timeout.ofSeconds(30))   // 30초 idle 연결 제거
                 .build();
 
-        // HttpComponentsClientHttpRequestFactory 설정
+        // HttpComponentsClientHttpRequestFactory 설정 - 이미지 생성 API를 위해 타임아웃 증가
         HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
-        factory.setConnectTimeout(Duration.ofSeconds(10));     // 연결 타임아웃
-        factory.setReadTimeout(Duration.ofSeconds(300));        // 읽기 타임아웃
+        factory.setConnectTimeout(Duration.ofSeconds(30));     // 연결 타임아웃
+        factory.setReadTimeout(Duration.ofSeconds(600));       // 읽기 타임아웃 (10분으로 증가)
 
         return RestClient.builder()
                 .requestFactory(factory)
