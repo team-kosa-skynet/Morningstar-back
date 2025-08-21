@@ -5,6 +5,7 @@ import com.gaebang.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +30,7 @@ public class Comment extends BaseTimeEntity {
     private Board board;
 
     @OneToMany(mappedBy = "comment")
+    @Builder.Default
     private List<CommentReport> commentReport = new ArrayList<>();
 
     private String content;
@@ -37,11 +39,29 @@ public class Comment extends BaseTimeEntity {
     @Column(nullable = false)
     private String deleteYn = "N";
 
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false)
+    private ModerationStatus moderationStatus = ModerationStatus.PENDING;
+
+    private LocalDateTime moderatedAt;
+
     public void update(String content) {
         this.content = content;
     }
 
     public void softDelete() {
         this.deleteYn = "Y";
+    }
+
+    public void censorContent(String censoredContent) {
+        this.content = censoredContent;
+        this.moderationStatus = ModerationStatus.REJECTED;
+        this.moderatedAt = LocalDateTime.now();
+    }
+
+    public void approveModerationContent() {
+        this.moderationStatus = ModerationStatus.APPROVED;
+        this.moderatedAt = LocalDateTime.now();
     }
 }

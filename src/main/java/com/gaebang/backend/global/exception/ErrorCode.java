@@ -74,6 +74,9 @@ public enum ErrorCode {
     // ai
     AI_NEWS_IS_NOT_GENERATED(HttpStatus.BAD_REQUEST, "AI뉴스 생성시 에러가 발생했습니다."),
 
+    // moderation
+    POST_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "5분 내 게시글 작성 한도(3개)를 초과했습니다."),
+    CONTENT_MODERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "컨텐츠 검열 처리 중 오류가 발생했습니다."),
 
     // 5xx
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 에러");

@@ -6,6 +6,7 @@ import com.gaebang.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,15 +28,19 @@ public class Board extends BaseTimeEntity {
     private Member member;
 
     @OneToMany(mappedBy = "board")
+    @Builder.Default
     private List<BoardLike> boardLikes = new ArrayList<>();
 
     @OneToMany(mappedBy = "board")
+    @Builder.Default
     private List<Comment> comments = new ArrayList<>();
 
     @OneToMany(mappedBy = "board")
+    @Builder.Default
     private List<BoardReport> boardReports = new ArrayList<>();
 
     @OneToMany(mappedBy = "board")
+    @Builder.Default
     private List<Image> images = new ArrayList<>();
 
     private String title;
@@ -53,6 +58,13 @@ public class Board extends BaseTimeEntity {
     @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 1")
     private Long viewCount = 0L;
 
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false)
+    private ModerationStatus moderationStatus = ModerationStatus.PENDING;
+
+    private LocalDateTime moderatedAt;
+
     public void updateBoard(BoardCreateAndEditRequestDto dto) {
         this.title = dto.title();
         this.content = dto.content();
@@ -65,5 +77,17 @@ public class Board extends BaseTimeEntity {
 
     public void softDelete() {
         this.deleteYn = "Y";
+    }
+
+    public void censorContent(String censoredTitle, String censoredContent) {
+        this.title = censoredTitle;
+        this.content = censoredContent;
+        this.moderationStatus = ModerationStatus.REJECTED;
+        this.moderatedAt = LocalDateTime.now();
+    }
+
+    public void approveModerationContent() {
+        this.moderationStatus = ModerationStatus.APPROVED;
+        this.moderatedAt = LocalDateTime.now();
     }
 }

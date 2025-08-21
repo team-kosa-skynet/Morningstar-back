@@ -111,4 +111,94 @@ public class S3ImageService {
             throw new S3Exception();
         }
     }
+
+    /**
+     * 이미지 URL을 Base64로 인코딩 (검열 시스템용)
+     * @param imageUrl S3 이미지 URL
+     * @return Base64 인코딩된 이미지 문자열
+     * @throws IOException 이미지 읽기 실패 시
+     */
+    public String encodeImageToBase64(String imageUrl) throws IOException {
+        if (imageUrl == null || imageUrl.trim().isEmpty()) {
+            throw new IllegalArgumentException("이미지 URL이 비어있습니다.");
+        }
+
+        try {
+            // URL 연결 생성
+            URL url = new URL(imageUrl);
+            java.net.URLConnection connection = url.openConnection();
+            connection.setConnectTimeout(10000); // 10초 연결 타임아웃
+            connection.setReadTimeout(30000);    // 30초 읽기 타임아웃
+            
+            // Content-Type 확인
+            String contentType = connection.getContentType();
+            if (!isValidImageContentType(contentType)) {
+                throw new IllegalArgumentException("지원하지 않는 이미지 형식: " + contentType);
+            }
+
+            // 이미지 데이터 읽기
+            try (InputStream inputStream = connection.getInputStream()) {
+                byte[] imageBytes = IOUtils.toByteArray(inputStream);
+                
+                // 크기 제한 확인 (20MB)
+                if (imageBytes.length > 20 * 1024 * 1024) {
+                    throw new IllegalArgumentException("이미지 크기가 20MB를 초과합니다.");
+                }
+                
+                // Base64 인코딩
+                String base64Image = java.util.Base64.getEncoder().encodeToString(imageBytes);
+                
+                log.debug("이미지 Base64 인코딩 완료 - URL: {}, 크기: {}bytes", imageUrl, imageBytes.length);
+                return base64Image;
+            }
+            
+        } catch (Exception e) {
+            log.error("이미지 Base64 인코딩 실패 - URL: {}, 오류: {}", imageUrl, e.getMessage());
+            throw new IOException("이미지 인코딩 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * MIME 타입이 지원되는 이미지 형식인지 확인
+     * @param contentType MIME 타입
+     * @return 지원 여부
+     */
+    private boolean isValidImageContentType(String contentType) {
+        if (contentType == null) return false;
+        
+        return contentType.equals("image/jpeg") ||
+               contentType.equals("image/jpg") ||
+               contentType.equals("image/png") ||
+               contentType.equals("image/webp");
+    }
+
+    /**
+     * 이미지 URL에서 MIME 타입 추출
+     * @param imageUrl 이미지 URL
+     * @return MIME 타입
+     */
+    public String getMimeTypeFromUrl(String imageUrl) {
+        if (imageUrl == null) return null;
+        
+        String lowerUrl = imageUrl.toLowerCase();
+        if (lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".jpeg")) {
+            return "image/jpeg";
+        } else if (lowerUrl.endsWith(".png")) {
+            return "image/png";
+        } else if (lowerUrl.endsWith(".webp")) {
+            return "image/webp";
+        }
+        
+        return null;
+    }
+
+    /**
+     * Base64 문자열의 크기 계산 (대략적)
+     * @param base64String Base64 문자열
+     * @return 예상 크기 (bytes)
+     */
+    public long calculateBase64Size(String base64String) {
+        if (base64String == null) return 0;
+        return (long) (base64String.length() * 0.75); // Base64는 원본의 약 133% 크기
+    }
 }
