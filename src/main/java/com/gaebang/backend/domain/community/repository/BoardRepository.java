@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 public interface BoardRepository extends JpaRepository<Board, Long> {
@@ -98,4 +99,11 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
             "LEFT JOIN FETCH b.member " +
             "WHERE b.deleteYn = 'N' AND b.id = :boardId")
     Optional<Board> findBoardDetailById(@Param("boardId") Long boardId);
+
+    @Query("SELECT COUNT(b) FROM Board b " +
+            "WHERE b.member.id = :memberId " +
+            "AND b.deleteYn = 'N' " +
+            "AND b.createdAt > :windowStart")
+    int countByMemberIdAndDeleteYnAndCreatedAtAfter(@Param("memberId") Long memberId, 
+                                                   @Param("windowStart") LocalDateTime windowStart);
 }

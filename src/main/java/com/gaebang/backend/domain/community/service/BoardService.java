@@ -43,6 +43,8 @@ public class BoardService {
     private final MemberService memberService;
     private final PointService pointService;
     private final TimeUtil timeUtil;
+    private final PostRateLimitService postRateLimitService;
+    private final ModerationService moderationService;
 
     // 검색 조건 있을 시 사용
     public Page<BoardListResponseDto> getBoardByCondition(String condition, Pageable pageable) {
@@ -72,6 +74,10 @@ public class BoardService {
     // 게시판 생성
     public void createBoard(PrincipalDetails principalDetails, BoardCreateAndEditRequestDto boardCreateAndEditRequestDto) {
         Member loginMember = principalDetails.getMember();
+        
+        // 🆕 도배 방지 체크
+        postRateLimitService.validatePostRateLimit(loginMember.getId());
+        
         Board createBoard = BoardCreateAndEditRequestDto.toEntity(loginMember, boardCreateAndEditRequestDto);
         
         List<String> images = boardCreateAndEditRequestDto.imageUrl();
@@ -90,6 +96,9 @@ public class BoardService {
                 .amount(10)
                 .build();
         pointService.createPoint(pointRequestDto, principalDetails);
+        
+        // 비동기 검열 시작
+        moderationService.moderateBoardAsync(saveBoard.getId());
     }
 
     // 게시판 수정
@@ -116,6 +125,9 @@ public class BoardService {
         });
         imageRepository.saveAll(createImages);
         boardRepository.save(findBoard);
+        
+        // 🆕 게시글 수정 후 비동기 검열 시작
+        moderationService.moderateBoardAsync(findBoard.getId());
     }
 
     // 게시글 상세 조회
