@@ -26,6 +26,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -98,7 +100,7 @@ public class BoardService {
         pointService.createPoint(pointRequestDto, principalDetails);
         
         // 비동기 검열 시작
-        moderationService.moderateBoardAsync(saveBoard.getId());
+        moderationService.moderateBoardAsync(createBoard.getId());
     }
 
     // 게시판 수정

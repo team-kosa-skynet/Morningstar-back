@@ -3,6 +3,7 @@ package com.gaebang.backend.domain.community.service;
 import com.gaebang.backend.domain.community.dto.ModerationResult;
 import com.gaebang.backend.domain.community.entity.Board;
 import com.gaebang.backend.domain.community.entity.Comment;
+import com.gaebang.backend.domain.community.entity.Image;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.repository.CommentRepository;
 import lombok.RequiredArgsConstructor;
@@ -10,7 +11,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -35,7 +35,6 @@ public class ModerationService {
     private String contentTemplate;
 
     @Async("moderationExecutor")
-    @Transactional
     public CompletableFuture<Void> moderateBoardAsync(Long boardId) {
         if (!moderationEnabled) {
             log.debug("컨텐츠 검열이 비활성화되어 있습니다.");
@@ -74,7 +73,7 @@ public class ModerationService {
             if (!board.getImages().isEmpty()) {
                 log.debug("게시글 이미지 검열 시작 - ID: {}, 이미지 수: {}", boardId, board.getImages().size());
                 
-                for (var image : board.getImages()) {
+                for (Image image : board.getImages()) {
                     // 지원되는 형식만 검열
                     if (imageModerationService.isSupportedImageFormat(image.getImageUrl())) {
                         // Circuit Breaker가 적용된 이미지 검열
@@ -119,7 +118,6 @@ public class ModerationService {
     }
 
     @Async("moderationExecutor")
-    @Transactional
     public CompletableFuture<Void> moderateCommentAsync(Long commentId) {
         if (!moderationEnabled) {
             log.debug("컨텐츠 검열이 비활성화되어 있습니다.");

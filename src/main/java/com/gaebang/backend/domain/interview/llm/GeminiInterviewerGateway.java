@@ -1386,8 +1386,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             
         } catch (Exception e) {
             log.error("컨텐츠 검열 중 오류 발생: {}", e.getMessage(), e);
-            // 오류 발생 시 안전하게 승인 처리
-            return new ModerationResult(false, null);
+            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
+            return new ModerationResult(true, "Gemini 검열 시스템 오류 - 관리자 검토 필요");
         }
     }
 
@@ -1480,8 +1480,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             
         } catch (Exception e) {
             log.error("이미지 검열 중 오류 발생: {}", e.getMessage(), e);
-            // 오류 발생 시 안전하게 승인 처리
-            return new ModerationResult(false, null);
+            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
+            return new ModerationResult(true, "Gemini 이미지 검열 시스템 오류 - 관리자 검토 필요");
         }
     }
 }
