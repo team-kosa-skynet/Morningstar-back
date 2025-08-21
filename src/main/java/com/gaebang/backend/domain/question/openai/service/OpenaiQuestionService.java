@@ -65,9 +65,6 @@ public class OpenaiQuestionService {
         return emitter;
     }
 
-    /**
-     * OpenAI DALL-E 3를 사용하여 이미지를 생성하고 대화방에 저장
-     */
     public SseEmitter generateImageInConversation(
             Long conversationId,
             String prompt,
@@ -76,14 +73,12 @@ public class OpenaiQuestionService {
         Member member = validateAndGetMember(principalDetails);
         SseEmitter emitter = new SseEmitter(300000L);
 
-        // 1. 사용자 질문을 대화방에 저장
         AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(
                 prompt,
-                Collections.emptyList() // 이미지 생성은 파일 첨부 없음
+                Collections.emptyList()
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        // 2. 이미지 생성 수행
         performImageGeneration(emitter, conversationId, prompt, member);
 
         setupEmitterCallbacks(emitter, "OpenAI DALL-E 3");
@@ -95,15 +90,13 @@ public class OpenaiQuestionService {
         try {
             log.info("OpenAI DALL-E 3 이미지 생성 요청: {}", prompt);
 
-            // OpenAI DALL-E 3 이미지 생성 API 호출 후 base64로 변환
             String imageDataUrl = generateImageWithOpenAI(prompt);
 
             if (imageDataUrl != null) {
-                // 이미지 data URL을 SSE로 전송 (Gemini와 통일성 유지)
                 Map<String, Object> imageResponse = new HashMap<>();
                 imageResponse.put("imageUrl", imageDataUrl);
                 imageResponse.put("prompt", prompt);
-                imageResponse.put("type", "base64"); // Gemini와 동일하게 base64 형태
+                imageResponse.put("type", "base64");
 
                 try {
                     emitter.send(SseEmitter.event()
@@ -116,7 +109,6 @@ public class OpenaiQuestionService {
                     return;
                 }
 
-                // 이미지 정보를 attachments에 저장 (대화 맥락 유지)
                 FileAttachmentDto imageAttachment = new FileAttachmentDto(
                         "generated_image.png",
                         "generated_image",
@@ -124,7 +116,6 @@ public class OpenaiQuestionService {
                         "image/png"
                 );
 
-                // AI 답변을 대화방에 저장 (이미지 설명) - 대화 맥락 이어짐
                 String responseText = String.format("요청하신 '%s' 이미지를 생성했습니다.", prompt);
                 AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
                         responseText,
@@ -139,7 +130,6 @@ public class OpenaiQuestionService {
                 emitter.complete();
 
             } else {
-                // 이미지 생성 실패
                 handleStreamError(emitter, new RuntimeException("이미지 생성에 실패했습니다."));
             }
 
@@ -151,19 +141,17 @@ public class OpenaiQuestionService {
 
     private String generateImageWithOpenAI(String prompt) {
         try {
-            // OpenAI DALL-E 3 API 요청 구조
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", "dall-e-3");
             requestBody.put("prompt", prompt);
-            requestBody.put("n", 1); // 이미지 1개 생성
-            requestBody.put("size", "1024x1024"); // 이미지 크기
-            requestBody.put("quality", "standard"); // 품질: standard 또는 hd
-            requestBody.put("response_format", "url"); // URL 형식으로 응답 요청
+            requestBody.put("n", 1);
+            requestBody.put("size", "1024x1024");
+            requestBody.put("quality", "standard");
+            requestBody.put("response_format", "url");
 
             log.info("OpenAI DALL-E 3 이미지 생성 API 호출");
             log.info("요청 프롬프트: {}", prompt);
 
-            // API 호출
             String response = restClient.post()
                     .uri("https://api.openai.com/v1/images/generations")
                     .header("Authorization", "Bearer " + openaiQuestionProperties.getApiKey())
@@ -201,48 +189,6 @@ public class OpenaiQuestionService {
         }
     }
 
-    // 기존 URL 방식 (주석처리) - 나중에 사용할 수 있도록 보존
-      /*
-      private String parseOpenAIImageResponse(String response) {
-          try {
-              JsonNode rootNode = objectMapper.readTree(response);
-              List<String> fieldNames = new ArrayList<>();
-              rootNode.fieldNames().forEachRemaining(fieldNames::add);
-              log.info("OpenAI DALL-E 3 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
-
-              // OpenAI 응답 구조: { "data": [{ "url": "https://...", "revised_prompt": "..." }] }
-              JsonNode dataArray = rootNode.path("data");
-
-              if (dataArray.isEmpty()) {
-                  log.warn("OpenAI DALL-E 3 응답에 data가 없습니다.");
-                  return null;
-              }
-
-              // 첫 번째 생성된 이미지 사용
-              JsonNode firstData = dataArray.get(0);
-              List<String> dataFields = new ArrayList<>();
-              firstData.fieldNames().forEachRemaining(dataFields::add);
-              log.info("첫 번째 data 필드들: {}", String.join(", ", dataFields));
-
-              if (firstData.has("url")) {
-                  String imageUrl = firstData.path("url").asText();
-                  String revisedPrompt = firstData.path("revised_prompt").asText("");
-
-                  log.info("OpenAI DALL-E 3 이미지 생성 성공: URL={}, Revised Prompt={}", imageUrl, revisedPrompt);
-                  return imageUrl; // 실제 HTTP URL 반환
-              }
-
-              log.warn("OpenAI DALL-E 3 응답에 url 필드가 없습니다.");
-              return null;
-
-          } catch (Exception e) {
-              log.error("OpenAI DALL-E 3 응답 파싱 실패", e);
-              return null;
-          }
-      }
-      */
-
-    // 새로운 base64 변환 방식 - Gemini와 통일성 유지
     private String parseOpenAIImageResponseAndConvertToBase64(String response) {
         try {
             JsonNode rootNode = objectMapper.readTree(response);
@@ -250,7 +196,6 @@ public class OpenaiQuestionService {
             rootNode.fieldNames().forEachRemaining(fieldNames::add);
             log.info("OpenAI DALL-E 3 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
 
-            // OpenAI 응답 구조: { "data": [{ "url": "https://...", "revised_prompt": "..." }] }
             JsonNode dataArray = rootNode.path("data");
 
             if (dataArray.isEmpty()) {
@@ -258,7 +203,6 @@ public class OpenaiQuestionService {
                 return null;
             }
 
-            // 첫 번째 생성된 이미지 사용
             JsonNode firstData = dataArray.get(0);
             List<String> dataFields = new ArrayList<>();
             firstData.fieldNames().forEachRemaining(dataFields::add);
@@ -270,7 +214,6 @@ public class OpenaiQuestionService {
 
                 log.info("OpenAI DALL-E 3 이미지 URL 수신: URL={}, Revised Prompt={}", imageUrl, revisedPrompt);
 
-                // URL에서 이미지를 다운로드하고 base64로 변환
                 String base64DataUrl = downloadImageAndConvertToBase64(imageUrl);
                 if (base64DataUrl != null) {
                     log.info("OpenAI DALL-E 3 이미지 base64 변환 완료");
@@ -290,7 +233,6 @@ public class OpenaiQuestionService {
         }
     }
 
-    // URL에서 이미지를 다운로드하고 base64 data URL로 변환
     private String downloadImageAndConvertToBase64(String imageUrl) {
         try {
             log.info("이미지 다운로드 시작: {}", imageUrl);
@@ -300,10 +242,8 @@ public class OpenaiQuestionService {
                 byte[] imageBytes = inputStream.readAllBytes();
                 String base64Data = Base64.getEncoder().encodeToString(imageBytes);
 
-                // MIME 타입 결정 (일반적으로 PNG)
                 String mimeType = "image/png";
 
-                // data URL 형태로 변환
                 String dataUrl = String.format("data:%s;base64,%s", mimeType, base64Data);
 
                 log.info("이미지 다운로드 및 base64 변환 완료: 크기={} bytes", imageBytes.length);
@@ -354,15 +294,24 @@ public class OpenaiQuestionService {
 
             List<Map<String, Object>> messages = new ArrayList<>();
 
-            // OpenAI용 대화 히스토리 처리
+            // OpenAI용 대화 히스토리 처리 - 파일 정보 포함
             List<Map<String, Object>> historyMessages = historyDto.messages();
             for (Map<String, Object> message : historyMessages) {
                 String role = (String) message.get("role");
                 String content = (String) message.get("content");
+                List<FileAttachmentDto> messageAttachments = (List<FileAttachmentDto>) message.get("attachments");
 
                 Map<String, Object> openaiMessage = new HashMap<>();
                 openaiMessage.put("role", "user".equals(role) ? "user" : "assistant");
-                openaiMessage.put("content", content);
+
+                // 파일이 있는 경우 content를 파트 형태로 구성
+                if (messageAttachments != null && !messageAttachments.isEmpty() && "user".equals(role)) {
+                    List<Map<String, Object>> contentParts = createContentPartsFromHistory(content, messageAttachments);
+                    openaiMessage.put("content", contentParts);
+                } else {
+                    openaiMessage.put("content", content);
+                }
+
                 messages.add(openaiMessage);
             }
 
@@ -384,7 +333,6 @@ public class OpenaiQuestionService {
             parameters.put("max_tokens", 4096);
             parameters.put("stream", true);
 
-            // === OpenAI API 요청 데이터 로깅 ===
             log.info("=== OpenAI API 요청 데이터 ===");
             log.info("모델: {}", modelToUse);
             log.info("messages 개수: {}", messages.size());
@@ -437,7 +385,6 @@ public class OpenaiQuestionService {
                             String errorMessage = String.format("OpenAI API 호출 실패: %s", response.getStatusCode());
                             log.error(errorMessage);
 
-                            // 에러 응답 본문 로깅
                             try (BufferedReader errorReader = new BufferedReader(
                                     new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
                                 String errorLine;
@@ -468,7 +415,6 @@ public class OpenaiQuestionService {
                                 line = line.trim();
                                 if (line.isEmpty()) continue;
 
-                                // SSE 형식 처리
                                 if (line.startsWith("data: ")) {
                                     String data = line.substring(6);
 
@@ -494,8 +440,11 @@ public class OpenaiQuestionService {
 
                             if (!Thread.currentThread().isInterrupted()) {
                                 if (fullResponse.length() > 0) {
+                                    // 이미지 파일이 있는 경우 답변 앞에 분석 결과 표시 추가
+                                    String finalAnswer = formatAnswerWithImageContext(fullResponse.toString(), attachments);
+                                    
                                     AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
-                                            fullResponse.toString(),
+                                            finalAnswer,
                                             modelToUse
                                     );
                                     conversationService.addAnswer(conversationId, member.getId(), answerRequest);
@@ -525,6 +474,19 @@ public class OpenaiQuestionService {
         }
     }
 
+    /**
+     * 대화 히스토리에서 파일 정보를 포함한 content 파트 생성
+     */
+    private List<Map<String, Object>> createContentPartsFromHistory(String content, List<FileAttachmentDto> attachments) {
+        // 히스토리에서는 이미지 데이터를 다시 전송하지 않음
+        // 이미지 정보는 이미 content에 텍스트로 포함되어 있음 ("이전에 업로드한 이미지: filename.png")
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", content);
+        
+        return List.of(textPart);
+    }
+
     private Map<String, Object> createContentWithFiles(String textContent, List<MultipartFile> files) {
         Map<String, Object> message = new HashMap<>();
         message.put("role", "user");
@@ -534,10 +496,8 @@ public class OpenaiQuestionService {
         log.info("파일 개수: {}", files != null ? files.size() : 0);
 
         if (files != null && !files.isEmpty()) {
-            // 파일이 있는 경우 - content를 배열 형태로 구성
             List<Map<String, Object>> contentParts = new ArrayList<>();
 
-            // 텍스트 파트 추가
             Map<String, Object> textPart = new HashMap<>();
             textPart.put("type", "text");
 
@@ -555,7 +515,6 @@ public class OpenaiQuestionService {
                         String base64 = (String) processedFile.get("base64");
                         String mimeType = (String) processedFile.get("mimeType");
 
-                        // OpenAI 이미지 파트 추가
                         Map<String, Object> imagePart = new HashMap<>();
                         imagePart.put("type", "image_url");
 
@@ -582,12 +541,11 @@ public class OpenaiQuestionService {
             }
 
             textPart.put("text", combinedText.toString());
-            contentParts.add(0, textPart); // 텍스트 파트를 맨 앞에 추가
+            contentParts.add(0, textPart);
 
             message.put("content", contentParts);
             log.info("OpenAI 최종 content parts 개수: {}", contentParts.size());
         } else {
-            // 파일이 없는 경우 - content를 문자열로 구성
             message.put("content", textContent);
             log.info("OpenAI 파일 없음 - 텍스트만 사용");
         }
@@ -650,6 +608,37 @@ public class OpenaiQuestionService {
             log.warn("OpenAI API 스트리밍 응답 파싱 실패: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 이미지 파일이 포함된 질문에 대한 답변 형식을 가공
+     * [파일명에 대한 분석 결과]: 답변내용 형식으로 변환
+     */
+    private String formatAnswerWithImageContext(String originalAnswer, List<FileAttachmentDto> attachments) {
+        if (attachments == null || attachments.isEmpty()) {
+            return originalAnswer;
+        }
+        
+        // 이미지 파일만 필터링
+        List<String> imageFileNames = attachments.stream()
+                .filter(attachment -> "image".equals(attachment.fileType()))
+                .map(FileAttachmentDto::fileName)
+                .toList();
+        
+        if (imageFileNames.isEmpty()) {
+            return originalAnswer;
+        }
+        
+        // 이미지 파일이 여러 개인 경우 모든 파일명 포함
+        String fileContext;
+        if (imageFileNames.size() == 1) {
+            fileContext = String.format("[%s에 대한 분석 결과]", imageFileNames.get(0));
+        } else {
+            String fileList = String.join(", ", imageFileNames);
+            fileContext = String.format("[%s에 대한 분석 결과]", fileList);
+        }
+        
+        return fileContext + ": " + originalAnswer;
     }
 
     private void handleStreamError(SseEmitter emitter, Exception e) {

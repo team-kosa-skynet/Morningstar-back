@@ -104,18 +104,26 @@ public class ClaudeQuestionService {
 
             List<Map<String, Object>> messages = new ArrayList<>();
 
-            // Claude용 대화 히스토리 처리 (OpenAI/Gemini와 유사하게)
+            // Claude용 대화 히스토리 처리 - 파일 정보 포함
             List<Map<String, Object>> historyMessages = historyDto.messages();
             for (Map<String, Object> message : historyMessages) {
                 String role = (String) message.get("role");
                 String content = (String) message.get("content");
+                List<FileAttachmentDto> messageAttachments = (List<FileAttachmentDto>) message.get("attachments");
 
                 Map<String, Object> claudeMessage = new HashMap<>();
                 claudeMessage.put("role", "user".equals(role) ? "user" : "assistant");
-                claudeMessage.put("content", List.of(Map.of("type", "text", "text", content)));
+
+                // 파일이 있는 경우 content를 파트 형태로 구성
+                if (messageAttachments != null && !messageAttachments.isEmpty() && "user".equals(role)) {
+                    List<Map<String, Object>> contentParts = createContentPartsFromHistory(content, messageAttachments);
+                    claudeMessage.put("content", contentParts);
+                } else {
+                    claudeMessage.put("content", List.of(Map.of("type", "text", "text", content)));
+                }
+
                 messages.add(claudeMessage);
             }
-
 
             // 파일이 있거나 새로운 텍스트일 때 createContentWithFiles 호출
             if (messages.isEmpty() ||
@@ -135,7 +143,6 @@ public class ClaudeQuestionService {
 
             parameters.put("messages", messages);
 
-            // === Claude API 요청 데이터 로깅 ===
             log.info("=== Claude API 요청 데이터 ===");
             log.info("모델: {}", modelToUse);
             log.info("메시지 개수: {}", messages.size());
@@ -266,6 +273,19 @@ public class ClaudeQuestionService {
         }
     }
 
+    /**
+     * 대화 히스토리에서 파일 정보를 포함한 content 파트 생성
+     */
+    private List<Map<String, Object>> createContentPartsFromHistory(String content, List<FileAttachmentDto> attachments) {
+        // 히스토리에서는 이미지 데이터를 다시 전송하지 않음
+        // 이미지 정보는 이미 content에 텍스트로 포함되어 있음 ("이전에 업로드한 이미지: filename.png")
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("type", "text");
+        textPart.put("text", content);
+        
+        return List.of(textPart);
+    }
+
     private List<Map<String, Object>> createContentWithFiles(String textContent, List<MultipartFile> files) {
         List<Map<String, Object>> content = new ArrayList<>();
 
@@ -288,7 +308,6 @@ public class ClaudeQuestionService {
                         String base64 = (String) processedFile.get("base64");
                         String mimeType = (String) processedFile.get("mimeType");
 
-                        // 이미지는 별도 파트로 추가
                         Map<String, Object> imagePart = new HashMap<>();
                         imagePart.put("type", "image");
 
@@ -302,7 +321,6 @@ public class ClaudeQuestionService {
 
                         log.info("Claude 이미지 파트 추가됨 - MIME: {}, Base64 길이: {}", mimeType, base64.length());
                     } else if ("text".equals(fileType)) {
-                        // 텍스트 파일은 텍스트 파트에 포함 (별도 파트 아님)
                         String extractedText = (String) processedFile.get("extractedText");
                         String fileName = (String) processedFile.get("fileName");
 
@@ -318,7 +336,6 @@ public class ClaudeQuestionService {
             }
         }
 
-        // 텍스트 파트 추가 (맨 앞에) - 모든 텍스트 파일 내용 포함
         Map<String, Object> textPart = new HashMap<>();
         textPart.put("type", "text");
         textPart.put("text", combinedText.toString());

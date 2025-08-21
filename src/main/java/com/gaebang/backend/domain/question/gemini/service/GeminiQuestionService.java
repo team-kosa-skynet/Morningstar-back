@@ -71,14 +71,12 @@ public class GeminiQuestionService {
         Member member = validateAndGetMember(principalDetails);
         SseEmitter emitter = new SseEmitter(300000L);
 
-        // 1. 사용자 질문을 대화방에 저장
         AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(
                 prompt,
-                Collections.emptyList() // 이미지 생성은 파일 첨부 없음
+                Collections.emptyList()
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        // 2. 이미지 생성 수행
         performImageGeneration(emitter, conversationId, prompt, member);
 
         setupEmitterCallbacks(emitter, "Gemini Image");
@@ -90,15 +88,13 @@ public class GeminiQuestionService {
         try {
             log.info("Gemini 이미지 생성 요청: {}", prompt);
 
-            // Gemini 이미지 생성 API 호출
             String imageDataUrl = generateImageWithGemini(prompt);
 
             if (imageDataUrl != null) {
-                // 이미지 data URL을 SSE로 전송
                 Map<String, Object> imageResponse = new HashMap<>();
                 imageResponse.put("imageUrl", imageDataUrl);
                 imageResponse.put("prompt", prompt);
-                imageResponse.put("type", "base64"); // data URL 형태임을 명시
+                imageResponse.put("type", "base64");
 
                 try {
                     emitter.send(SseEmitter.event()
@@ -111,7 +107,6 @@ public class GeminiQuestionService {
                     return;
                 }
 
-                // 이미지 정보를 attachments에 저장 (대화 맥락 유지)
                 FileAttachmentDto imageAttachment = new FileAttachmentDto(
                         "generated_image.png",
                         "generated_image",
@@ -119,7 +114,6 @@ public class GeminiQuestionService {
                         "image/png"
                 );
 
-                // AI 답변을 대화방에 저장 (이미지 설명) - 대화 맥락 이어짐
                 String responseText = String.format("요청하신 '%s' 이미지를 생성했습니다.", prompt);
                 AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
                         responseText,
@@ -134,7 +128,6 @@ public class GeminiQuestionService {
                 emitter.complete();
 
             } else {
-                // 이미지 생성 실패
                 handleStreamError(emitter, new RuntimeException("이미지 생성에 실패했습니다."));
             }
 
@@ -146,7 +139,6 @@ public class GeminiQuestionService {
 
     private String generateImageWithGemini(String prompt) {
         try {
-            // Imagen 4.0 API 요청 구조
             Map<String, Object> instance = new HashMap<>();
             instance.put("prompt", prompt);
 
@@ -161,7 +153,6 @@ public class GeminiQuestionService {
             log.info("Gemini Imagen-4.0 이미지 생성 API 호출");
             log.info("요청 프롬프트: {}", prompt);
 
-            // API 호출
             String response = restClient.post()
                     .uri(geminiQuestionProperties.getCreateImageUrl())
                     .header("x-goog-api-key", geminiQuestionProperties.getApiKey())
@@ -206,22 +197,19 @@ public class GeminiQuestionService {
             rootNode.fieldNames().forEachRemaining(fieldNames::add);
             log.info("Imagen-4.0 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
 
-            // Imagen 4.0 실제 응답 구조 확인: { "predictions": [{ "bytesBase64Encoded": "...", "mimeType": "..." }] }
             JsonNode predictions = rootNode.path("predictions");
-            
+
             if (predictions.isEmpty()) {
                 log.warn("Imagen 4.0 응답에 predictions가 없습니다.");
                 log.info("사용 가능한 필드들: {}", rootNode.fieldNames());
                 return null;
             }
 
-            // 첫 번째 예측 결과 사용
             JsonNode firstPrediction = predictions.get(0);
             List<String> predictionFields = new ArrayList<>();
             firstPrediction.fieldNames().forEachRemaining(predictionFields::add);
             log.info("첫 번째 prediction 필드들: {}", String.join(", ", predictionFields));
 
-            // Base64 데이터 추출 (Imagen-4.0은 URL 대신 Base64로 응답)
             String base64Data = null;
             String mimeType = "image/png";
 
@@ -242,13 +230,12 @@ public class GeminiQuestionService {
                 return null;
             }
 
-            log.info("Imagen 4.0 Base64 이미지 데이터 발견: mimeType={}, 데이터 크기={} bytes", 
+            log.info("Imagen 4.0 Base64 이미지 데이터 발견: mimeType={}, 데이터 크기={} bytes",
                     mimeType, base64Data.length());
 
-            // Base64 데이터를 data URL 형태로 반환 (브라우저에서 바로 사용 가능)
             String dataUrl = String.format("data:%s;base64,%s", mimeType, base64Data);
             log.info("Imagen 4.0 이미지 data URL 생성 완료");
-            
+
             return dataUrl;
 
         } catch (Exception e) {
@@ -295,16 +282,25 @@ public class GeminiQuestionService {
 
             List<Map<String, Object>> contents = new ArrayList<>();
 
-            // Gemini용 대화 히스토리 처리 (교대로 user-model 순서)
+            // Gemini용 대화 히스토리 처리 - 파일 정보 포함
             List<Map<String, Object>> messages = historyDto.messages();
             for (int i = 0; i < messages.size(); i++) {
                 Map<String, Object> message = messages.get(i);
                 String role = (String) message.get("role");
                 String content = (String) message.get("content");
+                List<FileAttachmentDto> messageAttachments = (List<FileAttachmentDto>) message.get("attachments");
 
                 Map<String, Object> geminiContent = new HashMap<>();
                 geminiContent.put("role", "user".equals(role) ? "user" : "model");
-                geminiContent.put("parts", List.of(Map.of("text", content)));
+
+                // 파일이 있는 경우 parts를 파트 형태로 구성
+                if (messageAttachments != null && !messageAttachments.isEmpty() && "user".equals(role)) {
+                    List<Map<String, Object>> parts = createPartsFromHistory(content, messageAttachments);
+                    geminiContent.put("parts", parts);
+                } else {
+                    geminiContent.put("parts", List.of(Map.of("text", content)));
+                }
+
                 contents.add(geminiContent);
             }
 
@@ -330,7 +326,6 @@ public class GeminiQuestionService {
                     "maxOutputTokens", 4096
             ));
 
-            // === Gemini API 요청 데이터 로깅 ===
             log.info("=== Gemini API 요청 데이터 ===");
             log.info("모델: {}", modelToUse);
             log.info("contents 개수: {}", contents.size());
@@ -386,7 +381,6 @@ public class GeminiQuestionService {
                             String errorMessage = String.format("Gemini API 호출 실패: %s", response.getStatusCode());
                             log.error(errorMessage);
 
-                            // 에러 응답 본문 로깅
                             try (BufferedReader errorReader = new BufferedReader(
                                     new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
                                 String errorLine;
@@ -417,7 +411,6 @@ public class GeminiQuestionService {
                                 line = line.trim();
                                 if (line.isEmpty()) continue;
 
-                                // SSE 형식 처리 추가
                                 if (line.startsWith("data: ")) {
                                     String data = line.substring(6);
 
@@ -481,13 +474,11 @@ public class GeminiQuestionService {
             Map<String, Object> content = contents.get(i);
             String role = (String) content.get("role");
 
-            // 연속된 같은 role 방지
             if (!fixedContents.isEmpty()) {
                 Map<String, Object> lastContent = fixedContents.get(fixedContents.size() - 1);
                 String lastRole = (String) lastContent.get("role");
 
                 if (role.equals(lastRole)) {
-                    // 같은 role이 연속으로 나오면 마지막 content의 parts에 합치기
                     List<Map<String, Object>> lastParts = (List<Map<String, Object>>) lastContent.get("parts");
                     List<Map<String, Object>> currentParts = (List<Map<String, Object>>) content.get("parts");
 
@@ -501,7 +492,6 @@ public class GeminiQuestionService {
             fixedContents.add(content);
         }
 
-        // 마지막이 user가 아니면 빈 user 메시지 추가
         if (!fixedContents.isEmpty()) {
             Map<String, Object> lastContent = fixedContents.get(fixedContents.size() - 1);
             String lastRole = (String) lastContent.get("role");
@@ -515,6 +505,18 @@ public class GeminiQuestionService {
         }
 
         return fixedContents;
+    }
+
+    /**
+     * 대화 히스토리에서 파일 정보를 포함한 parts 생성
+     */
+    private List<Map<String, Object>> createPartsFromHistory(String content, List<FileAttachmentDto> attachments) {
+        // 히스토리에서는 이미지 데이터를 다시 전송하지 않음
+        // 이미지 정보는 이미 content에 텍스트로 포함되어 있음 ("이전에 업로드한 이미지: filename.png")
+        Map<String, Object> textPart = new HashMap<>();
+        textPart.put("text", content);
+        
+        return List.of(textPart);
     }
 
     private Map<String, Object> createContentWithFiles(String textContent, List<MultipartFile> files) {
@@ -564,7 +566,6 @@ public class GeminiQuestionService {
             }
         }
 
-        // 텍스트 파트 추가 (맨 앞에)
         Map<String, Object> textPart = new HashMap<>();
         textPart.put("text", combinedText.toString());
         parts.add(0, textPart);
