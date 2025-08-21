@@ -106,3 +106,44 @@ rate-limit:
   post:
     max-count: 3
     window-minutes: 5
+
+# Resilience4j 설정
+resilience4j:
+  circuitbreaker:
+    instances:
+      text-moderation:
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 30s
+        sliding-window-type: count-based
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+      image-moderation:
+        failure-rate-threshold: 60
+        wait-duration-in-open-state: 30s
+        sliding-window-type: count-based
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
+  retry:
+    instances:
+      text-moderation:
+        max-attempts: 3
+        wait-duration: 2s
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+      image-moderation:
+        max-attempts: 3
+        wait-duration: 2s
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+  timelimiter:
+    instances:
+      text-moderation:
+        timeout-duration: 10s
+      image-moderation:
+        timeout-duration: 15s

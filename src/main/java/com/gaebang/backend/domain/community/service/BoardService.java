@@ -125,6 +125,9 @@ public class BoardService {
         });
         imageRepository.saveAll(createImages);
         boardRepository.save(findBoard);
+        
+        // 🆕 게시글 수정 후 비동기 검열 시작
+        moderationService.moderateBoardAsync(findBoard.getId());
     }
 
     // 게시글 상세 조회

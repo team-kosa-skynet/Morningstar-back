@@ -2,6 +2,7 @@ package com.gaebang.backend.domain.interview.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gaebang.backend.domain.community.dto.ModerationResult;
 import com.gaebang.backend.domain.interview.dto.internal.AiTurnFeedbackDto;
 import com.gaebang.backend.domain.interview.dto.internal.PlanQuestionDto;
 import com.gaebang.backend.domain.interview.util.PlanParser;
@@ -1030,6 +1031,190 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
             return om.readTree(txt);
         } catch (Exception ignore) {
             return null;
+        }
+    }
+
+    /**
+     * 텍스트 컨텐츠 검열
+     * @param content 검열할 텍스트 내용
+     * @return 검열 결과
+     */
+    public ModerationResult moderateContent(String content) {
+        try {
+            String prompt = """
+                    당신은 한국어 커뮤니티 컨텐츠 검열 전문가입니다.
+                    아래 텍스트가 부적절한 내용을 포함하는지 엄격하게 판단해주세요.
+                    
+                    **검열 기준**:
+                    1. 욕설, 비방, 혐오 표현
+                    2. 성적, 폭력적 내용
+                    3. 개인정보 노출 (실명, 전화번호, 주소 등)
+                    4. 스팸, 광고성 내용
+                    5. 불법 활동 조장
+                    6. 가짜 정보 유포
+                    7. 정치적 편향성 극심한 내용
+                    
+                    **검열 대상 텍스트**:
+                    %s
+                    
+                    **응답 형식** (JSON):
+                    {
+                        "inappropriate": true/false,
+                        "reason": "구체적인 검열 사유 (부적절하지 않으면 null)"
+                    }
+                    """.formatted(content);
+
+            Map<String, Object> schema = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                    "inappropriate", Map.of("type", "boolean"),
+                    "reason", Map.of("type", "string")
+                ),
+                "required", List.of("inappropriate", "reason")
+            );
+
+            Map<String, Object> format = Map.of(
+                "type", "json_schema",
+                "json_schema", Map.of(
+                    "name", "ModerationSchema",
+                    "schema", schema,
+                    "strict", true
+                )
+            );
+
+            // OpenAI API 호출
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            Map<String, Object> requestBody = Map.of(
+                "model", "gpt-4o-mini",
+                "messages", List.of(
+                    Map.of("role", "user", "content", prompt)
+                ),
+                "temperature", 0.1,
+                "max_tokens", 500,
+                "response_format", format
+            );
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<String> apiResponse = restTemplate.postForEntity(
+                "https://api.openai.com/v1/chat/completions", entity, String.class);
+
+            JsonNode root = om.readTree(apiResponse.getBody());
+            JsonNode choices = root.path("choices");
+            
+            if (choices.isEmpty()) {
+                throw new RuntimeException("OpenAI 검열 응답에 choices가 없습니다");
+            }
+            
+            String responseContent = choices.get(0).path("message").path("content").asText();
+            Map<String, Object> parsed = om.readValue(responseContent, Map.class);
+            
+            boolean inappropriate = (Boolean) parsed.getOrDefault("inappropriate", false);
+            String reason = (String) parsed.get("reason");
+            
+            return new ModerationResult(inappropriate, reason);
+
+        } catch (Exception e) {
+            System.err.println("[OpenAI] 텍스트 검열 실패: " + e.getMessage());
+            // 오류 발생 시 안전하게 승인 처리
+            return new ModerationResult(false, null);
+        }
+    }
+
+    /**
+     * 이미지 컨텐츠 검열
+     * @param base64Image Base64 인코딩된 이미지
+     * @return 검열 결과
+     */
+    public ModerationResult moderateImage(String base64Image) {
+        try {
+            String prompt = """
+                    당신은 이미지 컨텐츠 검열 전문가입니다.
+                    제공된 이미지가 부적절한 내용을 포함하는지 엄격하게 판단해주세요.
+                    
+                    **검열 기준**:
+                    1. 성적, 음란한 내용
+                    2. 폭력적, 잔혹한 장면
+                    3. 혐오, 차별적 이미지
+                    4. 개인정보 노출 (신분증, 문서 등)
+                    5. 불법 활동 관련 이미지
+                    6. 스팸, 광고성 이미지
+                    7. 저작권 침해 소지
+                    
+                    **응답 형식** (JSON):
+                    {
+                        "inappropriate": true/false,
+                        "reason": "구체적인 검열 사유 (부적절하지 않으면 null)"
+                    }
+                    """;
+
+            Map<String, Object> schema = Map.of(
+                "type", "object",
+                "properties", Map.of(
+                    "inappropriate", Map.of("type", "boolean"),
+                    "reason", Map.of("type", "string")
+                ),
+                "required", List.of("inappropriate", "reason")
+            );
+
+            Map<String, Object> format = Map.of(
+                "type", "json_schema",
+                "json_schema", Map.of(
+                    "name", "ImageModerationSchema",
+                    "schema", schema,
+                    "strict", true
+                )
+            );
+
+            // OpenAI Vision API 호출
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(apiKey);
+
+            Map<String, Object> requestBody = Map.of(
+                "model", "gpt-4o-mini",
+                "messages", List.of(
+                    Map.of(
+                        "role", "user",
+                        "content", List.of(
+                            Map.of("type", "text", "text", prompt),
+                            Map.of(
+                                "type", "image_url",
+                                "image_url", Map.of("url", "data:image/jpeg;base64," + base64Image)
+                            )
+                        )
+                    )
+                ),
+                "temperature", 0.1,
+                "max_tokens", 500,
+                "response_format", format
+            );
+
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            ResponseEntity<String> apiResponse = restTemplate.postForEntity(
+                "https://api.openai.com/v1/chat/completions", entity, String.class);
+
+            JsonNode root = om.readTree(apiResponse.getBody());
+            JsonNode choices = root.path("choices");
+            
+            if (choices.isEmpty()) {
+                throw new RuntimeException("OpenAI 이미지 검열 응답에 choices가 없습니다");
+            }
+            
+            String responseContent = choices.get(0).path("message").path("content").asText();
+            Map<String, Object> parsed = om.readValue(responseContent, Map.class);
+            
+            boolean inappropriate = (Boolean) parsed.getOrDefault("inappropriate", false);
+            String reason = (String) parsed.get("reason");
+            
+            return new ModerationResult(inappropriate, reason);
+
+        } catch (Exception e) {
+            System.err.println("[OpenAI] 이미지 검열 실패: " + e.getMessage());
+            // 오류 발생 시 안전하게 승인 처리
+            return new ModerationResult(false, null);
         }
     }
 

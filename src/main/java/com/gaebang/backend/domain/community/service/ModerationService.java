@@ -1,10 +1,10 @@
 package com.gaebang.backend.domain.community.service;
 
+import com.gaebang.backend.domain.community.dto.ModerationResult;
 import com.gaebang.backend.domain.community.entity.Board;
 import com.gaebang.backend.domain.community.entity.Comment;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.repository.CommentRepository;
-import com.gaebang.backend.domain.interview.llm.GeminiInterviewerGateway;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,7 +22,8 @@ public class ModerationService {
     private final BoardRepository boardRepository;
     private final CommentRepository commentRepository;
     private final ContentBackupService contentBackupService;
-    private final GeminiInterviewerGateway geminiInterviewerGateway;
+    private final TextModerationService textModerationService;
+    private final ImageModerationService imageModerationService;
 
     @Value("${moderation.enabled:true}")
     private boolean moderationEnabled;
@@ -48,27 +49,67 @@ public class ModerationService {
                 return CompletableFuture.completedFuture(null);
             }
 
-            String contentToCheck = board.getTitle() + "\\n" + board.getContent();
-            ModerationResult result = geminiInterviewerGateway.moderateContent(contentToCheck);
+            // 1단계: 텍스트 검열 (Circuit Breaker 적용)
+            CompletableFuture<ModerationResult> textResultFuture = textModerationService.moderateTitleAndContent(
+                board.getTitle(), board.getContent());
+            
+            ModerationResult textResult = textResultFuture.get(); // 동기 처리
 
-            if (result.isInappropriate()) {
-                log.info("부적절한 게시글 발견 - ID: {}, 사유: {}", boardId, result.getReason());
+            if (textResult.isInappropriate()) {
+                log.info("부적절한 게시글 텍스트 발견 - ID: {}, 사유: {}", boardId, textResult.getReason());
                 
                 // 백업 생성
-                contentBackupService.createBoardBackup(board, result.getReason());
+                contentBackupService.createBoardBackup(board, textResult.getReason());
                 
                 // 내용 교체
-                String censoredContent = contentTemplate.replace("{reason}", result.getReason());
+                String censoredContent = contentTemplate.replace("{reason}", textResult.getReason());
                 board.censorContent(censoredTitle, censoredContent);
                 boardRepository.save(board);
                 
-                log.info("게시글 검열 완료 - ID: {}", boardId);
-            } else {
-                // 검열 통과
-                board.approveModerationContent();
-                boardRepository.save(board);
-                log.debug("게시글 검열 통과 - ID: {}", boardId);
+                log.info("게시글 텍스트 검열 완료 - ID: {}", boardId);
+                return CompletableFuture.completedFuture(null);
             }
+
+            // 2단계: 텍스트가 적절한 경우에만 이미지 검열 수행
+            if (!board.getImages().isEmpty()) {
+                log.debug("게시글 이미지 검열 시작 - ID: {}, 이미지 수: {}", boardId, board.getImages().size());
+                
+                for (var image : board.getImages()) {
+                    // 지원되는 형식만 검열
+                    if (imageModerationService.isSupportedImageFormat(image.getImageUrl())) {
+                        // Circuit Breaker가 적용된 이미지 검열
+                        CompletableFuture<ModerationResult> imageResultFuture = 
+                            imageModerationService.moderateImage(image.getImageUrl());
+                        
+                        ModerationResult imageResult = imageResultFuture.get(); // 동기 처리
+                        
+                        if (imageResult.isInappropriate()) {
+                            log.info("부적절한 게시글 이미지 발견 - ID: {}, 이미지 URL: {}, 사유: {}", 
+                                    boardId, image.getImageUrl(), imageResult.getReason());
+                            
+                            // 백업 생성 (이미지 검열 사유)
+                            contentBackupService.createBoardBackup(board, "이미지 검열: " + imageResult.getReason());
+                            
+                            // 내용 교체
+                            String censoredContent = contentTemplate.replace("{reason}", "이미지 검열: " + imageResult.getReason());
+                            board.censorContent(censoredTitle, censoredContent);
+                            boardRepository.save(board);
+                            
+                            log.info("게시글 이미지 검열 완료 - ID: {}", boardId);
+                            return CompletableFuture.completedFuture(null);
+                        }
+                    } else {
+                        log.warn("지원하지 않는 이미지 형식 - ID: {}, URL: {}", boardId, image.getImageUrl());
+                    }
+                }
+                
+                log.debug("게시글 이미지 검열 통과 - ID: {}", boardId);
+            }
+
+            // 모든 검열 통과
+            board.approveModerationContent();
+            boardRepository.save(board);
+            log.debug("게시글 전체 검열 통과 - ID: {}", boardId);
 
         } catch (Exception e) {
             log.error("게시글 검열 중 오류 발생 - ID: {}, 오류: {}", boardId, e.getMessage(), e);
@@ -92,7 +133,9 @@ public class ModerationService {
                 return CompletableFuture.completedFuture(null);
             }
 
-            ModerationResult result = geminiInterviewerGateway.moderateContent(comment.getContent());
+            // Circuit Breaker가 적용된 댓글 텍스트 검열
+            CompletableFuture<ModerationResult> resultFuture = textModerationService.moderateText(comment.getContent());
+            ModerationResult result = resultFuture.get(); // 동기 처리
 
             if (result.isInappropriate()) {
                 log.info("부적절한 댓글 발견 - ID: {}, 사유: {}", commentId, result.getReason());
@@ -119,24 +162,5 @@ public class ModerationService {
         }
 
         return CompletableFuture.completedFuture(null);
-    }
-
-    // 검열 결과를 나타내는 내부 클래스
-    public static class ModerationResult {
-        private final boolean inappropriate;
-        private final String reason;
-
-        public ModerationResult(boolean inappropriate, String reason) {
-            this.inappropriate = inappropriate;
-            this.reason = reason;
-        }
-
-        public boolean isInappropriate() {
-            return inappropriate;
-        }
-
-        public String getReason() {
-            return reason;
-        }
     }
 }
