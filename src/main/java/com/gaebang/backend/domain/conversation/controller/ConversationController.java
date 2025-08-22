@@ -115,7 +115,7 @@ public class ConversationController {
      * @return 수정된 대화방 정보
      */
     @PutMapping("/{conversationId}/title")
-    public ResponseEntity<ResponseDTO<CreateConversationResponseDto>> updateConversationTitle(
+    public ResponseEntity<ResponseDTO<String>> updateConversationTitle(
             @PathVariable Long conversationId,
             @Valid @RequestBody UpdateConversationTitleRequestDto request,
             @AuthenticationPrincipal PrincipalDetails principalDetails
@@ -123,13 +123,13 @@ public class ConversationController {
         log.info("대화방 제목 수정 요청 - 대화방 ID: {}, 사용자 ID: {}, 새 제목: {}",
                 conversationId, principalDetails.getMember().getId(), request.title());
 
-        CreateConversationResponseDto responseDto = conversationService.updateConversationTitle(
+        conversationService.updateConversationTitle(
                 conversationId,
                 principalDetails.getMember().getId(),
                 request
         );
 
-        ResponseDTO<CreateConversationResponseDto> response = ResponseDTO.okWithData(responseDto);
+        ResponseDTO<String> response = ResponseDTO.okWithData("대화방 제목이 성공적으로 수정되었습니다.");
         return ResponseEntity
                 .status(response.getCode())
                 .body(response);
