@@ -104,9 +104,9 @@ public class TextModerationService {
             return CompletableFuture.completedFuture(result);
 
         } catch (Exception e) {
-            log.error("폴백 AI 검열도 실패, 안전하게 승인 처리: {}", e.getMessage());
-            // 모든 AI 제공자 실패 시 안전하게 승인
-            return CompletableFuture.completedFuture(new ModerationResult(false, "AI 검열 시스템 일시 장애"));
+            log.error("폴백 AI 검열도 실패, 보수적으로 차단 처리: {}", e.getMessage());
+            // 모든 AI 제공자 실패 시 보수적으로 차단 (보안 우선)
+            return CompletableFuture.completedFuture(new ModerationResult(true, "AI 검열 시스템 장애로 인한 임시 차단 - 관리자 검토 필요"));
         }
     }
 

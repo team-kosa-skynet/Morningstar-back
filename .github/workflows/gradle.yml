@@ -84,7 +84,7 @@ jobs:
             mkdir -p log
 
             # 애플리케이션 실행
-            nohup java -jar Project.jar > log/app_log.out 2>&1 & disown
+            nohup java -Dfile.encoding=UTF-8 -jar Project.jar & disown
 
             sleep 3
             echo "📄 애플리케이션 로그 미리보기:"

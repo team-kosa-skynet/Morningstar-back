@@ -1366,8 +1366,11 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 JsonNode candidateTextNode = candidates.get(0).path("content").path("parts").get(0).path("text");
                 String responseText = candidateTextNode.asText();
                 
+                // 마크다운 코드블록 제거
+                String cleanedResponse = extractJsonFromMarkdown(responseText);
+                
                 try {
-                    Map<String, Object> moderationResult = om.readValue(responseText, Map.class);
+                    Map<String, Object> moderationResult = om.readValue(cleanedResponse, Map.class);
                     boolean inappropriate = (Boolean) moderationResult.get("inappropriate");
                     String reason = (String) moderationResult.get("reason");
                     
@@ -1375,7 +1378,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                     return new ModerationResult(inappropriate, reason);
                     
                 } catch (Exception e) {
-                    log.error("검열 응답 파싱 실패: {}", responseText);
+                    log.error("검열 응답 파싱 실패 - 원본: {}, 정리 후: {}", responseText, cleanedResponse);
                     // 파싱 실패 시 안전하게 승인 처리
                     return new ModerationResult(false, null);
                 }
@@ -1386,8 +1389,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             
         } catch (Exception e) {
             log.error("컨텐츠 검열 중 오류 발생: {}", e.getMessage(), e);
-            // 오류 발생 시 안전하게 승인 처리
-            return new ModerationResult(false, null);
+            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
+            return new ModerationResult(true, "Gemini 검열 시스템 오류 - 관리자 검토 필요");
         }
     }
 
@@ -1460,8 +1463,11 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 JsonNode candidateTextNode = candidates.get(0).path("content").path("parts").get(0).path("text");
                 String responseText = candidateTextNode.asText();
                 
+                // 마크다운 코드블록 제거
+                String cleanedResponse = extractJsonFromMarkdown(responseText);
+                
                 try {
-                    Map<String, Object> moderationResult = om.readValue(responseText, Map.class);
+                    Map<String, Object> moderationResult = om.readValue(cleanedResponse, Map.class);
                     boolean inappropriate = (Boolean) moderationResult.get("inappropriate");
                     String reason = (String) moderationResult.get("reason");
                     
@@ -1469,7 +1475,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                     return new ModerationResult(inappropriate, reason);
                     
                 } catch (Exception e) {
-                    log.error("이미지 검열 응답 파싱 실패: {}", responseText);
+                    log.error("이미지 검열 응답 파싱 실패 - 원본: {}, 정리 후: {}", responseText, cleanedResponse);
                     // 파싱 실패 시 안전하게 승인 처리
                     return new ModerationResult(false, null);
                 }
@@ -1480,8 +1486,31 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             
         } catch (Exception e) {
             log.error("이미지 검열 중 오류 발생: {}", e.getMessage(), e);
-            // 오류 발생 시 안전하게 승인 처리
-            return new ModerationResult(false, null);
+            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
+            return new ModerationResult(true, "Gemini 이미지 검열 시스템 오류 - 관리자 검토 필요");
         }
+    }
+    
+    /**
+     * Gemini API 응답에서 마크다운 코드블록을 제거하고 순수 JSON을 추출
+     * 
+     * @param response Gemini API 응답 텍스트
+     * @return 정리된 JSON 문자열
+     */
+    private String extractJsonFromMarkdown(String response) {
+        if (response == null) {
+            return null;
+        }
+        
+        // 마크다운 코드블록 제거: ```json 시작과 ``` 끝 제거
+        String cleaned = response
+            .replaceAll("```json\\s*", "")  // ```json 시작 부분 제거
+            .replaceAll("```\\s*$", "")     // ``` 끝 부분 제거
+            .trim();                        // 앞뒤 공백 제거
+            
+        log.debug("마크다운 정리 전: {}", response);
+        log.debug("마크다운 정리 후: {}", cleaned);
+        
+        return cleaned;
     }
 }
