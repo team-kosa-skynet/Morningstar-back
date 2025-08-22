@@ -26,8 +26,9 @@ public class GeminiQuestionProperties {
      * 이미지 생성 url
      */
 //    private final String createImageUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent";
-    private final String createImageUrl = "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-preview-06-06:predict";
-
+//    private final String createImageUrl = "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-preview-06-06:predict";
+    // Imagen-3로 변경 (다른 모델명 시도)
+    private final String createImageUrl = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict";
     /**
      * 기본 모델 (하드코딩)
      */
