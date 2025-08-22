@@ -1118,8 +1118,8 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
 
         } catch (Exception e) {
             System.err.println("[OpenAI] 텍스트 검열 실패: " + e.getMessage());
-            // 오류 발생 시 안전하게 승인 처리
-            return new ModerationResult(false, null);
+            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
+            return new ModerationResult(true, "OpenAI 검열 시스템 오류 - 관리자 검토 필요");
         }
     }
 
@@ -1213,8 +1213,8 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
 
         } catch (Exception e) {
             System.err.println("[OpenAI] 이미지 검열 실패: " + e.getMessage());
-            // 오류 발생 시 안전하게 승인 처리
-            return new ModerationResult(false, null);
+            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
+            return new ModerationResult(true, "OpenAI 이미지 검열 시스템 오류 - 관리자 검토 필요");
         }
     }
 

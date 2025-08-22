@@ -13,8 +13,11 @@ import com.gaebang.backend.domain.member.service.MemberService;
 import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.entity.PointType;
 import com.gaebang.backend.domain.point.service.PointService;
+import com.gaebang.backend.domain.community.event.CommentCreatedEvent;
+import com.gaebang.backend.domain.community.event.CommentUpdatedEvent;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,6 +33,7 @@ public class CommentService {
     private final PointService pointService;
     private final MemberService memberService;
     private final ModerationService moderationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 게시판에 엮인 댓글 조회
     public Page<CommentResponseDto> getCommentsByBoardId(Long boardId, Pageable pageable, PrincipalDetails principalDetails) {
@@ -49,6 +53,9 @@ public class CommentService {
                 .orElseThrow(CommentNotFoundException::new);
 
         editComment.update(commentRequestDto.content());
+        
+        // 트랜잭션 커밋 후 검열을 위한 이벤트 발행
+        eventPublisher.publishEvent(new CommentUpdatedEvent(commentId));
     }
 
     // 댓글 생성
@@ -67,8 +74,8 @@ public class CommentService {
                 .build();
         pointService.createPoint(pointRequestDto, principalDetails);
         
-        // 🆕 비동기 검열 시작
-        moderationService.moderateCommentAsync(savedComment.getId());
+        // 트랜잭션 커밋 후 검열을 위한 이벤트 발행
+        eventPublisher.publishEvent(new CommentCreatedEvent(savedComment.getId()));
     }
 
     // 댓글 삭제

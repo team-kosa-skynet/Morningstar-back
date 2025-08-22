@@ -66,16 +66,16 @@ dependencies {
 	implementation 'org.apache.httpcomponents.client5:httpclient5'
 	implementation 'org.apache.httpcomponents.core5:httpcore5'
 
-	//mail
+	// mail
 	implementation 'org.springframework.boot:spring-boot-starter-mail'
 
-	//webclient
+	// webclient
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 
-	//jsoup
+	// jsoup
 	implementation 'org.jsoup:jsoup:1.17.2'
 
-	// 1) Spring AI
+	// Spring AI
 	implementation 'org.springframework.ai:spring-ai-starter-model-openai:1.0.1'
 	implementation 'com.openai:openai-java:3.0.2'
 
@@ -85,11 +85,8 @@ dependencies {
 	implementation 'org.apache.poi:poi-ooxml:5.2.4'
 	implementation 'org.apache.poi:poi-scratchpad:5.2.4'
 
-	// OpenAI 모델 스타터(챗/임베딩/오디오)
+	// OpenAI 모델 스타터(챗)
 	implementation "org.springframework.ai:spring-ai-starter-model-openai"
-
-	// 벡터DB: Chroma
-//	implementation "org.springframework.ai:spring-ai-starter-vector-store-chroma"
 
 	// tts
 	implementation(platform("com.google.cloud:libraries-bom:26.50.0"))

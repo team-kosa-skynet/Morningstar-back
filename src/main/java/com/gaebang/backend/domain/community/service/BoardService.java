@@ -20,8 +20,11 @@ import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.entity.PointType;
 import com.gaebang.backend.domain.point.repository.PointRepository;
 import com.gaebang.backend.domain.point.service.PointService;
+import com.gaebang.backend.domain.community.event.BoardCreatedEvent;
+import com.gaebang.backend.domain.community.event.BoardUpdatedEvent;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -30,7 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 
-@Transactional
 @RequiredArgsConstructor
 @Service
 public class BoardService {
@@ -45,14 +47,17 @@ public class BoardService {
     private final TimeUtil timeUtil;
     private final PostRateLimitService postRateLimitService;
     private final ModerationService moderationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 검색 조건 있을 시 사용
+    @Transactional(readOnly = true)
     public Page<BoardListResponseDto> getBoardByCondition(String condition, Pageable pageable) {
         Page<BoardListProjectionDto> getDtos = boardRepository.findByCondition(condition, pageable);
         return transformBoardDtos(getDtos);
     }
 
     // 마이페이지 조회 시 사용
+    @Transactional(readOnly = true)
     public Page<BoardListResponseDto> getBoardByWriter(String writer, Pageable pageable) {
         Page<BoardListProjectionDto> getDtos = boardRepository.findByWriter(writer, pageable);
         return transformBoardDtos(getDtos);
@@ -66,16 +71,18 @@ public class BoardService {
     }*/
 
     // 검색 조건 없이 조회
+    @Transactional(readOnly = true)
     public Page<BoardListResponseDto> getBoard(Pageable pageable) {
         Page<BoardListProjectionDto> getDtos = boardRepository.findAllBoardDtos(pageable);
         return transformBoardDtos(getDtos);
     }
 
     // 게시판 생성
+    @Transactional
     public void createBoard(PrincipalDetails principalDetails, BoardCreateAndEditRequestDto boardCreateAndEditRequestDto) {
         Member loginMember = principalDetails.getMember();
         
-        // 🆕 도배 방지 체크
+        // 도배 방지 체크
         postRateLimitService.validatePostRateLimit(loginMember.getId());
         
         Board createBoard = BoardCreateAndEditRequestDto.toEntity(loginMember, boardCreateAndEditRequestDto);
@@ -97,11 +104,12 @@ public class BoardService {
                 .build();
         pointService.createPoint(pointRequestDto, principalDetails);
         
-        // 비동기 검열 시작
-        moderationService.moderateBoardAsync(saveBoard.getId());
+        // 트랜잭션 커밋 후 검열을 위한 이벤트 발행
+        eventPublisher.publishEvent(new BoardCreatedEvent(saveBoard.getId()));
     }
 
     // 게시판 수정
+    @Transactional
     public void editBoard(Long boardId,
                           BoardCreateAndEditRequestDto boardCreateAndEditRequestDto,
                           PrincipalDetails principalDetails) {
@@ -126,11 +134,12 @@ public class BoardService {
         imageRepository.saveAll(createImages);
         boardRepository.save(findBoard);
         
-        // 🆕 게시글 수정 후 비동기 검열 시작
-        moderationService.moderateBoardAsync(findBoard.getId());
+        // 트랜잭션 커밋 후 검열을 위한 이벤트 발행
+        eventPublisher.publishEvent(new BoardUpdatedEvent(findBoard.getId()));
     }
 
     // 게시글 상세 조회
+    @Transactional(readOnly = true)
     public BoardDetailResponseDto getBoardDetail(Long boardId, Pageable commentPageable, PrincipalDetails principalDetails) {
         Board findBoard = boardRepository.findBoardDetailById(boardId)
                 .orElseThrow(BoardNotFoundException::new);
@@ -149,6 +158,7 @@ public class BoardService {
     }
 
     // 게시글 삭제
+    @Transactional
     public void deleteBoard(Long boardId, PrincipalDetails principalDetails) {
         Long findMemberId = principalDetails.getMember().getId();
 
