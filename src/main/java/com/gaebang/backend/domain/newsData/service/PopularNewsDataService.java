@@ -171,12 +171,12 @@ public class PopularNewsDataService {
             // 2. 이미지 생성 (후순위) - 쿼터 상태 확인 후 실행
             log.info("2단계: 이미지 생성 시작");
             
-//            // 쿼터 초과 상태 확인 - 초과 시 이미지 생성 스킵
-//            if (newsImageService.isQuotaExceeded()) {
-//                log.warn("2단계: API 쿼터 초과로 인해 이미지 생성 스킵");
-//            } else {
-//                newsImageService.createNewsImages();
-//            }
+            // 쿼터 초과 상태 확인 - 초과 시 이미지 생성 스킵
+            if (newsImageService.isQuotaExceeded()) {
+                log.warn("2단계: API 쿼터 초과로 인해 이미지 생성 스킵");
+            } else {
+                newsImageService.createNewsImages();
+            }
             
             log.info("2단계: 이미지 생성 완료");
 
@@ -268,16 +268,39 @@ public class PopularNewsDataService {
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             JsonNode rootNode = objectMapper.readTree(response);
+            
+            log.info("전체 응답 구조: {}", rootNode.toString());
 
-            // Gemini 응답 구조: candidates[0].content.parts[0].text
-            String contentJson = rootNode
-                    .path("candidates")
-                    .get(0)
-                    .path("content")
-                    .path("parts")
-                    .get(0)
-                    .path("text")
-                    .asText();
+            // Gemini 응답 구조 안전하게 파싱
+            JsonNode candidatesNode = rootNode.path("candidates");
+            if (!candidatesNode.isArray() || candidatesNode.size() == 0) {
+                log.error("응답에 candidates 배열이 없거나 비어있습니다: {}", response);
+                return;
+            }
+            
+            JsonNode firstCandidate = candidatesNode.get(0);
+            if (firstCandidate == null || firstCandidate.isNull()) {
+                log.error("첫 번째 candidate가 null입니다");
+                return;
+            }
+            
+            JsonNode partsNode = firstCandidate.path("content").path("parts");
+            if (!partsNode.isArray() || partsNode.size() == 0) {
+                log.error("parts 배열이 없거나 비어있습니다");
+                return;
+            }
+            
+            JsonNode firstPart = partsNode.get(0);
+            if (firstPart == null || firstPart.isNull()) {
+                log.error("첫 번째 part가 null입니다");
+                return;
+            }
+            
+            String contentJson = firstPart.path("text").asText();
+            if (contentJson == null || contentJson.trim().isEmpty()) {
+                log.error("text 내용이 비어있습니다");
+                return;
+            }
 
             log.info("추출된 content JSON: {}", contentJson);
 
