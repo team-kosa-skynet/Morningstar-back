@@ -32,7 +32,7 @@ public class ModerationService {
     @Value("${moderation.censorship.title-replacement:검열된 게시글입니다}")
     private String censoredTitle;
 
-    @Value("${moderation.censorship.content-template:이 게시글은 부적절한 내용으로 인해 검열되었습니다.\\n\\n검열 사유: {reason}\\n문의: admin@morningstar.com}")
+    @Value("${moderation.censorship.content-template:이 게시글은 부적절한 내용으로 인해 검열되었습니다.\n\n검열 사유: {reason}\n문의: admin@morningstar.com}")
     private String contentTemplate;
 
     @Async("moderationExecutor")
@@ -60,8 +60,7 @@ public class ModerationService {
                 
                 contentBackupService.createBoardBackup(board, textResult.getReason());
                 
-                String censoredContent = contentTemplate.replace("{reason}", textResult.getReason())
-                                                        .replace("\\n", "\n");
+                String censoredContent = contentTemplate.replace("{reason}", textResult.getReason());
                 board.censorContent(censoredTitle, censoredContent);
                 boardRepository.save(board);
                 
@@ -85,8 +84,7 @@ public class ModerationService {
                             
                             contentBackupService.createBoardBackup(board, "이미지 검열: " + imageResult.getReason());
                             
-                            String censoredContent = contentTemplate.replace("{reason}", "이미지 검열: " + imageResult.getReason())
-                                                                    .replace("\\n", "\n");
+                            String censoredContent = contentTemplate.replace("{reason}", "이미지 검열: " + imageResult.getReason());
                             board.censorContent(censoredTitle, censoredContent);
                             boardRepository.save(board);
                             
@@ -135,9 +133,8 @@ public class ModerationService {
                 
                 contentBackupService.createCommentBackup(comment, result.getReason());
                 
-                String censoredContent = "이 댓글은 부적절한 내용으로 인해 검열되었습니다.\\n\\n검열 사유: " + 
-                                       result.getReason() + "\\n문의: admin@morningstar.com";
-                censoredContent = censoredContent.replace("\\n", "\n");
+                String censoredContent = "이 댓글은 부적절한 내용으로 인해 검열되었습니다.\n\n검열 사유: " + 
+                                       result.getReason() + "\n문의: admin@morningstar.com";
                 comment.censorContent(censoredContent);
                 commentRepository.save(comment);
                 
