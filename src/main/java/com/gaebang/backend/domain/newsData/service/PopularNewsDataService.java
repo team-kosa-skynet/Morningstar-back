@@ -171,12 +171,12 @@ public class PopularNewsDataService {
             // 2. 이미지 생성 (후순위) - 쿼터 상태 확인 후 실행
             log.info("2단계: 이미지 생성 시작");
             
-            // 쿼터 초과 상태 확인 - 초과 시 이미지 생성 스킵
-            if (newsImageService.isQuotaExceeded()) {
-                log.warn("2단계: API 쿼터 초과로 인해 이미지 생성 스킵");
-            } else {
-                newsImageService.createNewsImages();
-            }
+//            // 쿼터 초과 상태 확인 - 초과 시 이미지 생성 스킵
+//            if (newsImageService.isQuotaExceeded()) {
+//                log.warn("2단계: API 쿼터 초과로 인해 이미지 생성 스킵");
+//            } else {
+//                newsImageService.createNewsImages();
+//            }
             
             log.info("2단계: 이미지 생성 완료");
 

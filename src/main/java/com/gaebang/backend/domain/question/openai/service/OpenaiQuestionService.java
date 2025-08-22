@@ -52,9 +52,15 @@ public class OpenaiQuestionService {
         SseEmitter emitter = new SseEmitter(300000L);
 
         List<FileAttachmentDto> attachments = processFiles(openaiQuestionRequestDto.files());
+        
+        // 파일 내용을 미리 결합하여 content 생성
+        String contentWithFiles = buildContentWithExtractedFiles(
+                openaiQuestionRequestDto.content(),
+                openaiQuestionRequestDto.files()
+        );
 
         AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(
-                openaiQuestionRequestDto.content(),
+                contentWithFiles,
                 attachments
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
@@ -478,11 +484,22 @@ public class OpenaiQuestionService {
      * 대화 히스토리에서 파일 정보를 포함한 content 파트 생성
      */
     private List<Map<String, Object>> createContentPartsFromHistory(String content, List<FileAttachmentDto> attachments) {
-        // 히스토리에서는 이미지 데이터를 다시 전송하지 않음
-        // 이미지 정보는 이미 content에 텍스트로 포함되어 있음 ("이전에 업로드한 이미지: filename.png")
+        // 이미지가 포함된 경우 추가 안내 메시지 생성
+        StringBuilder enhancedContent = new StringBuilder(content);
+        
+        if (attachments != null && !attachments.isEmpty()) {
+            boolean hasImages = attachments.stream()
+                    .anyMatch(attachment -> "image".equals(attachment.fileType()));
+            
+            if (hasImages) {
+                enhancedContent.append("\n\n[참고: 이 메시지에는 이미지가 포함되어 있었습니다. ")
+                        .append("현재 질문이 이전 이미지와 관련된 경우, 이전 대화에서 제공된 이미지 분석 결과를 참고하여 답변해주세요.]");
+            }
+        }
+        
         Map<String, Object> textPart = new HashMap<>();
         textPart.put("type", "text");
-        textPart.put("text", content);
+        textPart.put("text", enhancedContent.toString());
         
         return List.of(textPart);
     }
@@ -529,9 +546,11 @@ public class OpenaiQuestionService {
                         String extractedText = (String) processedFile.get("extractedText");
                         String fileName = (String) processedFile.get("fileName");
 
-                        combinedText.append("\n\n--- 파일: ").append(fileName).append(" ---\n");
+                        combinedText.append("\n\n너는 파일을 해석하는 전문가야. 다음 파일의 내용을 분석하고 사용자의 질문에 답변해줘.\n\n");
+                        combinedText.append("=== 파일 전체 내용 시작 ===\n\n");
+                        combinedText.append("파일명: ").append(fileName).append("\n\n");
                         combinedText.append(extractedText);
-                        combinedText.append("\n--- 파일 끝 ---\n");
+                        combinedText.append("\n\n=== 파일 전체 내용 끝 ===\n");
 
                         log.info("OpenAI 텍스트 파일 내용 텍스트에 추가됨 - 파일: {}, 길이: {}", fileName, extractedText.length());
                     }
@@ -650,5 +669,51 @@ public class OpenaiQuestionService {
         } catch (IOException ioException) {
             log.error("에러 전송 실패", ioException);
         }
+    }
+
+    /**
+     * 파일 내용을 미리 추출하여 사용자 텍스트와 결합
+     * ConversationService에 저장할 때 실제 파일 내용이 포함되도록 함
+     */
+    private String buildContentWithExtractedFiles(String userText, List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return userText;
+        }
+
+        StringBuilder contentBuilder = new StringBuilder(userText);
+
+        for (MultipartFile file : files) {
+            try {
+                Map<String, Object> processedFile = fileProcessingService.processFile(file);
+                String fileType = (String) processedFile.get("type");
+                String fileName = (String) processedFile.get("fileName");
+
+                if ("text".equals(fileType)) {
+                    String extractedText = (String) processedFile.get("extractedText");
+                    
+                    contentBuilder.append("\n\n너는 파일을 해석하는 전문가야. 다음 파일의 내용을 분석하고 사용자의 질문에 답변해줘.\n\n");
+                    contentBuilder.append("=== 파일 전체 내용 시작 ===\n\n");
+                    contentBuilder.append("파일명: ").append(fileName).append("\n\n");
+                    contentBuilder.append(extractedText);
+                    contentBuilder.append("\n\n=== 파일 전체 내용 끝 ===\n");
+                    
+                } else if ("image".equals(fileType)) {
+                    // 이미지는 참조만 추가 (Base64는 너무 큼)
+                    contentBuilder.append("\n\n--- 파일: ").append(fileName).append(" ---\n");
+                    contentBuilder.append("업로드된 이미지: ").append(fileName);
+                    contentBuilder.append("\n\n[이미지 분석 안내: 이 이미지는 현재 질문에서만 직접 분석됩니다. ");
+                    contentBuilder.append("향후 이 이미지에 대한 추가 질문이 있을 경우, 이번 답변에서 제공된 분석 결과를 참고해주세요.]");
+                    contentBuilder.append("\n--- 파일 끝 ---");
+                }
+                
+            } catch (Exception e) {
+                log.error("파일 내용 추출 실패: {}", file.getOriginalFilename(), e);
+                contentBuilder.append("\n\n--- 파일: ").append(file.getOriginalFilename()).append(" ---\n");
+                contentBuilder.append("[파일 처리 실패]");
+                contentBuilder.append("\n--- 파일 끝 ---");
+            }
+        }
+
+        return contentBuilder.toString();
     }
 }

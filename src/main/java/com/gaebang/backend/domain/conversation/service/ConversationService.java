@@ -243,18 +243,22 @@ public class ConversationService {
                 String fileType = (String) fileInfo.get("type");
                 String fileName = attachment.fileName();
 
-                contentBuilder.append("\n\n--- 파일: ").append(fileName).append(" ---\n");
-
                 if ("text".equals(fileType)) {
                     String extractedText = (String) fileInfo.get("extractedText");
+                    contentBuilder.append("\n\n너는 파일을 해석하는 전문가야. 다음 파일의 내용을 분석하고 사용자의 질문에 답변해줘.\n\n");
+                    contentBuilder.append("=== 파일 전체 내용 시작 ===\n\n");
+                    contentBuilder.append("파일명: ").append(fileName).append("\n\n");
                     contentBuilder.append(extractedText);
+                    contentBuilder.append("\n\n=== 파일 전체 내용 끝 ===");
                 } else if ("image".equals(fileType)) {
+                    contentBuilder.append("\n\n--- 파일: ").append(fileName).append(" ---\n");
                     contentBuilder.append("이전에 업로드한 이미지: ").append(fileName);
+                    contentBuilder.append("\n--- 파일 끝 ---");
                 } else {
+                    contentBuilder.append("\n\n--- 파일: ").append(fileName).append(" ---\n");
                     contentBuilder.append("첨부파일: ").append(fileName);
+                    contentBuilder.append("\n--- 파일 끝 ---");
                 }
-
-                contentBuilder.append("\n--- 파일 끝 ---");
 
             } catch (Exception e) {
                 log.error("파일 내용 추가 실패: {}", attachment.fileName(), e);
