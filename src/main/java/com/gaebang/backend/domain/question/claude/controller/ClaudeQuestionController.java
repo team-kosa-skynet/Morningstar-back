@@ -28,13 +28,11 @@ public class ClaudeQuestionController {
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamQuestionText(
             @PathVariable Long conversationId,
-            @RequestParam(value = "model", required = false) String model,
             @RequestBody @Valid ClaudeQuestionRequestDto requestDto,
             @AuthenticationPrincipal PrincipalDetails principalDetails
     ) {
         return claudeQuestionService.createQuestionStream(
                 conversationId,
-                model,
                 requestDto,
                 principalDetails
         );
@@ -48,16 +46,11 @@ public class ClaudeQuestionController {
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamQuestionWithFiles(
             @PathVariable Long conversationId,
-            @RequestParam(value = "model", required = false) String model,
-            @RequestParam("content") String content,
-            @RequestParam(value = "files", required = false) List<MultipartFile> files,
+            @ModelAttribute @Valid ClaudeQuestionRequestDto requestDto,
             @AuthenticationPrincipal PrincipalDetails principalDetails
     ) {
-        ClaudeQuestionRequestDto requestDto = new ClaudeQuestionRequestDto(content, files);
-
         return claudeQuestionService.createQuestionStream(
                 conversationId,
-                model,
                 requestDto,
                 principalDetails
         );
