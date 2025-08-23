@@ -42,7 +42,6 @@ public class ClaudeQuestionService {
 
     public SseEmitter createQuestionStream(
             Long conversationId,
-            String model,
             ClaudeQuestionRequestDto claudeQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
@@ -63,7 +62,7 @@ public class ClaudeQuestionService {
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performApiCallWithFiles(emitter, conversationId, model, claudeQuestionRequestDto, member, attachments);
+        performApiCallWithFiles(emitter, conversationId, claudeQuestionRequestDto.model(), claudeQuestionRequestDto, member, attachments);
 
         setupEmitterCallbacks(emitter, "Claude");
         return emitter;

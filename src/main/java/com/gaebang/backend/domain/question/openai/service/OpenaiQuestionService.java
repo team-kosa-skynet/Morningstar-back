@@ -44,7 +44,6 @@ public class OpenaiQuestionService {
 
     public SseEmitter createQuestionStream(
             Long conversationId,
-            String model,
             OpenaiQuestionRequestDto openaiQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
@@ -65,7 +64,7 @@ public class OpenaiQuestionService {
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performApiCallWithFiles(emitter, conversationId, model, openaiQuestionRequestDto, member, attachments);
+        performApiCallWithFiles(emitter, conversationId, openaiQuestionRequestDto.model(), openaiQuestionRequestDto, member, attachments);
 
         setupEmitterCallbacks(emitter, "OpenAI");
         return emitter;
