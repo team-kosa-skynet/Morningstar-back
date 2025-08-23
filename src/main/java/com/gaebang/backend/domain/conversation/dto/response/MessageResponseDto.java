@@ -1,5 +1,6 @@
 package com.gaebang.backend.domain.conversation.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaebang.backend.domain.conversation.dto.request.FileAttachmentDto;
@@ -51,6 +52,7 @@ public record MessageResponseDto(
          * 메시지 생성 시간
          * "방금 전", "2분 전" 같은 상대 시간 표시용
          */
+        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
         LocalDateTime createdAt,
 
         /**
