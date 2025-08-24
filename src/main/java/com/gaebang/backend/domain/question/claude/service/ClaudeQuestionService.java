@@ -42,7 +42,6 @@ public class ClaudeQuestionService {
 
     public SseEmitter createQuestionStream(
             Long conversationId,
-            String model,
             ClaudeQuestionRequestDto claudeQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
@@ -63,7 +62,7 @@ public class ClaudeQuestionService {
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performApiCallWithFiles(emitter, conversationId, model, claudeQuestionRequestDto, member, attachments);
+        performApiCallWithFiles(emitter, conversationId, claudeQuestionRequestDto.model(), claudeQuestionRequestDto, member, attachments);
 
         setupEmitterCallbacks(emitter, "Claude");
         return emitter;
@@ -317,7 +316,7 @@ public class ClaudeQuestionService {
                 try {
                     log.info("처리 중인 파일: {}", file.getOriginalFilename());
                     Map<String, Object> processedFile = fileProcessingService.processFile(file);
-                    log.info("파일 처리 결과: {}", processedFile);
+//                    log.info("파일 처리 결과: {}", processedFile);
 
                     String fileType = (String) processedFile.get("type");
 

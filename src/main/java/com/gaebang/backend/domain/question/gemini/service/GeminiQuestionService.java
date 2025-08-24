@@ -42,7 +42,6 @@ public class GeminiQuestionService {
 
     public SseEmitter createQuestionStream(
             Long conversationId,
-            String model,
             GeminiQuestionRequestDto geminiQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
@@ -63,7 +62,7 @@ public class GeminiQuestionService {
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performApiCallWithFiles(emitter, conversationId, model, geminiQuestionRequestDto, member, attachments);
+        performApiCallWithFiles(emitter, conversationId, geminiQuestionRequestDto.model(), geminiQuestionRequestDto, member, attachments);
 
         setupEmitterCallbacks(emitter, "Gemini");
         return emitter;
@@ -551,7 +550,7 @@ public class GeminiQuestionService {
                 try {
                     log.info("처리 중인 파일: {}", file.getOriginalFilename());
                     Map<String, Object> processedFile = fileProcessingService.processFile(file);
-                    log.info("파일 처리 결과: {}", processedFile);
+//                    log.info("파일 처리 결과: {}", processedFile);
 
                     String fileType = (String) processedFile.get("type");
 

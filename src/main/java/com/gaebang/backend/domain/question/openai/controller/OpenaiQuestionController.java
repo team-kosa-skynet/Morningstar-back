@@ -29,13 +29,11 @@ public class OpenaiQuestionController {
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamQuestionText(
             @PathVariable Long conversationId,
-            @RequestParam(value = "model", required = false) String model,
             @RequestBody @Valid OpenaiQuestionRequestDto requestDto,
             @AuthenticationPrincipal PrincipalDetails principalDetails
     ) {
         return openaiQuestionService.createQuestionStream(
                 conversationId,
-                model,
                 requestDto,
                 principalDetails
         );
@@ -49,16 +47,11 @@ public class OpenaiQuestionController {
             produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamQuestionWithFiles(
             @PathVariable Long conversationId,
-            @RequestParam(value = "model", required = false) String model,
-            @RequestParam("content") String content,
-            @RequestParam(value = "files", required = false) List<MultipartFile> files,
+            @ModelAttribute @Valid OpenaiQuestionRequestDto requestDto,
             @AuthenticationPrincipal PrincipalDetails principalDetails
     ) {
-        OpenaiQuestionRequestDto requestDto = new OpenaiQuestionRequestDto(content, files);
-
         return openaiQuestionService.createQuestionStream(
                 conversationId,
-                model,
                 requestDto,
                 principalDetails
         );

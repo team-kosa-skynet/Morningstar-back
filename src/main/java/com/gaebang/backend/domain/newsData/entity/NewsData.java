@@ -1,13 +1,12 @@
 package com.gaebang.backend.domain.newsData.entity;
 
 
+import com.gaebang.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -20,7 +19,7 @@ import java.time.format.DateTimeFormatter;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class NewsData {
+public class NewsData extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -63,11 +62,4 @@ public class NewsData {
                 .toLocalDateTime();
     }
 
-    @Column(name = "created_at", columnDefinition = "TIMESTAMP")
-    @CreationTimestamp
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", columnDefinition = "TIMESTAMP")
-    @UpdateTimestamp
-    private LocalDateTime updatedAt;
 }

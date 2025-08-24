@@ -31,39 +31,10 @@ public class OpenaiQuestionProperties {
         private final String defaultModel = "gpt-4o";
 
         /**
-         * 지원하는 OpenAI 모델 목록 (하드코딩)
-         */
-        private final List<String> supportedModels = List.of(
-                "gpt-4o",
-                "gpt-4-turbo",
-                "gpt-4o-mini"
-        );
-
-        /**
-         * 요청된 모델이 지원되는지 확인
-         */
-        public boolean isModelSupported(String model) {
-                return model != null && supportedModels.contains(model);
-        }
-
-        /**
          * 사용할 모델 결정 (요청 모델 또는 기본 모델)
          */
         public String getModelToUse(String requestModel) {
-                return isModelSupported(requestModel) ? requestModel : defaultModel;
+                return (requestModel != null && !requestModel.trim().isEmpty()) ? requestModel : defaultModel;
         }
 
-        /**
-         * 기존 getModel() 메서드 호환성 유지
-         */
-        public String getModel() {
-                return defaultModel;
-        }
-
-        /**
-         * 지원 모델 목록 조회
-         */
-        public List<String> getSupportedModels() {
-                return supportedModels;
-        }
 }

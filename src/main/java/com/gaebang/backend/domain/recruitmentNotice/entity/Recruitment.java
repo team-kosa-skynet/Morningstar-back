@@ -1,13 +1,12 @@
 package com.gaebang.backend.domain.recruitmentNotice.entity;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.gaebang.backend.global.entity.BaseTimeEntity;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -19,7 +18,7 @@ import java.time.ZoneId;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class Recruitment {
+public class Recruitment extends BaseTimeEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -89,11 +88,4 @@ public class Recruitment {
         }
     }
 
-    @Column(name = "created_at", columnDefinition = "TIMESTAMP")
-    @CreationTimestamp
-    private LocalDateTime createdAt;
-
-    @Column(name = "updated_at", columnDefinition = "TIMESTAMP")
-    @UpdateTimestamp
-    private LocalDateTime updatedAt;
 }
