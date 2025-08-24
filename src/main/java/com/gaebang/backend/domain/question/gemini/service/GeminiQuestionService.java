@@ -550,7 +550,7 @@ public class GeminiQuestionService {
                 try {
                     log.info("처리 중인 파일: {}", file.getOriginalFilename());
                     Map<String, Object> processedFile = fileProcessingService.processFile(file);
-                    log.info("파일 처리 결과: {}", processedFile);
+//                    log.info("파일 처리 결과: {}", processedFile);
 
                     String fileType = (String) processedFile.get("type");
 
