@@ -22,24 +22,6 @@ public class GeminiQuestionController {
     private final GeminiQuestionService geminiQuestionService;
 
     /**
-     * 텍스트만 (JSON 요청)
-     */
-    @PostMapping(value = "/{conversationId}/gemini/stream",
-            consumes = {MediaType.APPLICATION_JSON_VALUE},
-            produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamQuestionText(
-            @PathVariable Long conversationId,
-            @RequestBody @Valid GeminiQuestionRequestDto requestDto,
-            @AuthenticationPrincipal PrincipalDetails principalDetails
-    ) {
-        return geminiQuestionService.createQuestionStream(
-                conversationId,
-                requestDto,
-                principalDetails
-        );
-    }
-
-    /**
      * 파일 포함 (Multipart 요청)
      */
     @PostMapping(value = "/{conversationId}/gemini/stream",
