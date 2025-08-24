@@ -8,12 +8,11 @@ import com.gaebang.backend.domain.conversation.dto.request.FileAttachmentDto;
 import com.gaebang.backend.domain.conversation.dto.response.ConversationHistoryDto;
 import com.gaebang.backend.domain.conversation.service.ConversationService;
 import com.gaebang.backend.domain.member.entity.Member;
-import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
-import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.question.claude.dto.request.ClaudeQuestionRequestDto;
 import com.gaebang.backend.domain.question.claude.util.ClaudeQuestionProperties;
 import com.gaebang.backend.domain.question.common.service.FileProcessingService;
+import com.gaebang.backend.domain.question.common.util.QuestionServiceUtils;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,15 +44,16 @@ public class ClaudeQuestionService {
             ClaudeQuestionRequestDto claudeQuestionRequestDto,
             PrincipalDetails principalDetails
     ) {
-        Member member = validateAndGetMember(principalDetails);
+        Member member = QuestionServiceUtils.validateAndGetMember(principalDetails, memberRepository);
         SseEmitter emitter = new SseEmitter(300000L);
 
-        List<FileAttachmentDto> attachments = processFiles(claudeQuestionRequestDto.files());
+        List<FileAttachmentDto> attachments = QuestionServiceUtils.processFiles(claudeQuestionRequestDto.files(), fileProcessingService);
         
         // 파일 내용을 미리 결합하여 content 생성
-        String contentWithFiles = buildContentWithExtractedFiles(
+        String contentWithFiles = QuestionServiceUtils.buildContentWithExtractedFiles(
                 claudeQuestionRequestDto.content(),
-                claudeQuestionRequestDto.files()
+                claudeQuestionRequestDto.files(),
+                fileProcessingService
         );
 
         AddQuestionRequestDto questionRequest = new AddQuestionRequestDto(
@@ -64,28 +64,10 @@ public class ClaudeQuestionService {
 
         performApiCallWithFiles(emitter, conversationId, claudeQuestionRequestDto.model(), claudeQuestionRequestDto, member, attachments);
 
-        setupEmitterCallbacks(emitter, "Claude");
+        QuestionServiceUtils.setupEmitterCallbacks(emitter, "Claude");
         return emitter;
     }
 
-    private List<FileAttachmentDto> processFiles(List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        return files.stream()
-                .map(file -> {
-                    Map<String, Object> processedFile = fileProcessingService.processFile(file);
-
-                    return new FileAttachmentDto(
-                            (String) processedFile.get("fileName"),
-                            (String) processedFile.get("type"),
-                            (Long) processedFile.get("fileSize"),
-                            (String) processedFile.get("mimeType")
-                    );
-                })
-                .toList();
-    }
 
     private void performApiCallWithFiles(SseEmitter emitter, Long conversationId, String requestModel,
                                          ClaudeQuestionRequestDto requestDto, Member member,
@@ -132,7 +114,7 @@ public class ClaudeQuestionService {
 
             // 파일이 있거나 새로운 텍스트일 때 createContentWithFiles 호출
             if (messages.isEmpty() ||
-                    !requestDto.content().equals(getLastUserMessage(historyMessages)) ||
+                    !requestDto.content().equals(QuestionServiceUtils.getLastUserMessage(historyMessages)) ||
                     (requestDto.files() != null && !requestDto.files().isEmpty())) {
 
                 List<Map<String, Object>> content = createContentWithFiles(
@@ -204,7 +186,7 @@ public class ClaudeQuestionService {
                         if (!response.getStatusCode().is2xxSuccessful()) {
                             String errorMessage = String.format("Claude API 호출 실패: %s", response.getStatusCode());
                             log.error(errorMessage);
-                            handleStreamError(emitter, new RuntimeException(errorMessage));
+                            QuestionServiceUtils.handleStreamError(emitter, new RuntimeException(errorMessage));
                             return null;
                         }
 
@@ -264,7 +246,7 @@ public class ClaudeQuestionService {
                         } catch (IOException e) {
                             if (!Thread.currentThread().isInterrupted()) {
                                 log.error("Claude API 스트리밍 중 네트워크 오류", e);
-                                handleStreamError(emitter, e);
+                                QuestionServiceUtils.handleStreamError(emitter, e);
                             }
                         }
                         return null;
@@ -273,7 +255,7 @@ public class ClaudeQuestionService {
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
                 log.error("Claude API 스트리밍 호출 실패: ", e);
-                handleStreamError(emitter, e);
+                QuestionServiceUtils.handleStreamError(emitter, e);
             }
         }
     }
@@ -366,29 +348,7 @@ public class ClaudeQuestionService {
         return content;
     }
 
-    private void setupEmitterCallbacks(SseEmitter emitter, String serviceName) {
-        emitter.onTimeout(() -> {
-            log.warn("{} 스트리밍 타임아웃", serviceName);
-            emitter.complete();
-        });
 
-        emitter.onCompletion(() -> {
-            log.info("{} 스트리밍 완료", serviceName);
-        });
-
-        emitter.onError((throwable) -> {
-            log.error("{} 스트리밍 에러", serviceName, throwable);
-        });
-    }
-
-    private Member validateAndGetMember(PrincipalDetails principalDetails) {
-        Long memberId = principalDetails.getMember().getId();
-        if (memberId == null) {
-            throw new UserInvalidAccessException();
-        }
-        return memberRepository.findById(memberId)
-                .orElseThrow(() -> new UserNotFoundException());
-    }
 
     private String parseClaudeStreamResponse(String data) {
         try {
@@ -408,70 +368,6 @@ public class ClaudeQuestionService {
         }
     }
 
-    private String getLastUserMessage(List<Map<String, Object>> messages) {
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            Map<String, Object> message = messages.get(i);
-            if ("user".equals(message.get("role"))) {
-                return (String) message.get("content");
-            }
-        }
-        return "";
-    }
 
-    private void handleStreamError(SseEmitter emitter, Exception e) {
-        try {
-            emitter.send(SseEmitter.event()
-                    .name("error")
-                    .data("AI 응답 생성 중 오류가 발생했습니다."));
-            emitter.completeWithError(e);
-        } catch (IOException ioException) {
-            log.error("에러 전송 실패", ioException);
-        }
-    }
 
-    /**
-     * 파일 내용을 미리 추출하여 사용자 텍스트와 결합
-     * ConversationService에 저장할 때 실제 파일 내용이 포함되도록 함
-     */
-    private String buildContentWithExtractedFiles(String userText, List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) {
-            return userText;
-        }
-
-        StringBuilder contentBuilder = new StringBuilder(userText);
-
-        for (MultipartFile file : files) {
-            try {
-                Map<String, Object> processedFile = fileProcessingService.processFile(file);
-                String fileType = (String) processedFile.get("type");
-                String fileName = (String) processedFile.get("fileName");
-
-                if ("text".equals(fileType)) {
-                    String extractedText = (String) processedFile.get("extractedText");
-                    
-                    contentBuilder.append("\n\n너는 파일을 해석하는 전문가야. 다음 파일의 내용을 분석하고 사용자의 질문에 답변해줘.\n\n");
-                    contentBuilder.append("=== 파일 전체 내용 시작 ===\n\n");
-                    contentBuilder.append("파일명: ").append(fileName).append("\n\n");
-                    contentBuilder.append(extractedText);
-                    contentBuilder.append("\n\n=== 파일 전체 내용 끝 ===\n");
-                    
-                } else if ("image".equals(fileType)) {
-                    // 이미지는 참조만 추가 (Base64는 너무 큼)
-                    contentBuilder.append("\n\n--- 파일: ").append(fileName).append(" ---\n");
-                    contentBuilder.append("업로드된 이미지: ").append(fileName);
-                    contentBuilder.append("\n\n[이미지 분석 안내: 이 이미지는 현재 질문에서만 직접 분석됩니다. ");
-                    contentBuilder.append("향후 이 이미지에 대한 추가 질문이 있을 경우, 이번 답변에서 제공된 분석 결과를 참고해주세요.]");
-                    contentBuilder.append("\n--- 파일 끝 ---");
-                }
-                
-            } catch (Exception e) {
-                log.error("파일 내용 추출 실패: {}", file.getOriginalFilename(), e);
-                contentBuilder.append("\n\n--- 파일: ").append(file.getOriginalFilename()).append(" ---\n");
-                contentBuilder.append("[파일 처리 실패]");
-                contentBuilder.append("\n--- 파일 끝 ---");
-            }
-        }
-
-        return contentBuilder.toString();
-    }
 }
