@@ -34,6 +34,7 @@ public class NewsDataService {
     private final NewsImageService newsImageService;
     private final HttpClientUtil httpClient;
     private final NewsDataRepository newsRepository;
+    private final ObjectMapper objectMapper;
     private static Dotenv dotenv = Dotenv.load();
 
     private String clientId = dotenv.get("X_Naver_Client_Id");
@@ -115,8 +116,7 @@ public class NewsDataService {
 
     // JSON 응답을 NewsData 엔티티 리스트로 변환
     private List<NewsData> parseNewsResponse(String response) throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode jsonNode = mapper.readTree(response);
+        JsonNode jsonNode = objectMapper.readTree(response);
 
         List<NewsData> newsDataList = new ArrayList<>();
         JsonNode items = jsonNode.get("items");

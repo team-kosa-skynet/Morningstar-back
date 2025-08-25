@@ -28,6 +28,7 @@ public class RecruitmentService {
 
     private final HttpClientUtil httpClient;
     private final RecruitmentRepository recruitmentRepository;
+    private final ObjectMapper objectMapper;
 
     private static Dotenv dotenv = Dotenv.load();
 
@@ -92,8 +93,7 @@ public class RecruitmentService {
 
     // JSON 응답을 Recruitment 엔티티 리스트로 변환
     private List<Recruitment> parseRecruitmentResponse(String response) throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode jsonNode = mapper.readTree(response);
+        JsonNode jsonNode = objectMapper.readTree(response);
 
         List<Recruitment> recruitmentList = new ArrayList<>();
         JsonNode jobs = jsonNode.get("jobs").get("job");

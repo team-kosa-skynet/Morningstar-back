@@ -29,6 +29,7 @@ public class PopularNewsDataService {
     private final GeminiQuestionProperties geminiQuestionProperties;
     private final NewsDataRepository newsDataRepository;
     private final NewsImageService newsImageService;
+    private final ObjectMapper objectMapper;
 
     // 뉴스 전체 조회 한 것 가공하기 - pubDate 추가
     public String getNewsData() {
@@ -266,7 +267,6 @@ public class PopularNewsDataService {
     // 응답 파싱 메서드 - Gemini 응답 형태에 맞게 수정
     private void processDuplicateNews(String response) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
             JsonNode rootNode = objectMapper.readTree(response);
             
             log.info("전체 응답 구조: {}", rootNode.toString());
