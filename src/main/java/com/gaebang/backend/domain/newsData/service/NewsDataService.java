@@ -12,6 +12,7 @@ import io.github.cdimascio.dotenv.Dotenv;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -36,6 +37,9 @@ public class NewsDataService {
     private final NewsDataRepository newsRepository;
     private final ObjectMapper objectMapper;
     private static Dotenv dotenv = Dotenv.load();
+
+    @Value("${news.active}")
+    private String newsActive;
 
     private String clientId = dotenv.get("X_Naver_Client_Id");
     private String clientSecret = dotenv.get("X_Naver_Client_Secret");
@@ -68,6 +72,11 @@ public class NewsDataService {
     @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
     @Transactional
     public void fetchAndSaveNews() {
+
+        if (newsActive.equals("false")) {
+            return;
+        }
+
         try {
             log.info("scheduled 실행 중");
 
