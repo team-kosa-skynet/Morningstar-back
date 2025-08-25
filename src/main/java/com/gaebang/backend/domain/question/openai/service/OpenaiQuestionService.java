@@ -444,9 +444,16 @@ public class OpenaiQuestionService {
                                     log.info("OpenAI 답변 저장 완료 - 모델: {}", modelToUse);
                                 }
 
+                                // 피드백 옵션과 함께 완료 이벤트 전송
+                                Map<String, Object> doneData = new HashMap<>();
+                                doneData.put("message", "스트리밍 완료");
+                                doneData.put("type", "completion");
+                                doneData.put("modelName", modelToUse);
+                                doneData.put("conversationId", conversationId);
+                                
                                 emitter.send(SseEmitter.event()
                                         .name("done")
-                                        .data("스트리밍 완료"));
+                                        .data(doneData));
                                 emitter.complete();
                             }
 
