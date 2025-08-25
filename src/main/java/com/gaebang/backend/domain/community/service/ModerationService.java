@@ -6,6 +6,8 @@ import com.gaebang.backend.domain.community.entity.Comment;
 import com.gaebang.backend.domain.community.entity.Image;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.repository.CommentRepository;
+import com.gaebang.backend.domain.community.repository.ImageRepository;
+import com.gaebang.backend.global.util.S3.S3ImageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,9 +24,11 @@ public class ModerationService {
 
     private final BoardRepository boardRepository;
     private final CommentRepository commentRepository;
+    private final ImageRepository imageRepository;
     private final ContentBackupService contentBackupService;
     private final TextModerationService textModerationService;
     private final ImageModerationService imageModerationService;
+    private final S3ImageService s3ImageService;
 
     @Value("${moderation.enabled:true}")
     private boolean moderationEnabled;
@@ -54,22 +58,22 @@ public class ModerationService {
                 board.getTitle(), board.getContent());
             
             ModerationResult textResult = textResultFuture.get();
-
+            
+            boolean textCensored = false;
+            boolean imageCensored = false;
+            String censorReason = null;
+            
+            // 텍스트 검열 결과 처리
             if (textResult.isInappropriate()) {
                 log.info("부적절한 게시글 텍스트 발견 - ID: {}, 사유: {}", boardId, textResult.getReason());
-                
-                contentBackupService.createBoardBackup(board, textResult.getReason());
-                
-                String censoredContent = contentTemplate.replace("{reason}", textResult.getReason());
-                board.censorContent(censoredTitle, censoredContent);
-                boardRepository.save(board);
-                
-                log.info("게시글 텍스트 검열 완료 - ID: {}", boardId);
-                return CompletableFuture.completedFuture(null);
+                textCensored = true;
+                censorReason = textResult.getReason();
             }
 
+            // 이미지 검열 실행
+            
             if (!board.getImages().isEmpty()) {
-                log.debug("게시글 이미지 검열 시작 - ID: {}, 이미지 수: {}", boardId, board.getImages().size());
+                log.info("게시글 이미지 검열 시작 - ID: {}, 이미지 수: {}", boardId, board.getImages().size());
                 
                 for (Image image : board.getImages()) {
                     if (imageModerationService.isSupportedImageFormat(image.getImageUrl())) {
@@ -82,26 +86,47 @@ public class ModerationService {
                             log.info("부적절한 게시글 이미지 발견 - ID: {}, 이미지 URL: {}, 사유: {}", 
                                     boardId, image.getImageUrl(), imageResult.getReason());
                             
-                            contentBackupService.createBoardBackup(board, "이미지 검열: " + imageResult.getReason());
+                            imageCensored = true;
+                            if (censorReason == null) {
+                                censorReason = "이미지 검열: " + imageResult.getReason();
+                            } else {
+                                censorReason += " / 이미지 검열: " + imageResult.getReason();
+                            }
                             
-                            String censoredContent = contentTemplate.replace("{reason}", "이미지 검열: " + imageResult.getReason());
-                            board.censorContent(censoredTitle, censoredContent);
-                            boardRepository.save(board);
-                            
-                            log.info("게시글 이미지 검열 완료 - ID: {}", boardId);
-                            return CompletableFuture.completedFuture(null);
+                            // 모든 이미지 삭제 (S3 + DB)
+                            deleteAllImagesFromBoard(board);
+                            break; // 하나의 이미지라도 부적절하면 모든 이미지 삭제 후 종료
                         }
                     } else {
-                        log.warn("지원하지 않는 이미지 형식 - ID: {}, URL: {}", boardId, image.getImageUrl());
+                        log.debug("지원하지 않는 이미지 형식 - ID: {}, URL: {}", boardId, image.getImageUrl());
                     }
                 }
                 
-                log.debug("게시글 이미지 검열 통과 - ID: {}", boardId);
+                if (imageCensored) {
+                    log.info("게시글 이미지 검열 완료 - ID: {}", boardId);
+                } else {
+                    log.debug("게시글 이미지 검열 통과 - ID: {}", boardId);
+                }
             }
-
-            board.approveModerationContent();
-            boardRepository.save(board);
-            log.debug("게시글 전체 검열 통과 - ID: {}", boardId);
+            
+            // 최종 처리: 텍스트 또는 이미지 중 하나라도 부적절하면 검열 처리
+            if (textCensored || imageCensored) {
+                // 백업 생성 (중복 방지)
+                contentBackupService.createBoardBackup(board, censorReason);
+                
+                // 게시글 내용을 검열 메시지로 교체
+                String censoredContent = contentTemplate.replace("{reason}", censorReason);
+                board.censorContent(censoredTitle, censoredContent);
+                boardRepository.save(board);
+                
+                log.info("게시글 검열 완료 - ID: {}, 텍스트 검열: {}, 이미지 검열: {}", 
+                        boardId, textCensored, imageCensored);
+            } else {
+                // 모든 검열 통과
+                board.approveModerationContent();
+                boardRepository.save(board);
+                log.debug("게시글 전체 검열 통과 - ID: {}", boardId);
+            }
 
         } catch (Exception e) {
             log.error("게시글 검열 중 오류 발생 - ID: {}, 오류: {}", boardId, e.getMessage(), e);
@@ -150,5 +175,35 @@ public class ModerationService {
         }
 
         return CompletableFuture.completedFuture(null);
+    }
+
+    /**
+     * 게시글의 모든 이미지를 S3와 DB에서 삭제
+     * @param board 게시글 엔티티
+     */
+    private void deleteAllImagesFromBoard(Board board) {
+        if (board.getImages().isEmpty()) {
+            return;
+        }
+
+        for (Image image : board.getImages()) {
+            try {
+                // S3에서 이미지 삭제
+                s3ImageService.deleteImageFromS3(image.getImageUrl());
+                log.debug("S3 이미지 삭제 완료 - URL: {}", image.getImageUrl());
+            } catch (Exception e) {
+                log.error("S3 이미지 삭제 실패 - URL: {}, 오류: {}", image.getImageUrl(), e.getMessage());
+                // S3 삭제 실패해도 DB에서는 삭제 진행
+            }
+        }
+
+        // DB에서 이미지 엔티티들 삭제
+        try {
+            imageRepository.deleteAll(board.getImages());
+            log.debug("DB 이미지 엔티티 삭제 완료 - 게시글 ID: {}, 삭제된 이미지 수: {}", 
+                     board.getId(), board.getImages().size());
+        } catch (Exception e) {
+            log.error("DB 이미지 엔티티 삭제 실패 - 게시글 ID: {}, 오류: {}", board.getId(), e.getMessage());
+        }
     }
 }

@@ -132,8 +132,15 @@ public class S3ImageService {
             
             // Content-Type 확인
             String contentType = connection.getContentType();
+            
+            // Content-Type이 없거나 잘못된 경우 URL 확장자로 추정
             if (!isValidImageContentType(contentType)) {
-                throw new IllegalArgumentException("지원하지 않는 이미지 형식: " + contentType);
+                String guessedType = guessContentTypeFromUrl(imageUrl);
+                if (isValidImageContentType(guessedType)) {
+                    contentType = guessedType;
+                } else {
+                    throw new IllegalArgumentException("지원하지 않는 이미지 형식: " + contentType);
+                }
             }
 
             // 이미지 데이터 읽기
@@ -166,10 +173,45 @@ public class S3ImageService {
     private boolean isValidImageContentType(String contentType) {
         if (contentType == null) return false;
         
-        return contentType.equals("image/jpeg") ||
-               contentType.equals("image/jpg") ||
-               contentType.equals("image/png") ||
-               contentType.equals("image/webp");
+        // MIME 타입 정규화 (소문자 변환, 공백 제거)
+        String normalizedType = contentType.toLowerCase().trim();
+        
+        // 세미콜론 이후 파라미터 제거 (예: "image/png; charset=UTF-8" -> "image/png")
+        if (normalizedType.contains(";")) {
+            normalizedType = normalizedType.substring(0, normalizedType.indexOf(";")).trim();
+        }
+        
+        return normalizedType.equals("image/jpeg") ||
+               normalizedType.equals("image/jpg") ||
+               normalizedType.equals("image/png") ||
+               normalizedType.equals("image/webp");
+    }
+
+    /**
+     * URL 확장자로부터 MIME 타입 추정
+     * @param imageUrl 이미지 URL
+     * @return 추정된 MIME 타입
+     */
+    private String guessContentTypeFromUrl(String imageUrl) {
+        if (imageUrl == null) return null;
+        
+        try {
+            // URL 디코딩 처리
+            String decodedUrl = URLDecoder.decode(imageUrl, "UTF-8");
+            String lowerUrl = decodedUrl.toLowerCase();
+            
+            if (lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".jpeg")) {
+                return "image/jpeg";
+            } else if (lowerUrl.endsWith(".png")) {
+                return "image/png";
+            } else if (lowerUrl.endsWith(".webp")) {
+                return "image/webp";
+            }
+        } catch (UnsupportedEncodingException e) {
+            log.warn("URL 디코딩 실패: {}", imageUrl);
+        }
+        
+        return null;
     }
 
     /**
