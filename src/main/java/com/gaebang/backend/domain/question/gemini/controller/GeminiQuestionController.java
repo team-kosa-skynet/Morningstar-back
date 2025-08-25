@@ -53,6 +53,7 @@ public class GeminiQuestionController {
         return geminiQuestionService.generateImageInConversation(
                 conversationId,
                 request.prompt(),
+                request.model(),
                 principalDetails
         );
     }
