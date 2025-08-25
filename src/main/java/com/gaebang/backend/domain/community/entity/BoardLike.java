@@ -10,11 +10,7 @@ import lombok.*;
 @Builder
 @Getter
 @Entity
-@Table(name = "board_like",
-        indexes = {
-                @Index(name = "idx_board_like_board_id", columnList = "board_id"),
-                @Index(name = "idx_board_like_board_member", columnList = "board_id, member_id")
-        })
+@Table(name = "board_like")
 public class BoardLike extends BaseTimeEntity {
 
     @Id

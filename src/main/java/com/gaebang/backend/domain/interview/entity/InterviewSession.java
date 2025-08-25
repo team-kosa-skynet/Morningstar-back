@@ -14,13 +14,7 @@ import java.util.UUID;
 
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(
-        name = "interviews_session",
-        indexes = {
-                @Index(name = "idx_interview_session_member", columnList = "member_id"),
-                @Index(name = "idx_interview_session_status", columnList = "status")
-        }
-)
+@Table(name = "interviews_session")
 @Entity
 public class InterviewSession extends BaseTimeEntity {
 
