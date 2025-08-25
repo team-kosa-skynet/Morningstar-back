@@ -1,5 +1,6 @@
 package com.gaebang.backend.domain.conversation.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.gaebang.backend.domain.conversation.entity.Conversation;
 import lombok.Builder;
 
@@ -25,11 +26,13 @@ public record ConversationDetailResponseDto(
         /**
          * 대화방 생성 시간
          */
+        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
         LocalDateTime createdAt,
 
         /**
          * 대화방 마지막 수정 시간
          */
+        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
         LocalDateTime lastModifiedAt,
 
         /**

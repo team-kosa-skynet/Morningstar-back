@@ -1,5 +1,6 @@
 package com.gaebang.backend.domain.conversation.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.gaebang.backend.domain.conversation.entity.Conversation;
 import lombok.Builder;
 
@@ -27,6 +28,7 @@ public record ConversationSummaryDto(
          * 마지막 수정 시간
          * "방금 전", "2시간 전", "어제" 같은 형태로 변환되어 표시
          */
+        @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
         LocalDateTime lastModifiedAt,
 
         /**

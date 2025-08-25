@@ -11,6 +11,8 @@ public record ClaudeQuestionRequestDto(
         @Size(max = 10000, message = "질문은 10000자 이하로 입력해주세요")
         String content,
 
+        String model,
+
         List<MultipartFile> files
 ) {
 }
