@@ -36,7 +36,6 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional(readOnly = true)
 public class ConversationService {
 
     private final ConversationRepository conversationRepository;

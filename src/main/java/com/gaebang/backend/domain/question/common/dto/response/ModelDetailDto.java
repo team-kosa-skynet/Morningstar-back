@@ -5,6 +5,7 @@ package com.gaebang.backend.domain.question.common.dto.response;
  */
 public record ModelDetailDto(
         String name,
-        boolean supportsFiles
+        boolean supportsFiles,
+        boolean isCreateImage
 ) {
 }

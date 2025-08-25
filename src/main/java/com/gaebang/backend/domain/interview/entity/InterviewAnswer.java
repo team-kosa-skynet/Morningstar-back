@@ -15,9 +15,6 @@ import lombok.NoArgsConstructor;
                         name = "uq_answer_session_qidx",
                         columnNames = {"session_id", "question_index"}
                 )
-        },
-        indexes = {
-                @Index(name = "idx_answer_session", columnList = "session_id")
         }
 )
 @Entity

@@ -52,13 +52,20 @@ public class AiModel extends BaseTimeEntity {
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 
+    /**
+     * 이미지 생성 지원 여부
+     */
+    @Column(name = "is_create_image", nullable = false)
+    private Boolean isCreateImage = false;
+
     @Builder
-    public AiModel(String provider, String modelName, Boolean supportsFiles, Boolean isDefault, Boolean isActive) {
+    public AiModel(String provider, String modelName, Boolean supportsFiles, Boolean isDefault, Boolean isActive, Boolean isCreateImage) {
         this.provider = provider;
         this.modelName = modelName;
         this.supportsFiles = supportsFiles;
         this.isDefault = isDefault != null ? isDefault : false;
         this.isActive = isActive != null ? isActive : true;
+        this.isCreateImage = isCreateImage != null ? isCreateImage : false;
     }
 
     /**
@@ -80,5 +87,12 @@ public class AiModel extends BaseTimeEntity {
      */
     public void updateFileSupport(Boolean supportsFiles) {
         this.supportsFiles = supportsFiles;
+    }
+
+    /**
+     * 이미지 생성 지원 여부 업데이트
+     */
+    public void updateImageCreateSupport(Boolean isCreateImage) {
+        this.isCreateImage = isCreateImage;
     }
 }

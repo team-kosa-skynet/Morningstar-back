@@ -81,7 +81,8 @@ public class ModelInfoService {
         List<ModelDetailDto> modelDetails = models.stream()
                 .map(model -> new ModelDetailDto(
                         model.getModelName(),
-                        model.getSupportsFiles()
+                        model.getSupportsFiles(),
+                        model.getIsCreateImage()
                 ))
                 .toList();
 
