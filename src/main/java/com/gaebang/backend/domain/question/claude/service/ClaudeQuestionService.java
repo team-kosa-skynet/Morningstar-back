@@ -216,9 +216,13 @@ public class ClaudeQuestionService {
                                         fullResponse.append(content);
 
                                         try {
+                                            Map<String, Object> messageData = new HashMap<>();
+                                            messageData.put("content", content);
+                                            messageData.put("type", "text");
+                                            
                                             emitter.send(SseEmitter.event()
                                                     .name("message")
-                                                    .data(content));
+                                                    .data(messageData));
                                         } catch (IOException e) {
                                             log.warn("Claude API 클라이언트 연결 종료됨 - 스트리밍 중단");
                                             return null;
