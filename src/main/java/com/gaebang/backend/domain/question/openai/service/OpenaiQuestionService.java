@@ -74,6 +74,7 @@ public class OpenaiQuestionService {
     public SseEmitter generateImageInConversation(
             Long conversationId,
             String prompt,
+            String model,
             PrincipalDetails principalDetails
     ) {
         Member member = QuestionServiceUtils.validateAndGetMember(principalDetails, memberRepository);
@@ -85,18 +86,19 @@ public class OpenaiQuestionService {
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performImageGeneration(emitter, conversationId, prompt, member);
+        performImageGeneration(emitter, conversationId, prompt, model, member);
 
         QuestionServiceUtils.setupEmitterCallbacks(emitter, "OpenAI DALL-E 3");
         return emitter;
     }
 
     private void performImageGeneration(SseEmitter emitter, Long conversationId,
-                                        String prompt, Member member) {
+                                        String prompt, String model, Member member) {
         try {
-            log.info("OpenAI DALL-E 3 이미지 생성 요청: {}", prompt);
+            String modelToUse = model != null && !model.trim().isEmpty() ? model : "dall-e-3";
+            log.info("OpenAI {} 이미지 생성 요청: {}", modelToUse, prompt);
 
-            String imageDataUrl = generateImageWithOpenAI(prompt);
+            String imageDataUrl = generateImageWithOpenAI(prompt, model);
 
             if (imageDataUrl != null) {
                 Map<String, Object> imageResponse = new HashMap<>();
@@ -109,7 +111,7 @@ public class OpenaiQuestionService {
                             .name("image")
                             .data(imageResponse));
 
-                    log.info("OpenAI DALL-E 3 이미지 생성 완료 및 전송");
+                    log.info("OpenAI {} 이미지 생성 완료 및 전송", modelToUse);
                 } catch (IOException e) {
                     log.warn("OpenAI 이미지 전송 실패 - 클라이언트 연결 종료됨");
                     return;
@@ -125,7 +127,7 @@ public class OpenaiQuestionService {
                 String responseText = String.format("요청하신 '%s' 이미지를 생성했습니다.", prompt);
                 AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
                         responseText,
-                        "dall-e-3",
+                        modelToUse,
                         List.of(imageAttachment)
                 );
                 conversationService.addAnswer(conversationId, member.getId(), answerRequest);
@@ -140,22 +142,22 @@ public class OpenaiQuestionService {
             }
 
         } catch (Exception e) {
-            log.error("OpenAI DALL-E 3 이미지 생성 실패: ", e);
             QuestionServiceUtils.handleStreamError(emitter, e);
         }
     }
 
-    private String generateImageWithOpenAI(String prompt) {
+    private String generateImageWithOpenAI(String prompt, String model) {
         try {
+            String modelToUse = model != null && !model.trim().isEmpty() ? model : "dall-e-3";
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", "dall-e-3");
+            requestBody.put("model", modelToUse);
             requestBody.put("prompt", prompt);
             requestBody.put("n", 1);
             requestBody.put("size", "1024x1024");
             requestBody.put("quality", "standard");
             requestBody.put("response_format", "url");
 
-            log.info("OpenAI DALL-E 3 이미지 생성 API 호출");
+            log.info("OpenAI {} 이미지 생성 API 호출", modelToUse);
             log.info("요청 프롬프트: {}", prompt);
 
             String response = restClient.post()
@@ -165,7 +167,7 @@ public class OpenaiQuestionService {
                     .body(requestBody)
                     .exchange((request, httpResponse) -> {
                         if (!httpResponse.getStatusCode().is2xxSuccessful()) {
-                            log.error("OpenAI DALL-E 3 API 호출 실패: {}", httpResponse.getStatusCode());
+                            log.error("OpenAI {} API 호출 실패: {}", modelToUse, httpResponse.getStatusCode());
                             try {
                                 String errorBody = new String(httpResponse.getBody().readAllBytes());
                                 log.error("오류 응답 본문: {}", errorBody);
@@ -183,14 +185,13 @@ public class OpenaiQuestionService {
                     });
 
             if (response != null) {
-                log.info("OpenAI DALL-E 3 실제 API 응답 전체: {}", response);
+                log.info("OpenAI {} 실제 API 응답 전체: {}", modelToUse, response);
                 return parseOpenAIImageResponseAndConvertToBase64(response);
             }
 
             return null;
 
         } catch (Exception e) {
-            log.error("OpenAI DALL-E 3 이미지 생성 API 호출 실패: ", e);
             return null;
         }
     }
@@ -200,12 +201,12 @@ public class OpenaiQuestionService {
             JsonNode rootNode = objectMapper.readTree(response);
             List<String> fieldNames = new ArrayList<>();
             rootNode.fieldNames().forEachRemaining(fieldNames::add);
-            log.info("OpenAI DALL-E 3 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
+            log.info("OpenAI 이미지 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
 
             JsonNode dataArray = rootNode.path("data");
 
             if (dataArray.isEmpty()) {
-                log.warn("OpenAI DALL-E 3 응답에 data가 없습니다.");
+                log.warn("OpenAI 이미지 응답에 data가 없습니다.");
                 return null;
             }
 
@@ -218,23 +219,23 @@ public class OpenaiQuestionService {
                 String imageUrl = firstData.path("url").asText();
                 String revisedPrompt = firstData.path("revised_prompt").asText("");
 
-                log.info("OpenAI DALL-E 3 이미지 URL 수신: URL={}, Revised Prompt={}", imageUrl, revisedPrompt);
+                log.info("OpenAI 이미지 URL 수신: URL={}, Revised Prompt={}", imageUrl, revisedPrompt);
 
                 String base64DataUrl = downloadImageAndConvertToBase64(imageUrl);
                 if (base64DataUrl != null) {
-                    log.info("OpenAI DALL-E 3 이미지 base64 변환 완료");
+                    log.info("OpenAI 이미지 base64 변환 완료");
                     return base64DataUrl;
                 }
 
-                log.warn("OpenAI DALL-E 3 이미지 base64 변환 실패");
+                log.warn("OpenAI 이미지 base64 변환 실패");
                 return null;
             }
 
-            log.warn("OpenAI DALL-E 3 응답에 url 필드가 없습니다.");
+            log.warn("OpenAI 이미지 응답에 url 필드가 없습니다.");
             return null;
 
         } catch (Exception e) {
-            log.error("OpenAI DALL-E 3 응답 파싱 실패", e);
+            log.error("OpenAI 이미지 응답 파싱 실패", e);
             return null;
         }
     }

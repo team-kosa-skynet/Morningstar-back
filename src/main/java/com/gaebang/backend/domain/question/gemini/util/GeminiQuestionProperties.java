@@ -23,12 +23,24 @@ public class GeminiQuestionProperties {
     private final String baseUrl = "https://generativelanguage.googleapis.com/v1/models";
 
     /**
-     * 이미지 생성 url
+     * 이미지 생성 기본 모델
      */
-//    private final String createImageUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent";
-//    private final String createImageUrl = "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-preview-06-06:predict";
-    // Imagen-3로 변경 (다른 모델명 시도)
-    private final String createImageUrl = "https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict";
+    private final String defaultImageModel = "imagen-3.0";
+
+    /**
+     * 이미지 생성 URL 생성 (모델에 따라)
+     */
+    public String getCreateImageUrl(String model) {
+        String modelToUse = (model != null && !model.trim().isEmpty()) ? model : defaultImageModel;
+        return "https://generativelanguage.googleapis.com/v1beta/models/" + modelToUse + "-generate-002:predict";
+    }
+
+    /**
+     * 기본 이미지 생성 URL
+     */
+    public String getCreateImageUrl() {
+        return getCreateImageUrl(defaultImageModel);
+    }
     /**
      * 기본 모델 (하드코딩)
      */

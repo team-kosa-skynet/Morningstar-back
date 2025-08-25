@@ -71,6 +71,7 @@ public class GeminiQuestionService {
     public SseEmitter generateImageInConversation(
             Long conversationId,
             String prompt,
+            String model,
             PrincipalDetails principalDetails
     ) {
         Member member = QuestionServiceUtils.validateAndGetMember(principalDetails, memberRepository);
@@ -82,18 +83,18 @@ public class GeminiQuestionService {
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performImageGeneration(emitter, conversationId, prompt, member);
+        performImageGeneration(emitter, conversationId, prompt, model, member);
 
         QuestionServiceUtils.setupEmitterCallbacks(emitter, "Gemini Image");
         return emitter;
     }
 
     private void performImageGeneration(SseEmitter emitter, Long conversationId,
-                                        String prompt, Member member) {
+                                        String prompt, String model, Member member) {
         try {
             log.info("Gemini 이미지 생성 요청: {}", prompt);
 
-            String imageDataUrl = generateImageWithGemini(prompt);
+            String imageDataUrl = generateImageWithGemini(prompt, model);
 
             if (imageDataUrl != null) {
                 Map<String, Object> imageResponse = new HashMap<>();
@@ -119,10 +120,11 @@ public class GeminiQuestionService {
                         "image/png"
                 );
 
+                String modelToUse = model != null && !model.trim().isEmpty() ? model : "imagen-3.0";
                 String responseText = String.format("요청하신 '%s' 이미지를 생성했습니다.", prompt);
                 AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
                         responseText,
-                        "imagen-4.0",
+                        modelToUse,
                         List.of(imageAttachment)
                 );
                 conversationService.addAnswer(conversationId, member.getId(), answerRequest);
@@ -142,7 +144,7 @@ public class GeminiQuestionService {
         }
     }
 
-    private String generateImageWithGemini(String prompt) {
+    private String generateImageWithGemini(String prompt, String model) {
         try {
             Map<String, Object> instance = new HashMap<>();
             instance.put("prompt", prompt);
@@ -155,17 +157,18 @@ public class GeminiQuestionService {
             requestBody.put("instances", Arrays.asList(instance));
             requestBody.put("parameters", parameters);
 
-            log.info("Gemini Imagen-4.0 이미지 생성 API 호출");
+            String modelToUse = model != null && !model.trim().isEmpty() ? model : "imagen-3.0";
+            log.info("Gemini {} 이미지 생성 API 호출", modelToUse);
             log.info("요청 프롬프트: {}", prompt);
 
             String response = restClient.post()
-                    .uri(geminiQuestionProperties.getCreateImageUrl())
+                    .uri(geminiQuestionProperties.getCreateImageUrl(modelToUse))
                     .header("x-goog-api-key", geminiQuestionProperties.getApiKey())
                     .header("Content-Type", "application/json")
                     .body(requestBody)
                     .exchange((request, httpResponse) -> {
                         if (!httpResponse.getStatusCode().is2xxSuccessful()) {
-                            log.error("Imagen 4.0 API 호출 실패: {}", httpResponse.getStatusCode());
+                            log.error("{} API 호출 실패: {}", modelToUse, httpResponse.getStatusCode());
                             try {
                                 String errorBody = new String(httpResponse.getBody().readAllBytes());
                                 log.error("오류 응답 본문: {}", errorBody);
@@ -183,7 +186,7 @@ public class GeminiQuestionService {
                     });
 
             if (response != null) {
-                log.info("Imagen-4.0 실제 API 응답 전체: {}", response);
+                log.info("{} 실제 API 응답 전체: {}", modelToUse, response);
                 return parseImagenUrlResponse(response);
             }
 

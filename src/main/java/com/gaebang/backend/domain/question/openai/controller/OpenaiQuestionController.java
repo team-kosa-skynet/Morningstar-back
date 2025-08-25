@@ -53,6 +53,7 @@ public class OpenaiQuestionController {
         return openaiQuestionService.generateImageInConversation(
                 conversationId,
                 request.prompt(),
+                request.model(),
                 principalDetails
         );
     }
