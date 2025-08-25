@@ -32,6 +32,7 @@ public class NewsImageService {
     private final GeminiQuestionProperties geminiQuestionProperties;
     private final NewsDataRepository newsDataRepository;
     private final S3ImageService s3ImageService;
+    private final ObjectMapper objectMapper;
 
     // 전역 상태 관리
     private volatile boolean apiQuotaExceeded = false;
@@ -340,7 +341,6 @@ public class NewsImageService {
     // 개별 뉴스 이미지 처리 (크기 정보 포함) - 수정된 부분
     private void processImagen4Response(String response, Long newsId, boolean isPopular) {
         try {
-            ObjectMapper objectMapper = new ObjectMapper();
             JsonNode rootNode = objectMapper.readTree(response);
 
             // Imagen 4.0 응답 구조 검증 강화
