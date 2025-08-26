@@ -51,7 +51,7 @@ public class OpenaiQuestionService {
         SseEmitter emitter = new SseEmitter(300000L);
 
         List<FileAttachmentDto> attachments = QuestionServiceUtils.processFiles(openaiQuestionRequestDto.files(), fileProcessingService);
-        
+
         // 파일 내용을 미리 결합하여 content 생성
         String contentWithFiles = QuestionServiceUtils.buildContentWithExtractedFiles(
                 openaiQuestionRequestDto.content(),
@@ -419,7 +419,7 @@ public class OpenaiQuestionService {
                                             Map<String, Object> messageData = new HashMap<>();
                                             messageData.put("content", content);
                                             messageData.put("type", "text");
-                                            
+
                                             emitter.send(SseEmitter.event()
                                                     .name("message")
                                                     .data(messageData));
@@ -435,7 +435,7 @@ public class OpenaiQuestionService {
                                 if (fullResponse.length() > 0) {
                                     // 이미지 파일이 있는 경우 답변 앞에 분석 결과 표시 추가
                                     String finalAnswer = formatAnswerWithImageContext(fullResponse.toString(), attachments);
-                                    
+
                                     AddAnswerRequestDto answerRequest = new AddAnswerRequestDto(
                                             finalAnswer,
                                             modelToUse
@@ -444,16 +444,9 @@ public class OpenaiQuestionService {
                                     log.info("OpenAI 답변 저장 완료 - 모델: {}", modelToUse);
                                 }
 
-                                // 피드백 옵션과 함께 완료 이벤트 전송
-                                Map<String, Object> doneData = new HashMap<>();
-                                doneData.put("message", "스트리밍 완료");
-                                doneData.put("type", "completion");
-                                doneData.put("modelName", modelToUse);
-                                doneData.put("conversationId", conversationId);
-                                
                                 emitter.send(SseEmitter.event()
                                         .name("done")
-                                        .data(doneData));
+                                        .data("스트리밍 완료"));
                                 emitter.complete();
                             }
 
@@ -480,21 +473,21 @@ public class OpenaiQuestionService {
     private List<Map<String, Object>> createContentPartsFromHistory(String content, List<FileAttachmentDto> attachments) {
         // 이미지가 포함된 경우 추가 안내 메시지 생성
         StringBuilder enhancedContent = new StringBuilder(content);
-        
+
         if (attachments != null && !attachments.isEmpty()) {
             boolean hasImages = attachments.stream()
                     .anyMatch(attachment -> "image".equals(attachment.fileType()));
-            
+
             if (hasImages) {
                 enhancedContent.append("\n\n[참고: 이 메시지에는 이미지가 포함되어 있었습니다. ")
                         .append("현재 질문이 이전 이미지와 관련된 경우, 이전 대화에서 제공된 이미지 분석 결과를 참고하여 답변해주세요.]");
             }
         }
-        
+
         Map<String, Object> textPart = new HashMap<>();
         textPart.put("type", "text");
         textPart.put("text", enhancedContent.toString());
-        
+
         return List.of(textPart);
     }
 
@@ -600,17 +593,17 @@ public class OpenaiQuestionService {
         if (attachments == null || attachments.isEmpty()) {
             return originalAnswer;
         }
-        
+
         // 이미지 파일만 필터링
         List<String> imageFileNames = attachments.stream()
                 .filter(attachment -> "image".equals(attachment.fileType()))
                 .map(FileAttachmentDto::fileName)
                 .toList();
-        
+
         if (imageFileNames.isEmpty()) {
             return originalAnswer;
         }
-        
+
         // 이미지 파일이 여러 개인 경우 모든 파일명 포함
         String fileContext;
         if (imageFileNames.size() == 1) {
@@ -619,7 +612,7 @@ public class OpenaiQuestionService {
             String fileList = String.join(", ", imageFileNames);
             fileContext = String.format("[%s에 대한 분석 결과]", fileList);
         }
-        
+
         return fileContext + ": " + originalAnswer;
     }
 
