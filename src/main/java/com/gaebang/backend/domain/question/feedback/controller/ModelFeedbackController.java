@@ -25,14 +25,14 @@ public class ModelFeedbackController {
      * 특정 모델에 대한 피드백 옵션 조회
      */
     @GetMapping("/options")
-    public ResponseEntity<ResponseDTO<FeedbackOptionsResponseDto>> getFeedbackOptions(
-            @RequestParam String modelName
-    ) {
-        log.info("피드백 옵션 조회 API 호출 - 모델: {}", modelName);
+    public ResponseEntity<ResponseDTO<FeedbackOptionsResponseDto>> getFeedbackOptions() {
         
-        FeedbackOptionsResponseDto response = modelFeedbackService.getFeedbackOptions(modelName);
+        FeedbackOptionsResponseDto response = modelFeedbackService.getFeedbackOptions();
+        ResponseDTO<FeedbackOptionsResponseDto> responseDto = ResponseDTO.okWithData(response);
         
-        return ResponseEntity.ok(ResponseDTO.success(response));
+        return ResponseEntity
+                .status(responseDto.getCode())
+                .body(responseDto);
     }
     
     /**
@@ -43,39 +43,43 @@ public class ModelFeedbackController {
             @RequestBody @Valid SubmitFeedbackRequestDto requestDto,
             @AuthenticationPrincipal PrincipalDetails principalDetails
     ) {
-        log.info("피드백 제출 API 호출 - 모델: {}, 카테고리: {}", 
-                requestDto.modelName(), requestDto.feedbackCategory());
-        
         SubmitFeedbackResponseDto response = modelFeedbackService.submitFeedback(requestDto, principalDetails);
+        ResponseDTO<SubmitFeedbackResponseDto> responseDto = ResponseDTO.okWithData(response);
         
-        return ResponseEntity.ok(ResponseDTO.success(response));
+        return ResponseEntity
+                .status(responseDto.getCode())
+                .body(responseDto);
     }
     
     /**
-     * 특정 모델의 긍정적 피드백 수 조회
+     * 특정 모델의 긍정적 피드백 수 조회 (아직 안쓰는 기능)
      */
     @GetMapping("/stats/positive")
     public ResponseEntity<ResponseDTO<Long>> getPositiveFeedbackCount(
             @RequestParam String modelName
     ) {
-        log.info("긍정 피드백 수 조회 API 호출 - 모델: {}", modelName);
         
         Long count = modelFeedbackService.getPositiveFeedbackCount(modelName);
+        ResponseDTO<Long> responseDto = ResponseDTO.okWithData(count);
         
-        return ResponseEntity.ok(ResponseDTO.success(count));
+        return ResponseEntity
+                .status(responseDto.getCode())
+                .body(responseDto);
     }
     
     /**
-     * 특정 모델의 부정적 피드백 수 조회
+     * 특정 모델의 부정적 피드백 수 조회 (아직 안쓰는 기능)
      */
     @GetMapping("/stats/negative")
     public ResponseEntity<ResponseDTO<Long>> getNegativeFeedbackCount(
             @RequestParam String modelName
     ) {
-        log.info("부정 피드백 수 조회 API 호출 - 모델: {}", modelName);
         
         Long count = modelFeedbackService.getNegativeFeedbackCount(modelName);
+        ResponseDTO<Long> responseDto = ResponseDTO.okWithData(count);
         
-        return ResponseEntity.ok(ResponseDTO.success(count));
+        return ResponseEntity
+                .status(responseDto.getCode())
+                .body(responseDto);
     }
 }

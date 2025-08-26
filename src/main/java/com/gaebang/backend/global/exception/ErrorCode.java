@@ -78,6 +78,10 @@ public enum ErrorCode {
     POST_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "5분 내 게시글 작성 한도(3개)를 초과했습니다."),
     CONTENT_MODERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "컨텐츠 검열 처리 중 오류가 발생했습니다."),
 
+    // feedback
+    INVALID_FEEDBACK_CATEGORY(HttpStatus.BAD_REQUEST, "유효하지 않은 피드백 카테고리입니다."),
+    MODEL_NOT_FOUND(HttpStatus.BAD_REQUEST, "존재하지 않거나 비활성화된 모델입니다."),
+
     // 5xx
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 에러");
 

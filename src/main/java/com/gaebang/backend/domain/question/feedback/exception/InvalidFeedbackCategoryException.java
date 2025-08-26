@@ -4,7 +4,10 @@ import com.gaebang.backend.global.exception.ApplicationException;
 import com.gaebang.backend.global.exception.ErrorCode;
 
 public class InvalidFeedbackCategoryException extends ApplicationException {
+    
+    private static final ErrorCode ERROR_CODE = ErrorCode.INVALID_FEEDBACK_CATEGORY;
+
     public InvalidFeedbackCategoryException() {
-        super(ErrorCode.BAD_REQUEST, "유효하지 않은 피드백 카테고리입니다.");
+        super(ERROR_CODE);
     }
 }

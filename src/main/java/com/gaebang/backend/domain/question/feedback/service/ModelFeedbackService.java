@@ -3,12 +3,15 @@ package com.gaebang.backend.domain.question.feedback.service;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.question.common.entity.AiModel;
+import com.gaebang.backend.domain.question.common.repository.AiModelRepository;
 import com.gaebang.backend.domain.question.feedback.dto.request.SubmitFeedbackRequestDto;
 import com.gaebang.backend.domain.question.feedback.dto.response.FeedbackOptionsResponseDto;
 import com.gaebang.backend.domain.question.feedback.dto.response.SubmitFeedbackResponseDto;
 import com.gaebang.backend.domain.question.feedback.entity.FeedbackCategory;
 import com.gaebang.backend.domain.question.feedback.entity.ModelFeedback;
 import com.gaebang.backend.domain.question.feedback.exception.InvalidFeedbackCategoryException;
+import com.gaebang.backend.domain.question.feedback.exception.ModelNotFoundException;
 import com.gaebang.backend.domain.question.feedback.repository.ModelFeedbackRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
@@ -26,50 +29,64 @@ public class ModelFeedbackService {
     
     private final ModelFeedbackRepository modelFeedbackRepository;
     private final MemberRepository memberRepository;
+    private final AiModelRepository aiModelRepository;
     
-    public FeedbackOptionsResponseDto getFeedbackOptions(String modelName) {
-        log.info("피드백 옵션 조회 요청 - 모델: {}", modelName);
-        return FeedbackOptionsResponseDto.create(modelName);
+    public FeedbackOptionsResponseDto getFeedbackOptions() {
+        return FeedbackOptionsResponseDto.create();
     }
-    
+
     @Transactional
     public SubmitFeedbackResponseDto submitFeedback(
-            SubmitFeedbackRequestDto requestDto, 
+            SubmitFeedbackRequestDto requestDto,
             PrincipalDetails principalDetails
     ) {
-        log.info("피드백 제출 요청 - 모델: {}, 카테고리: {}, 사용자: {}", 
-                requestDto.modelName(), requestDto.feedbackCategory(), principalDetails.getUsername());
-        
         // 사용자 조회
         Member member = memberRepository.findById(principalDetails.getMember().getId())
                 .orElseThrow(UserNotFoundException::new);
-        
-        // 피드백 카테고리 검증
-        FeedbackCategory feedbackCategory;
-        try {
-            feedbackCategory = FeedbackCategory.valueOf(requestDto.feedbackCategory());
-        } catch (IllegalArgumentException e) {
-            log.error("유효하지 않은 피드백 카테고리: {}", requestDto.feedbackCategory());
-            throw new InvalidFeedbackCategoryException();
+
+        // 모델명 검증 (활성화된 모델인지 확인)
+        if (requestDto.positiveModel() != null) {
+            aiModelRepository.findByModelNameAndIsActiveTrue(requestDto.positiveModel())
+                    .orElseThrow(() -> {
+                        return new ModelNotFoundException();
+                    });
         }
-        
+
+        if (requestDto.negativeModel() != null) {
+            aiModelRepository.findByModelNameAndIsActiveTrue(requestDto.negativeModel())
+                    .orElseThrow(() -> {
+                        return new ModelNotFoundException();
+                    });
+        }
+
+        // 피드백 카테고리 검증
+        if (requestDto.positiveFeedback() != null) {
+            try {
+                FeedbackCategory positiveFeedbackCategory = FeedbackCategory.valueOf(requestDto.positiveFeedback());
+                if (positiveFeedbackCategory.getFeedbackType() != FeedbackCategory.FeedbackType.POSITIVE) {
+                    throw new InvalidFeedbackCategoryException();
+                }
+            } catch (IllegalArgumentException e) {
+                throw new InvalidFeedbackCategoryException();
+            }
+        }
+
+        if (requestDto.negativeFeedback() != null) {
+            try {
+                FeedbackCategory negativeFeedbackCategory = FeedbackCategory.valueOf(requestDto.negativeFeedback());
+                if (negativeFeedbackCategory.getFeedbackType() != FeedbackCategory.FeedbackType.NEGATIVE) {
+                    throw new InvalidFeedbackCategoryException();
+                }
+            } catch (IllegalArgumentException e) {
+                throw new InvalidFeedbackCategoryException();
+            }
+        }
+
         // 피드백 엔티티 생성 및 저장
-        ModelFeedback feedback = ModelFeedback.builder()
-                .member(member)
-                .modelName(requestDto.modelName())
-                .conversationId(requestDto.conversationId())
-                .feedbackCategory(feedbackCategory)
-                .detailedComment(requestDto.detailedComment())
-                .build();
-        
+        ModelFeedback feedback = requestDto.toEntity(member);
         ModelFeedback savedFeedback = modelFeedbackRepository.save(feedback);
-        
-        log.info("피드백 저장 완료 - ID: {}, 모델: {}, 타입: {}", 
-                savedFeedback.getFeedbackId(), 
-                savedFeedback.getModelName(),
-                savedFeedback.getFeedbackType());
-        
-        return SubmitFeedbackResponseDto.success(savedFeedback.getFeedbackId());
+
+        return SubmitFeedbackResponseDto.fromEntity(savedFeedback);
     }
     
     public Long getPositiveFeedbackCount(String modelName) {

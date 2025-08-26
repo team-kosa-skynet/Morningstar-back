@@ -107,6 +107,7 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/recruitment/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/models/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/conversations/**")).permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/feedback/options")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/analysis/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/ai-recommend/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/interview/**")).permitAll()

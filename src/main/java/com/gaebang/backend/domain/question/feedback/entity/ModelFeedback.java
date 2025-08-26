@@ -22,20 +22,24 @@ public class ModelFeedback extends BaseTimeEntity {
     @JoinColumn(name = "member_id", nullable = false)
     private Member member;
 
-    @Column(name = "model_name", nullable = false, length = 100)
-    private String modelName;
+    // 긍정적으로 평가한 모델명
+    @Column(name = "positive_model")
+    private String positiveModel;
 
-    @Column(name = "conversation_id")
-    private Long conversationId;
+    // 부정적으로 평가한 모델명
+    @Column(name = "negative_model")
+    private String negativeModel;
 
+    // 긍정적 피드백 카테고리
     @Enumerated(EnumType.STRING)
-    @Column(name = "feedback_category", nullable = false)
-    private FeedbackCategory feedbackCategory;
+    @Column(name = "positive_feedback")
+    private FeedbackCategory positiveFeedback;
+
+    // 부정적 피드백 카테고리
+    @Enumerated(EnumType.STRING)
+    @Column(name = "negative_feedback")
+    private FeedbackCategory negativeFeedback;
 
     @Column(name = "detailed_comment", length = 1000)
     private String detailedComment;
-
-    public FeedbackCategory.FeedbackType getFeedbackType() {
-        return feedbackCategory.getFeedbackType();
-    }
 }

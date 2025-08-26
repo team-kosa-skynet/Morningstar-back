@@ -11,19 +11,19 @@ import java.util.List;
 
 @Repository
 public interface ModelFeedbackRepository extends JpaRepository<ModelFeedback, Long> {
-    
+
+    // 회원별 피드백 조회
     List<ModelFeedback> findByMemberIdOrderByCreatedAtDesc(Long memberId);
-    
-    List<ModelFeedback> findByModelNameOrderByCreatedAtDesc(String modelName);
-    
-    List<ModelFeedback> findByConversationIdOrderByCreatedAtDesc(Long conversationId);
-    
-    @Query("SELECT mf FROM ModelFeedback mf WHERE mf.feedbackCategory = :category ORDER BY mf.createdAt DESC")
-    List<ModelFeedback> findByFeedbackCategoryOrderByCreatedAtDesc(@Param("category") FeedbackCategory category);
-    
-    @Query("SELECT COUNT(mf) FROM ModelFeedback mf WHERE mf.modelName = :modelName AND mf.feedbackCategory IN :positiveCategories")
+
+    // 특정 모델의 긍정적 피드백 수 조회 (해당 모델이 positiveModel인 경우)
+    @Query("SELECT COUNT(mf) FROM ModelFeedback mf WHERE mf.positiveModel = :modelName AND mf.positiveFeedback IN :positiveCategories")
     Long countPositiveFeedbackByModelName(@Param("modelName") String modelName, @Param("positiveCategories") List<FeedbackCategory> positiveCategories);
-    
-    @Query("SELECT COUNT(mf) FROM ModelFeedback mf WHERE mf.modelName = :modelName AND mf.feedbackCategory IN :negativeCategories")
+
+    // 특정 모델의 부정적 피드백 수 조회 (해당 모델이 negativeModel인 경우)
+    @Query("SELECT COUNT(mf) FROM ModelFeedback mf WHERE mf.negativeModel = :modelName AND mf.negativeFeedback IN :negativeCategories")
     Long countNegativeFeedbackByModelName(@Param("modelName") String modelName, @Param("negativeCategories") List<FeedbackCategory> negativeCategories);
+
+    // 특정 모델에 대한 전체 피드백 조회 (긍정적이든 부정적이든)
+    @Query("SELECT mf FROM ModelFeedback mf WHERE mf.positiveModel = :modelName OR mf.negativeModel = :modelName ORDER BY mf.createdAt DESC")
+    List<ModelFeedback> findByModelNameOrderByCreatedAtDesc(@Param("modelName") String modelName);
 }

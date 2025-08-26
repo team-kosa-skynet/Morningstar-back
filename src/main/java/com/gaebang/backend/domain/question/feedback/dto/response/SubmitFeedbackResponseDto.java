@@ -1,17 +1,27 @@
 package com.gaebang.backend.domain.question.feedback.dto.response;
 
-import lombok.Builder;
+import com.gaebang.backend.domain.question.feedback.entity.FeedbackCategory;
+import com.gaebang.backend.domain.question.feedback.entity.ModelFeedback;
 
-@Builder
 public record SubmitFeedbackResponseDto(
         Long feedbackId,
-        String message
+        Long memberId,
+        String positiveModel,
+        String negativeModel,
+        FeedbackCategory positiveFeedback,
+        FeedbackCategory negativeFeedback,
+        String detailedComment
 ) {
-    
-    public static SubmitFeedbackResponseDto success(Long feedbackId) {
-        return SubmitFeedbackResponseDto.builder()
-                .feedbackId(feedbackId)
-                .message("피드백이 성공적으로 저장되었습니다.")
-                .build();
+
+    public static SubmitFeedbackResponseDto fromEntity(ModelFeedback feedback) {
+        return new SubmitFeedbackResponseDto(
+                feedback.getFeedbackId(),
+                feedback.getMember().getId(),
+                feedback.getPositiveModel(),
+                feedback.getNegativeModel(),
+                feedback.getPositiveFeedback(),
+                feedback.getNegativeFeedback(),
+                feedback.getDetailedComment()
+        );
     }
 }
