@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Table(
-        name = "interviews_answer",
+        name = "interview_answer",
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "uq_answer_session_qidx",
