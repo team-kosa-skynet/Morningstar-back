@@ -747,117 +747,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
     }
 
     @Override
-    public Map<String, Object> extractDocumentInfo(String documentText) throws Exception {
-        try {
-            String prompt = """
-                    당신은 전문 HR 담당자입니다. 아래 문서에서 면접에 필요한 정보를 추출해주세요.
-                    
-                    **문서 내용:**
-                    %s
-                    
-                    **추출할 정보:**
-                    1. **기술 스택**: 모든 프로그래밍 언어, 프레임워크, 라이브러리, 도구
-                       - 다양한 표현 인식: "React.js", "리액트", "ReactJS" 모두 "React"로 통합
-                       - 버전 정보 포함: "Java 17", "Spring Boot 3.x" 등
-                    
-                    2. **프로젝트 경험**: 개발 프로젝트 정보
-                       - 기간: 시작-종료 날짜 또는 기간
-                       - 역할: 팀장, 리더, 백엔드, 프론트엔드, 풀스택 등
-                       - 규모: 팀 규모나 프로젝트 규모 (있는 경우)
-                    
-                    3. **경력 정보**: 실무 경험 (회사명 제외)
-                       - 기간: 총 경력 또는 각 회사별 기간
-                       - 직무: 개발자, 엔지니어, 팀장 등
-                       - 수준: 신입, 경력, 시니어 등
-                    
-                    **중요 지침:**
-                    - 개인 식별 정보 절대 포함 금지 (이름, 회사명, 학교명 등)
-                    - 맥락을 고려한 정확한 정보만 추출
-                    - 애매한 정보는 포함하지 않음
-                    - 기술 스택은 표준 명칭으로 통일
-                    """.formatted(documentText);
-
-            Map<String, Object> schema = Map.of(
-                "type", "object",
-                "properties", Map.of(
-                    "techStacks", Map.of(
-                        "type", "array",
-                        "items", Map.of("type", "string")
-                    ),
-                    "projects", Map.of(
-                        "type", "array", 
-                        "items", Map.of(
-                            "type", "object",
-                            "properties", Map.of(
-                                "duration", Map.of("type", "string"),
-                                "role", Map.of("type", "string"),
-                                "scale", Map.of("type", "string")
-                            )
-                        )
-                    ),
-                    "careers", Map.of(
-                        "type", "array",
-                        "items", Map.of(
-                            "type", "object", 
-                            "properties", Map.of(
-                                "duration", Map.of("type", "string"),
-                                "role", Map.of("type", "string"),
-                                "level", Map.of("type", "string")
-                            )
-                        )
-                    )
-                ),
-                "required", List.of("techStacks", "projects", "careers")
-            );
-
-            Map<String, Object> format = Map.of(
-                "type", "json_schema",
-                "json_schema", Map.of(
-                    "name", "DocumentExtractionSchema",
-                    "schema", schema,
-                    "strict", true
-                )
-            );
-
-            // OpenAI API 직접 호출
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
-
-            Map<String, Object> requestBody = Map.of(
-                "model", "gpt-4o-mini",
-                "messages", List.of(
-                    Map.of("role", "user", "content", prompt)
-                ),
-                "temperature", 0.1,
-                "max_tokens", 3000,
-                "response_format", format
-            );
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<String> apiResponse = restTemplate.postForEntity(
-                "https://api.openai.com/v1/chat/completions", entity, String.class);
-
-            JsonNode root = om.readTree(apiResponse.getBody());
-            JsonNode choices = root.path("choices");
-            
-            if (choices.isEmpty()) {
-                throw new RuntimeException("OpenAI 응답에 choices가 없습니다");
-            }
-            
-            String content = choices.get(0).path("message").path("content").asText();
-            Map<String, Object> parsed = om.readValue(content, Map.class);
-            System.out.println("[AI][OpenAI] 문서 추출 완료");
-            
-            return parsed;
-
-        } catch (Exception e) {
-            System.err.println("[AI][OpenAI] extractDocumentInfo 실패: " + e.getMessage());
-            throw e; // 상위에서 폴백 처리
-        }
-    }
-
-    @Override
     public Map<String, Object> finalizeReport(String sessionJson, String previousResponseId) {
         try {
             Map<String, Object> schema = Map.of(
@@ -873,7 +762,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
 
             Map<String, Object> format = Map.of(
                     "type", "json_schema",
-                    "name", "FinalReportSummary",   // ★ 이름 변경
+                    "name", "FinalReportSummary",
                     "schema", schema,
                     "strict", true
             );
@@ -938,7 +827,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
                 return out;
             }
 
-            /// 폴백
+            // 폴백
             String text = findText(root);
             return Map.of(
                     "strengths", text.isBlank() ? "강점을 간결히 요약해 주세요." : text,
@@ -954,6 +843,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         }
     }
 
+    // Private helper methods
     private String postJson(String path, Map<String, Object> body) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -980,7 +870,6 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         }
     }
 
-    // 클래스 내부 private 메서드 두 개 추가
     private JsonNode findParsed(JsonNode root) {
         // 1) 구버전/편의 필드
         JsonNode parsed = root.path("output_parsed");
@@ -1038,196 +927,5 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         } catch (Exception ignore) {
             return null;
         }
-    }
-
-    /**
-     * 텍스트 컨텐츠 검열
-     * @param content 검열할 텍스트 내용
-     * @return 검열 결과
-     */
-    public ModerationResult moderateContent(String content) {
-        try {
-            String prompt = """
-                    당신은 한국어 커뮤니티 컨텐츠 검열 전문가입니다.
-                    아래 텍스트가 부적절한 내용을 포함하는지 엄격하게 판단해주세요.
-                    
-                    **검열 기준**:
-                    1. 욕설, 비방, 혐오 표현
-                    2. 성적, 폭력적 내용
-                    3. 개인정보 노출 (실명, 전화번호, 주소 등)
-                    4. 스팸, 광고성 내용
-                    5. 불법 활동 조장
-                    6. 가짜 정보 유포
-                    7. 정치적 편향성 극심한 내용
-                    
-                    **검열 대상 텍스트**:
-                    %s
-                    
-                    **응답 형식** (JSON):
-                    {
-                        "inappropriate": true/false,
-                        "reason": "구체적인 검열 사유 (부적절하지 않으면 null)"
-                    }
-                    """.formatted(content);
-
-            Map<String, Object> schema = Map.of(
-                "type", "object",
-                "properties", Map.of(
-                    "inappropriate", Map.of("type", "boolean"),
-                    "reason", Map.of("type", "string")
-                ),
-                "required", List.of("inappropriate", "reason")
-            );
-
-            Map<String, Object> format = Map.of(
-                "type", "json_schema",
-                "json_schema", Map.of(
-                    "name", "ModerationSchema",
-                    "schema", schema,
-                    "strict", true
-                )
-            );
-
-            // OpenAI API 호출
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
-
-            Map<String, Object> requestBody = Map.of(
-                "model", "gpt-4o-mini",
-                "messages", List.of(
-                    Map.of("role", "user", "content", prompt)
-                ),
-                "temperature", 0.1,
-                "max_tokens", 500,
-                "response_format", format
-            );
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<String> apiResponse = restTemplate.postForEntity(
-                "https://api.openai.com/v1/chat/completions", entity, String.class);
-
-            JsonNode root = om.readTree(apiResponse.getBody());
-            JsonNode choices = root.path("choices");
-            
-            if (choices.isEmpty()) {
-                throw new RuntimeException("OpenAI 검열 응답에 choices가 없습니다");
-            }
-            
-            String responseContent = choices.get(0).path("message").path("content").asText();
-            Map<String, Object> parsed = om.readValue(responseContent, Map.class);
-            
-            boolean inappropriate = (Boolean) parsed.getOrDefault("inappropriate", false);
-            String reason = (String) parsed.get("reason");
-            
-            return new ModerationResult(inappropriate, reason);
-
-        } catch (Exception e) {
-            System.err.println("[OpenAI] 텍스트 검열 실패: " + e.getMessage());
-            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
-            return new ModerationResult(true, "OpenAI 검열 시스템 오류 - 관리자 검토 필요");
-        }
-    }
-
-    /**
-     * 이미지 컨텐츠 검열
-     * @param base64Image Base64 인코딩된 이미지
-     * @return 검열 결과
-     */
-    public ModerationResult moderateImage(String base64Image) {
-        try {
-            String prompt = """
-                    당신은 이미지 컨텐츠 검열 전문가입니다.
-                    제공된 이미지가 부적절한 내용을 포함하는지 엄격하게 판단해주세요.
-                    
-                    **검열 기준**:
-                    1. 성적, 음란한 내용
-                    2. 폭력적, 잔혹한 장면
-                    3. 혐오, 차별적 이미지
-                    4. 개인정보 노출 (신분증, 문서 등)
-                    5. 불법 활동 관련 이미지
-                    6. 스팸, 광고성 이미지
-                    7. 저작권 침해 소지
-                    
-                    **응답 형식** (JSON):
-                    {
-                        "inappropriate": true/false,
-                        "reason": "구체적인 검열 사유 (부적절하지 않으면 null)"
-                    }
-                    """;
-
-            Map<String, Object> schema = Map.of(
-                "type", "object",
-                "properties", Map.of(
-                    "inappropriate", Map.of("type", "boolean"),
-                    "reason", Map.of("type", "string")
-                ),
-                "required", List.of("inappropriate", "reason")
-            );
-
-            Map<String, Object> format = Map.of(
-                "type", "json_schema",
-                "json_schema", Map.of(
-                    "name", "ImageModerationSchema",
-                    "schema", schema,
-                    "strict", true
-                )
-            );
-
-            // OpenAI Vision API 호출
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(apiKey);
-
-            Map<String, Object> requestBody = Map.of(
-                "model", "gpt-4o-mini",
-                "messages", List.of(
-                    Map.of(
-                        "role", "user",
-                        "content", List.of(
-                            Map.of("type", "text", "text", prompt),
-                            Map.of(
-                                "type", "image_url",
-                                "image_url", Map.of("url", "data:image/jpeg;base64," + base64Image)
-                            )
-                        )
-                    )
-                ),
-                "temperature", 0.1,
-                "max_tokens", 500,
-                "response_format", format
-            );
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            ResponseEntity<String> apiResponse = restTemplate.postForEntity(
-                "https://api.openai.com/v1/chat/completions", entity, String.class);
-
-            JsonNode root = om.readTree(apiResponse.getBody());
-            JsonNode choices = root.path("choices");
-            
-            if (choices.isEmpty()) {
-                throw new RuntimeException("OpenAI 이미지 검열 응답에 choices가 없습니다");
-            }
-            
-            String responseContent = choices.get(0).path("message").path("content").asText();
-            Map<String, Object> parsed = om.readValue(responseContent, Map.class);
-            
-            boolean inappropriate = (Boolean) parsed.getOrDefault("inappropriate", false);
-            String reason = (String) parsed.get("reason");
-            
-            return new ModerationResult(inappropriate, reason);
-
-        } catch (Exception e) {
-            System.err.println("[OpenAI] 이미지 검열 실패: " + e.getMessage());
-            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
-            return new ModerationResult(true, "OpenAI 이미지 검열 시스템 오류 - 관리자 검토 필요");
-        }
-    }
-
-    private String requireApiKey() {
-        if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException("[OpenAI] API key is missing. Check spring.ai.openai.api-key or OPENAI_API_KEY");
-        }
-        return apiKey.trim();
     }
 }

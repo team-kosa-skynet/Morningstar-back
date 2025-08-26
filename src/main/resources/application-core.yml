@@ -47,6 +47,13 @@ spring:
 ai:
   provider: gemini  # openai 또는 gemini 선택 가능
 
+# OpenAI API 설정 (Global LLM Gateway용)
+openai:
+  api:
+    key: ${OPENAI_API_KEY}
+    model: gpt-4o-mini
+    base-url: https://api.openai.com/v1
+
 # Gemini API 설정
 gemini:
   api:

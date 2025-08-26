@@ -1,14 +1,14 @@
 package com.gaebang.backend.domain.community.service;
 
 import com.gaebang.backend.domain.community.dto.ModerationResult;
-import com.gaebang.backend.domain.interview.llm.GeminiInterviewerGateway;
-import com.gaebang.backend.domain.interview.llm.OpenAiInterviewerGateway;
+import com.gaebang.backend.global.infrastructure.llm.LlmGateway;
 import com.gaebang.backend.global.util.S3.S3ImageService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -20,15 +20,15 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class ImageModerationService {
 
-    private final GeminiInterviewerGateway geminiInterviewerGateway;
-    private final OpenAiInterviewerGateway openAiInterviewerGateway;
+    private final LlmGateway primaryLlmGateway;
+    
+    @Qualifier("fallbackLlmGateway")
+    private final LlmGateway fallbackLlmGateway;
+    
     private final S3ImageService s3ImageService;
 
     @Value("${moderation.enabled:true}")
     private boolean moderationEnabled;
-
-    @Value("${ai.provider:gemini}")
-    private String primaryAiProvider;
 
     /**
      * 이미지 URL로 검열 수행 (Circuit Breaker 적용)
@@ -48,22 +48,14 @@ public class ImageModerationService {
             // S3ImageService로 Base64 변환 (기존 ImageEncodingUtil 대체)
             String base64Image = s3ImageService.encodeImageToBase64(imageUrl);
             
-            ModerationResult result;
-            
-            // AI 제공자 선택 (설정 기반)
-            if ("openai".equalsIgnoreCase(primaryAiProvider)) {
-                log.debug("[IMAGE] Primary AI Provider: OpenAI");
-                result = openAiInterviewerGateway.moderateImage(base64Image);
-            } else {
-                log.debug("[IMAGE] Primary AI Provider: Gemini");
-                result = geminiInterviewerGateway.moderateImage(base64Image);
-            }
+            log.debug("[IMAGE] Using Primary LLM Gateway: {}", primaryLlmGateway.getProviderName());
+            ModerationResult result = primaryLlmGateway.moderateImage(base64Image);
 
-            log.debug("이미지 검열 완료 - URL: {}, 부적절: {}, 사유: {}", imageUrl, result.isInappropriate(), result.getReason());
+            log.debug("[IMAGE] 검열 완료 - URL: {}, 부적절: {}, 사유: {}", imageUrl, result.isInappropriate(), result.getReason());
             return CompletableFuture.completedFuture(result);
             
         } catch (Exception e) {
-            log.error("이미지 검열 중 오류 발생 - URL: {}, 오류: {}", imageUrl, e.getMessage());
+            log.error("[IMAGE] Primary LLM Gateway 오류 발생 - URL: {}, 오류: {}", imageUrl, e.getMessage());
             throw new RuntimeException("이미지 검열 실패", e); // Circuit Breaker가 폴백 메서드 호출
         }
     }
@@ -81,24 +73,16 @@ public class ImageModerationService {
             // S3ImageService로 Base64 변환
             String base64Image = s3ImageService.encodeImageToBase64(imageUrl);
             
-            ModerationResult result;
-            
-            // Primary가 Gemini면 OpenAI로, OpenAI면 Gemini로 폴백
-            if ("openai".equalsIgnoreCase(primaryAiProvider)) {
-                log.info("[IMAGE] Fallback to Gemini");
-                result = geminiInterviewerGateway.moderateImage(base64Image);
-            } else {
-                log.info("[IMAGE] Fallback to OpenAI");
-                result = openAiInterviewerGateway.moderateImage(base64Image);
-            }
+            log.info("[IMAGE] Fallback to: {}", fallbackLlmGateway.getProviderName());
+            ModerationResult result = fallbackLlmGateway.moderateImage(base64Image);
 
-            log.info("폴백 AI 이미지 검열 성공 - URL: {}, 부적절: {}, 사유: {}", imageUrl, result.isInappropriate(), result.getReason());
+            log.info("[IMAGE] Fallback 검열 성공 - URL: {}, 부적절: {}, 사유: {}", imageUrl, result.isInappropriate(), result.getReason());
             return CompletableFuture.completedFuture(result);
 
         } catch (Exception e) {
-            log.error("폴백 AI 이미지 검열도 실패, 보수적으로 차단 처리 - URL: {}, 오류: {}", imageUrl, e.getMessage());
-            // 모든 AI 제공자 실패 시 보수적으로 차단 (보안 우선)
-            return CompletableFuture.completedFuture(new ModerationResult(true, "AI 검열 시스템 장애로 인한 임시 차단 - 관리자 검토 필요"));
+            log.error("[IMAGE] Fallback LLM Gateway도 실패, 보수적 차단 처리 - URL: {}, 오류: {}", imageUrl, e.getMessage());
+            // 모든 LLM Gateway 실패 시 보수적으로 차단 (보안 우선)
+            return CompletableFuture.completedFuture(new ModerationResult(true, "LLM 이미지 검열 시스템 전체 장애 - 관리자 검토 필요"));
         }
     }
 
