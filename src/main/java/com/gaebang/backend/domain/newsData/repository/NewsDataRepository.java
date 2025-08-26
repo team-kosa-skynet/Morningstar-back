@@ -70,4 +70,8 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     // test용도
     @Query(value = "SELECT * FROM news ORDER BY pub_date DESC LIMIT 15 OFFSET 20", nativeQuery = true)
     List<NewsData> findNews31To40();
+
+    // 배치로 기존 링크들 확인 (N+1 문제 해결)
+    @Query("SELECT n.link FROM NewsData n WHERE n.link IN :links")
+    List<String> findExistingLinks(@Param("links") List<String> links);
 }

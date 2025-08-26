@@ -21,8 +21,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -162,26 +164,32 @@ public class NewsDataService {
         return newsData;
     }
 
-    // 중복 제거 (링크 기준)
+    // 중복 제거 (링크 기준) - 성능 최적화
     private List<NewsData> removeDuplicates(List<NewsData> newsDataList) {
+        Set<String> seen = new HashSet<>();
         return newsDataList.stream()
-                .collect(Collectors.toMap(
-                        NewsData::getLink,
-                        Function.identity(),
-                        (existing, replacement) -> existing
-                ))
-                .values()
-                .stream()
+                .filter(news -> seen.add(news.getLink())) // add()는 중복시 false 리턴
                 .collect(Collectors.toList());
     }
 
-    // 이미 DB에 존재하는 뉴스 필터링
+    // 이미 DB에 존재하는 뉴스 필터링 (N+1 문제 해결)
     private List<NewsData> filterExistingNews(List<NewsData> newsList) {
+        if (newsList.isEmpty()) {
+            return newsList;
+        }
+        
+        // 1. 모든 링크 추출
+        List<String> links = newsList.stream()
+                .map(NewsData::getLink)
+                .collect(Collectors.toList());
+        
+        // 2. 한 번의 쿼리로 기존 링크들 확인
+        List<String> existingLinks = newsRepository.findExistingLinks(links);
+        Set<String> existingLinkSet = new HashSet<>(existingLinks);
+        
+        // 3. 기존에 없는 뉴스만 필터링
         return newsList.stream()
-                .filter(news -> {
-                    Long count = newsRepository.countExistingByLink(news.getLink());
-                    return count == 0; // 0이면 존재하지 않음
-                })
+                .filter(news -> !existingLinkSet.contains(news.getLink()))
                 .collect(Collectors.toList());
     }
 
