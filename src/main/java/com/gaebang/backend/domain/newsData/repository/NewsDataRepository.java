@@ -43,7 +43,7 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     @Modifying
     @Transactional
     @Query("UPDATE NewsData n SET n.isActive = 0 WHERE n.newsId = :newsId")
-    void markAsActive(@Param("newsId") Long newsId);
+    void markAsInactive(@Param("newsId") Long newsId);
 
     // imageUrl 업데이트 메서드
     @Modifying
