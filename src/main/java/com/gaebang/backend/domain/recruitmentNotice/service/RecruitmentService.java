@@ -41,7 +41,8 @@ public class RecruitmentService {
     public List<RecruitmentResponseDto> getRecruitmentData() {
 
         LocalDateTime now = LocalDateTime.now();
-        List<Recruitment> recruitments = recruitmentRepository.findByExpirationDateAfterOrderByPubDateDesc(now);
+        LocalDateTime twoMonthsAgo = now.minusMonths(2);
+        List<Recruitment> recruitments = recruitmentRepository.findByExpirationDateAfterAndPubDateAfterOrderByPubDateDesc(now, twoMonthsAgo);
 
         return recruitments.stream()
                 .map(recruitment -> RecruitmentResponseDto.fromEntity(recruitment))
@@ -49,14 +50,10 @@ public class RecruitmentService {
     }
 
     // 채용정보 데이터를 조회하고 DB에 저장
-//    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
     @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul") // 10분마다 실행
-//    @Scheduled(cron = "*/30 * * * * *", zone = "Asia/Seoul") // 30초마다 실행
     @Transactional
     public void fetchAndSaveRecruitment() {
         try {
-            log.info("scheduled 실행 중");
-
             String response = getRecruitmentApiResponse();
             List<Recruitment> recruitmentList = parseRecruitmentResponse(response);
 
@@ -67,7 +64,6 @@ public class RecruitmentService {
             recruitmentList = filterExistingRecruitment(recruitmentList);
 
             if (!recruitmentList.isEmpty()) {
-                // 배치 저장
                 recruitmentRepository.saveAll(recruitmentList);
                 log.info("채용정보 데이터 {}건 저장 완료", recruitmentList.size());
             } else {
