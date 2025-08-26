@@ -37,9 +37,10 @@ public class PopularNewsDataService {
         LocalDateTime startOfYesterday = now.minusDays(1).toLocalDate().atStartOfDay();
         LocalDateTime endOfToday = now.toLocalDate().plusDays(1).atStartOfDay();
 
-        List<NewsData> newsData = newsDataRepository.findNewsByDateRange(startOfYesterday, endOfToday);
+        // 인기글 제외하고 중복 분석 대상만 조회
+        List<NewsData> newsData = newsDataRepository.findNewsByDateRangeExcludingPopular(startOfYesterday, endOfToday);
 
-        log.info("뉴스 데이터 개수 확인 ({}부터 {}까지): {}",
+        log.info("중복 분석 대상 뉴스 데이터 개수 확인 ({}부터 {}까지, 인기글 제외): {}",
                 startOfYesterday, endOfToday, newsData.size());
 
         StringBuilder data = new StringBuilder();
@@ -314,7 +315,7 @@ public class PopularNewsDataService {
                     String reason = article.path("reason").asText();
 
                     if ("90%+ English content".equals(reason)) {
-                        newsDataRepository.markAsActive(newsId);
+                        newsDataRepository.markAsInactive(newsId);
                         log.info("영어 콘텐츠 비활성화: newsId={}, reason={}", newsId, reason);
                     }
                 }
@@ -357,7 +358,7 @@ public class PopularNewsDataService {
                         // 나머지 중복 기사들을 비활성화
                         for (Long newsId : allNewsIds) {
                             if (!newsId.equals(earlyPubDateNewsId)) {
-                                newsDataRepository.markAsActive(newsId);
+                                newsDataRepository.markAsInactive(newsId);
                                 log.info("  ❌ 비활성화 처리: newsId = {}", newsId);
                             }
                         }
@@ -369,7 +370,7 @@ public class PopularNewsDataService {
                         // 인기글 처리는 하지 않고, 중복글만 비활성화
                         for (Long newsId : allNewsIds) {
                             if (!newsId.equals(earlyPubDateNewsId)) {
-                                newsDataRepository.markAsActive(newsId);
+                                newsDataRepository.markAsInactive(newsId);
                                 log.info("  ❌ 비활성화 처리: newsId = {}", newsId);
                             }
                         }
