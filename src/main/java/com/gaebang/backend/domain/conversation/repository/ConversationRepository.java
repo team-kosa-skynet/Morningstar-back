@@ -13,9 +13,13 @@ import java.util.Optional;
 public interface ConversationRepository extends JpaRepository<Conversation, Long> {
 
     /**
-     * 특정 사용자의 활성화된 모든 대화방을 최근 수정일 순으로 조회
+     * 특정 사용자의 활성화된 모든 대화방을 최근 메시지 시간순으로 조회
      */
-    @Query("SELECT c FROM Conversation c WHERE c.member.id = :memberId AND c.isActive = true ORDER BY c.updatedAt DESC")
+    @Query("SELECT c FROM Conversation c " +
+           "LEFT JOIN ConversationMessage m ON c.conversationId = m.conversation.conversationId " +
+           "WHERE c.member.id = :memberId AND c.isActive = true " +
+           "GROUP BY c.conversationId " +
+           "ORDER BY MAX(m.createdAt) DESC NULLS LAST")
     List<Conversation> findActiveConversationsByMemberIdOrderByModifiedDateDesc(@Param("memberId") Long memberId);
 
     /**
