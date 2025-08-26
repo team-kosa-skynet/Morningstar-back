@@ -91,6 +91,16 @@ public class ClaudeQuestionService {
 
             List<Map<String, Object>> messages = new ArrayList<>();
 
+            // 시스템 메시지 추가 - 메시지 번호 참조 금지
+            Map<String, Object> systemMessage = new HashMap<>();
+            systemMessage.put("role", "user");
+            systemMessage.put("content", List.of(Map.of("type", "text", "text", 
+                "**CRITICAL INSTRUCTION**: NEVER use [메시지 X] or [Message X] format in your responses. " +
+                "This is STRICTLY PROHIBITED. Instead of saying '[메시지 16]에서 설명한...', " +
+                "use natural expressions like '이전에 말씀드린 대로', '앞서 설명한 내용처럼', '방금 전 언급한', etc. " +
+                "This rule applies to ALL your responses without exception.")));
+            messages.add(systemMessage);
+
             // Claude용 대화 히스토리 처리 - 파일 정보 포함
             List<Map<String, Object>> historyMessages = historyDto.messages();
             for (Map<String, Object> message : historyMessages) {
