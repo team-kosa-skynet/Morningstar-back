@@ -1,9 +1,10 @@
-package com.gaebang.backend.domain.interview.llm;
+package com.gaebang.backend.domain.llm.infrastructure;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gaebang.backend.domain.community.dto.ModerationResult;
 import com.gaebang.backend.domain.interview.dto.internal.AiTurnFeedbackDto;
+import com.gaebang.backend.domain.llm.port.InterviewerAiGateway;
 import com.gaebang.backend.domain.interview.dto.internal.PlanQuestionDto;
 import com.gaebang.backend.domain.interview.util.PlanParser;
 import io.github.cdimascio.dotenv.Dotenv;
@@ -15,8 +16,14 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 
+/**
+ * OpenAI AI Adapter (Infrastructure Layer)
+ * - LLM Supporting Subdomain의 OpenAI API 연동 어댑터
+ * - InterviewerAiGateway 포트 구현
+ * - DDD Port-Adapter 패턴의 Adapter 역할
+ */
 @Component("openAiInterviewerGateway")
-public class OpenAiInterviewerGateway implements InterviewerAiGateway {
+public class OpenAiAiAdapter implements InterviewerAiGateway {
 
     private static final Dotenv dotenv = Dotenv.load();
     
@@ -26,7 +33,7 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
     private final PlanParser planParser;
     private final ObjectMapper om;
 
-    public OpenAiInterviewerGateway(
+    public OpenAiAiAdapter(
             @Value("${spring.ai.openai.chat.options.model:gpt-4o-mini}") String model,
             PlanParser planParser,
             ObjectMapper objectMapper
@@ -927,5 +934,228 @@ public class OpenAiInterviewerGateway implements InterviewerAiGateway {
         } catch (Exception ignore) {
             return null;
         }
+    }
+
+    @Override
+    public Map<String, Object> extractDocumentInfo(String rawText) throws Exception {
+        String prompt = """
+                당신은 이력서/포트폴리오 문서 분석 전문가입니다. 다음 텍스트에서 구조화된 정보를 추출해주세요.
+                
+                **개인정보 보호 원칙:**
+                - 이름, 전화번호, 이메일, 주소, 생년월일 등 개인 식별 정보는 완전히 무시
+                - 회사명, 학교명 등도 추출하지 말고 개인정보로 간주
+                
+                **추출할 정보 (개인정보 제외):**
+                1. techStacks: 기술 스택 ["Java", "Spring", "React"]
+                2. projects: 프로젝트 [{"duration":"6개월", "role":"백엔드"}]
+                3. careers: 경력 [{"duration":"3년", "role":"개발자"}] 
+                4. education: 학력 [{"degree":"학사", "major":"컴퓨터공학"}]
+                5. certifications: 자격증 ["정보처리기사"]
+                6. achievements: 수상/성과 ["해커톤 1위"]
+                7. portfolio: 포트폴리오 {"github":"활발", "blog":"있음"}
+                8. languages: 언어능력 ["한국어(원어민)", "영어(중급)"]
+                9. specialties: 전문분야 ["백엔드 개발"]
+                10. preferences: 선호도구 ["IntelliJ", "Agile"]
+                
+                **분석 대상 텍스트:**
+                %s
+                """.formatted(rawText);
+
+        Map<String, Object> schema = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                "techStacks", Map.of("type", "array", "items", Map.of("type", "string")),
+                "projects", Map.of("type", "array", "items", Map.of("type", "object")),
+                "careers", Map.of("type", "array", "items", Map.of("type", "object")),
+                "education", Map.of("type", "array", "items", Map.of("type", "object")),
+                "certifications", Map.of("type", "array", "items", Map.of("type", "string")),
+                "achievements", Map.of("type", "array", "items", Map.of("type", "string")),
+                "portfolio", Map.of("type", "object"),
+                "languages", Map.of("type", "array", "items", Map.of("type", "string")),
+                "specialties", Map.of("type", "array", "items", Map.of("type", "string")),
+                "preferences", Map.of("type", "array", "items", Map.of("type", "string"))
+            )
+        );
+
+        Map<String, Object> format = Map.of(
+            "type", "json_schema",
+            "json_schema", Map.of(
+                "name", "DocumentInfoSchema",
+                "schema", schema,
+                "strict", true
+            )
+        );
+
+        Map<String, Object> requestBody = Map.of(
+            "model", model,
+            "messages", List.of(
+                Map.of("role", "user", "content", prompt)
+            ),
+            "max_tokens", 2000,
+            "temperature", 0.2,
+            "response_format", format
+        );
+
+        try {
+            String responseBody = postJson("https://api.openai.com/v1/chat/completions", requestBody);
+            
+            JsonNode root = om.readTree(responseBody);
+            JsonNode choices = root.path("choices");
+            
+            if (choices.isArray() && choices.size() > 0) {
+                JsonNode messageNode = choices.get(0).path("message").path("content");
+                String responseText = messageNode.asText();
+                
+                try {
+                    Map<String, Object> documentInfo = om.readValue(responseText, Map.class);
+                    System.out.println("[AI][Interview][OpenAI] 문서 정보 추출 완료 - 항목 수: " + documentInfo.size());
+                    return documentInfo;
+                    
+                } catch (Exception e) {
+                    System.err.println("[AI][Interview][OpenAI] 문서 정보 추출 응답 파싱 실패 - 응답: " + responseText);
+                    return Map.of(); // 빈 맵 반환
+                }
+            } else {
+                System.err.println("[AI][Interview][OpenAI] 문서 정보 추출 API 응답에서 choices가 없습니다.");
+                return Map.of();
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[AI][Interview][OpenAI] 문서 정보 추출 중 오류 발생: " + e.getMessage());
+            throw new Exception("OpenAI 문서 정보 추출 실패", e);
+        }
+    }
+    
+    @Override
+    public ModerationResult moderateContent(String content) throws Exception {
+        // OpenAI Moderation API 사용
+        Map<String, Object> requestBody = Map.of(
+            "input", content
+        );
+        
+        try {
+            String responseBody = postJson("/moderations", requestBody);
+            JsonNode root = om.readTree(responseBody);
+            JsonNode results = root.path("results");
+            
+            if (results.isArray() && results.size() > 0) {
+                JsonNode result = results.get(0);
+                boolean flagged = result.path("flagged").asBoolean(false);
+                
+                if (flagged) {
+                    JsonNode categories = result.path("categories");
+                    List<String> flaggedCategories = new ArrayList<>();
+                    
+                    categories.fields().forEachRemaining(entry -> {
+                        if (entry.getValue().asBoolean()) {
+                            flaggedCategories.add(entry.getKey());
+                        }
+                    });
+                    
+                    // OpenAI 카테고리를 표준 사유 문구로 매핑
+                    String standardReason = mapOpenAiCategoryToStandardReason(flaggedCategories);
+                    return new ModerationResult(true, standardReason);
+                } else {
+                    return new ModerationResult(false, null);
+                }
+            } else {
+                return new ModerationResult(false, null);
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[OpenAI] moderateContent 실패: " + e.getMessage());
+            return new ModerationResult(false, null);
+        }
+    }
+    
+    @Override
+    public ModerationResult moderateImage(String base64Image) throws Exception {
+        // OpenAI는 현재 이미지 검열을 위한 별도 API가 없으므로 Vision API를 활용
+        String prompt = """
+                이 이미지가 부적절한 내용을 포함하고 있는지 판단해주세요.
+                
+                검열 기준 및 표준 사유 문구 (부적절한 경우 아래 정확한 문구 중 하나를 사용):
+                1. "성적 콘텐츠" - 음란, 선정적, 성적 내용
+                2. "폭력적 내용" - 폭력적, 잔혹한, 위협적 내용
+                3. "혐오 표현" - 차별, 혐오 발언, 편견적 내용
+                4. "개인정보 노출" - 신분증, 개인정보가 포함된 이미지
+                5. "불법 활동" - 불법적 행위, 범죄 관련 내용
+                6. "스팸성 내용" - 광고, 홍보, 반복적 내용
+                7. "저작권 침해" - 저작권 침해 우려가 있는 내용
+                
+                **중요**: 부적절하다면 "INAPPROPRIATE: [위의 7가지 표준 문구 중 정확한 하나]"로 답하세요.
+                적절하다면 "APPROPRIATE"로만 답해주세요.
+                """;
+
+        Map<String, Object> requestBody = Map.of(
+            "model", "gpt-4o-mini",
+            "messages", List.of(
+                Map.of(
+                    "role", "user", 
+                    "content", List.of(
+                        Map.of("type", "text", "text", prompt),
+                        Map.of("type", "image_url", 
+                               "image_url", Map.of("url", "data:image/jpeg;base64," + base64Image))
+                    )
+                )
+            ),
+            "max_tokens", 100
+        );
+
+        try {
+            String responseBody = postJson("/chat/completions", requestBody);
+            JsonNode root = om.readTree(responseBody);
+            JsonNode choices = root.path("choices");
+            
+            if (choices.isArray() && choices.size() > 0) {
+                String responseText = choices.get(0).path("message").path("content").asText().trim();
+                
+                if (responseText.startsWith("INAPPROPRIATE:")) {
+                    String reason = responseText.substring("INAPPROPRIATE:".length()).trim();
+                    return new ModerationResult(true, reason);
+                } else {
+                    return new ModerationResult(false, null);
+                }
+            } else {
+                return new ModerationResult(false, null);
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[OpenAI] moderateImage 실패: " + e.getMessage());
+            return new ModerationResult(false, null);
+        }
+    }
+    
+    @Override
+    public String getProviderName() {
+        return "OpenAI";
+    }
+    
+    /**
+     * OpenAI Moderation API 카테고리를 표준 사유 문구로 매핑
+     * @param flaggedCategories OpenAI에서 감지된 카테고리 리스트
+     * @return 표준화된 검열 사유 문구
+     */
+    private String mapOpenAiCategoryToStandardReason(List<String> flaggedCategories) {
+        // 우선순위 기반 매핑 (심각한 순서대로)
+        for (String category : flaggedCategories) {
+            switch (category.toLowerCase()) {
+                case "sexual", "sexual/minors":
+                    return "성적 콘텐츠";
+                case "violence", "violence/graphic":
+                    return "폭력적 내용";
+                case "harassment", "harassment/threatening":
+                    return "혐오 표현";
+                case "hate", "hate/threatening":
+                    return "혐오 표현";
+                case "self-harm", "self-harm/intent", "self-harm/instructions":
+                    return "폭력적 내용";
+                default:
+                    // 기타 카테고리는 스팸성 내용으로 분류
+                    break;
+            }
+        }
+        // 매핑되지 않은 카테고리는 스팸성 내용으로 분류
+        return "스팸성 내용";
     }
 }

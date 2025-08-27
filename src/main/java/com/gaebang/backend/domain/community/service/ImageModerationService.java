@@ -1,7 +1,7 @@
 package com.gaebang.backend.domain.community.service;
 
 import com.gaebang.backend.domain.community.dto.ModerationResult;
-import com.gaebang.backend.global.infrastructure.llm.LlmGateway;
+import com.gaebang.backend.domain.llm.port.InterviewerAiGateway;
 import com.gaebang.backend.global.util.S3.S3ImageService;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
@@ -16,16 +16,22 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
-@RequiredArgsConstructor
 @Service
 public class ImageModerationService {
 
-    private final LlmGateway primaryLlmGateway;
-    
-    @Qualifier("fallbackLlmGateway")
-    private final LlmGateway fallbackLlmGateway;
-    
+    private final InterviewerAiGateway primaryLlmGateway;
+    private final InterviewerAiGateway fallbackLlmGateway;
     private final S3ImageService s3ImageService;
+
+    public ImageModerationService(
+            @Qualifier("geminiInterviewerGateway") InterviewerAiGateway primaryLlmGateway,
+            @Qualifier("openAiInterviewerGateway") InterviewerAiGateway fallbackLlmGateway,
+            S3ImageService s3ImageService
+    ) {
+        this.primaryLlmGateway = primaryLlmGateway;
+        this.fallbackLlmGateway = fallbackLlmGateway;
+        this.s3ImageService = s3ImageService;
+    }
 
     @Value("${moderation.enabled:true}")
     private boolean moderationEnabled;

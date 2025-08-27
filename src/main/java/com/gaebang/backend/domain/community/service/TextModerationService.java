@@ -1,7 +1,7 @@
 package com.gaebang.backend.domain.community.service;
 
 import com.gaebang.backend.domain.community.dto.ModerationResult;
-import com.gaebang.backend.global.infrastructure.llm.LlmGateway;
+import com.gaebang.backend.domain.llm.port.InterviewerAiGateway;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
@@ -17,17 +17,22 @@ import java.util.concurrent.CompletableFuture;
  * 텍스트 컨텐츠 전용 검열 서비스
  * - 제목/내용 통합 검열
  * - Circuit Breaker를 통한 AI 제공자 폴백 (Primary → Fallback)
- * - Global Infrastructure Layer의 LLM Gateway 사용
+ * - LLM 도메인의 InterviewerAiGateway 사용
  */
 @Slf4j
-@RequiredArgsConstructor
 @Service
 public class TextModerationService {
 
-    private final LlmGateway primaryLlmGateway;
+    private final InterviewerAiGateway primaryLlmGateway;
+    private final InterviewerAiGateway fallbackLlmGateway;
     
-    @Qualifier("fallbackLlmGateway")
-    private final LlmGateway fallbackLlmGateway;
+    public TextModerationService(
+            @Qualifier("geminiInterviewerGateway") InterviewerAiGateway primaryLlmGateway,
+            @Qualifier("openAiInterviewerGateway") InterviewerAiGateway fallbackLlmGateway
+    ) {
+        this.primaryLlmGateway = primaryLlmGateway;
+        this.fallbackLlmGateway = fallbackLlmGateway;
+    }
 
     @Value("${moderation.enabled:true}")
     private boolean moderationEnabled;
@@ -55,7 +60,7 @@ public class TextModerationService {
 
         } catch (Exception e) {
             log.error("[TEXT] Primary LLM Gateway 오류 발생: {}", e.getMessage());
-            throw e; // Circuit Breaker가 폴백 메서드 호출
+            throw new RuntimeException("텍스트 검열 실패", e); // Circuit Breaker가 폴백 메서드 호출
         }
     }
 
