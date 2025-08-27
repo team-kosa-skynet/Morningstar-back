@@ -30,7 +30,6 @@ public class ModelInfoController {
      */
     @GetMapping("/info")
     public ResponseEntity<ResponseDTO<ModelInfoResponseDto>> getModelInfo() {
-        log.info("AI 모델 정보 조회 API 호출");
 
         ModelInfoResponseDto modelInfo = modelInfoService.getAllModelInfo();
 

@@ -55,9 +55,6 @@ public class ModelInfoService {
         int geminiCount = geminiModels != null ? geminiModels.models().size() : 0;
         int openaiCount = openaiModels != null ? openaiModels.models().size() : 0;
 
-        log.info("AI 모델 정보 조회 완료 - Claude: {}개, Gemini: {}개, OpenAI: {}개", 
-                claudeCount, geminiCount, openaiCount);
-
         return response;
     }
 

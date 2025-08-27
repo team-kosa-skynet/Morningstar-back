@@ -46,8 +46,6 @@ public class ConversationService {
 
     @Transactional
     public CreateConversationResponseDto createConversation(Long memberId, CreateConversationRequestDto requestDto) {
-        log.info("새 대화방 생성 - 사용자 ID: {}, 제목: {}", memberId, requestDto.title());
-
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
 
@@ -57,35 +55,27 @@ public class ConversationService {
                 .build();
 
         Conversation savedConversation = conversationRepository.save(conversation);
-        log.info("대화방 생성 완료 - 대화방 ID: {}", savedConversation.getConversationId());
-
         return CreateConversationResponseDto.from(savedConversation);
     }
 
     @Transactional
     public void updateConversationTitle(Long conversationId, Long memberId, UpdateConversationTitleRequestDto requestDto) {
-        log.info("대화방 제목 수정 - 대화방 ID: {}, 사용자 ID: {}, 새 제목: {}", conversationId, memberId, requestDto.title());
-
         Conversation conversation = conversationRepository.findActiveConversationByIdAndMemberId(conversationId, memberId)
                 .orElseThrow(() -> new ConversationNotFoundException());
 
         conversation.updateTitle(requestDto.title());
-        log.info("대화방 제목 수정 완료");
     }
 
     @Transactional
     public void deleteConversation(Long conversationId, Long memberId) {
-        log.info("대화방 삭제 - 대화방 ID: {}, 사용자 ID: {}", conversationId, memberId);
 
         Conversation conversation = conversationRepository.findActiveConversationByIdAndMemberId(conversationId, memberId)
                 .orElseThrow(() -> new ConversationNotFoundException());
 
         conversation.deactivate();
-        log.info("대화방 삭제 완료");
     }
 
     public ConversationListResponseDto getConversationList(Long memberId) {
-        log.info("대화방 목록 조회 - 사용자 ID: {}", memberId);
 
         List<Conversation> conversations = conversationRepository
                 .findActiveConversationsByMemberIdOrderByModifiedDateDesc(memberId);
@@ -98,13 +88,10 @@ public class ConversationService {
                 })
                 .toList();
 
-        log.info("대화방 목록 조회 완료 - 총 {}개", summaryDtos.size());
         return ConversationListResponseDto.of(summaryDtos, (long) summaryDtos.size());
     }
 
     public ConversationDetailResponseDto getConversationDetail(Long conversationId, Long memberId) {
-        log.info("대화방 상세 조회 - 대화방 ID: {}, 사용자 ID: {}", conversationId, memberId);
-
         Conversation conversation = conversationRepository.findActiveConversationByIdAndMemberId(conversationId, memberId)
                 .orElseThrow(() -> new ConversationNotFoundException());
 
@@ -114,14 +101,10 @@ public class ConversationService {
                 .map(MessageResponseDto::from)
                 .toList();
 
-        log.info("대화방 상세 조회 완료 - 메시지 {}개", messageResponseDtos.size());
         return ConversationDetailResponseDto.from(conversation, messageResponseDtos);
     }
 
     public ConversationHistoryDto getConversationHistory(Long conversationId, Long memberId, Integer maxMessages) {
-        log.info("대화 히스토리 조회 - 대화방 ID: {}, 사용자 ID: {}, 최대 메시지: {}",
-                conversationId, memberId, maxMessages);
-
         conversationRepository.findActiveConversationByIdAndMemberId(conversationId, memberId)
                 .orElseThrow(() -> new IllegalArgumentException("대화방을 찾을 수 없거나 접근 권한이 없습니다."));
 
@@ -140,14 +123,11 @@ public class ConversationService {
                 .map(MessageResponseDto::from)
                 .toList();
 
-        log.info("대화 히스토리 조회 완료 - 메시지 {}개", messageResponseDtos.size());
         return ConversationHistoryDto.from(conversationId, messageResponseDtos);
     }
 
     @Transactional
     public void addQuestion(Long conversationId, Long memberId, AddQuestionRequestDto requestDto) {
-        log.info("질문 추가 - 대화방 ID: {}, 사용자 ID: {}", conversationId, memberId);
-
         Conversation conversation = conversationRepository.findActiveConversationByIdAndMemberId(conversationId, memberId)
                 .orElseThrow(() -> new ConversationNotFoundException());
 
@@ -173,8 +153,6 @@ public class ConversationService {
 
     @Transactional
     public void addAnswer(Long conversationId, Long memberId, AddAnswerRequestDto requestDto) {
-        log.info("답변 추가 - 대화방 ID: {}, 사용자 ID: {}, 모델: {}", conversationId, memberId, requestDto.aiModel());
-
         Conversation conversation = conversationRepository.findActiveConversationByIdAndMemberId(conversationId, memberId)
                 .orElseThrow(() -> new ConversationNotFoundException());
 

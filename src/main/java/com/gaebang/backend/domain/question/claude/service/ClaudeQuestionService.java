@@ -76,7 +76,6 @@ public class ClaudeQuestionService {
 
         try {
             String modelToUse = claudeQuestionProperties.getModelToUse(requestModel);
-            log.info("Claude API 호출 - 사용 모델: {} (요청 모델: {})", modelToUse, requestModel);
 
             ConversationHistoryDto historyDto = conversationService.getConversationHistory(
                     conversationId,
@@ -140,44 +139,31 @@ public class ClaudeQuestionService {
 
             parameters.put("messages", messages);
 
-            log.info("=== Claude API 요청 데이터 ===");
-            log.info("모델: {}", modelToUse);
-            log.info("메시지 개수: {}", messages.size());
-
             if (!messages.isEmpty()) {
                 Map<String, Object> lastMessage = messages.get(messages.size() - 1);
-                log.info("마지막 메시지 role: {}", lastMessage.get("role"));
 
                 Object contentObj = lastMessage.get("content");
                 if (contentObj instanceof List) {
                     List<Map<String, Object>> contentList = (List<Map<String, Object>>) contentObj;
-                    log.info("content 파트 개수: {}", contentList.size());
 
                     for (int i = 0; i < contentList.size(); i++) {
                         Map<String, Object> part = contentList.get(i);
                         String type = (String) part.get("type");
-                        log.info("content[{}] 타입: {}", i, type);
 
                         if ("text".equals(type)) {
                             String text = (String) part.get("text");
-                            log.info("content[{}] 텍스트 길이: {} 문자", i, text != null ? text.length() : 0);
-                            log.info("content[{}] 텍스트 내용: {}", i, text != null && text.length() > 100 ? text.substring(0, 100) + "..." : text);
                         } else if ("image".equals(type)) {
                             Map<String, Object> source = (Map<String, Object>) part.get("source");
                             if (source != null) {
                                 String mediaType = (String) source.get("media_type");
                                 String data = (String) source.get("data");
-                                log.info("content[{}] 이미지 미디어 타입: {}", i, mediaType);
-                                log.info("content[{}] Base64 데이터 길이: {} 문자", i, data != null ? data.length() : 0);
                             }
                         }
                     }
                 } else {
                     log.info("content가 List가 아님: {}", contentObj != null ? contentObj.getClass().getSimpleName() : "null");
-                    log.info("content 내용: {}", contentObj);
                 }
             }
-            log.info("=== Claude API 요청 데이터 끝 ===");
 
             String claudeUrl = claudeQuestionProperties.getResponseUrl();
 
@@ -248,7 +234,6 @@ public class ClaudeQuestionService {
                                             modelToUse
                                     );
                                     conversationService.addAnswer(conversationId, member.getId(), answerRequest);
-                                    log.info("Claude 답변 저장 완료 - 모델: {}", modelToUse);
                                 }
 
                                 emitter.send(SseEmitter.event()
@@ -301,18 +286,12 @@ public class ClaudeQuestionService {
     private List<Map<String, Object>> createContentWithFiles(String textContent, List<MultipartFile> files) {
         List<Map<String, Object>> content = new ArrayList<>();
 
-        log.info("=== Claude createContentWithFiles 시작 ===");
-        log.info("텍스트 내용: {}", textContent);
-        log.info("파일 개수: {}", files != null ? files.size() : 0);
-
         StringBuilder combinedText = new StringBuilder(textContent);
 
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
                 try {
-                    log.info("처리 중인 파일: {}", file.getOriginalFilename());
                     Map<String, Object> processedFile = fileProcessingService.processFile(file);
-//                    log.info("파일 처리 결과: {}", processedFile);
 
                     String fileType = (String) processedFile.get("type");
 
@@ -331,7 +310,6 @@ public class ClaudeQuestionService {
                         imagePart.put("source", source);
                         content.add(imagePart);
 
-                        log.info("Claude 이미지 파트 추가됨 - MIME: {}, Base64 길이: {}", mimeType, base64.length());
                     } else if ("text".equals(fileType)) {
                         String extractedText = (String) processedFile.get("extractedText");
                         String fileName = (String) processedFile.get("fileName");
@@ -342,7 +320,6 @@ public class ClaudeQuestionService {
                         combinedText.append(extractedText);
                         combinedText.append("\n\n=== 파일 전체 내용 끝 ===\n");
 
-                        log.info("Claude 텍스트 파일 내용 텍스트에 추가됨 - 파일: {}, 길이: {}", fileName, extractedText.length());
                     }
                 } catch (Exception e) {
                     log.error("파일 처리 실패: {}", file.getOriginalFilename(), e);
@@ -354,10 +331,6 @@ public class ClaudeQuestionService {
         textPart.put("type", "text");
         textPart.put("text", combinedText.toString());
         content.add(0, textPart);
-
-        log.info("Claude 최종 content 파트 개수: {}", content.size());
-        log.info("Claude 최종 텍스트 내용 길이: {} 문자", combinedText.length());
-        log.info("=== Claude createContentWithFiles 끝 ===");
 
         return content;
     }
