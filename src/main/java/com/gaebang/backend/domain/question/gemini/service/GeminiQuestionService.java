@@ -92,7 +92,6 @@ public class GeminiQuestionService {
     private void performImageGeneration(SseEmitter emitter, Long conversationId,
                                         String prompt, String model, Member member) {
         try {
-            log.info("Gemini 이미지 생성 요청: {}", prompt);
 
             String imageDataUrl = generateImageWithGemini(prompt, model);
 
@@ -107,7 +106,6 @@ public class GeminiQuestionService {
                             .name("image")
                             .data(imageResponse));
 
-                    log.info("Gemini 이미지 생성 완료 및 전송");
                 } catch (IOException e) {
                     log.warn("Gemini 이미지 전송 실패 - 클라이언트 연결 종료됨");
                     return;
@@ -158,8 +156,6 @@ public class GeminiQuestionService {
             requestBody.put("parameters", parameters);
 
             String modelToUse = model != null && !model.trim().isEmpty() ? model : "imagen-3.0";
-            log.info("Gemini {} 이미지 생성 API 호출", modelToUse);
-            log.info("요청 프롬프트: {}", prompt);
 
             String response = restClient.post()
                     .uri(geminiQuestionProperties.getCreateImageUrl(modelToUse))
@@ -186,7 +182,6 @@ public class GeminiQuestionService {
                     });
 
             if (response != null) {
-                log.info("{} 실제 API 응답 전체: {}", modelToUse, response);
                 return parseImagenUrlResponse(response);
             }
 
@@ -203,20 +198,17 @@ public class GeminiQuestionService {
             JsonNode rootNode = objectMapper.readTree(response);
             List<String> fieldNames = new ArrayList<>();
             rootNode.fieldNames().forEachRemaining(fieldNames::add);
-            log.info("Imagen-4.0 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
 
             JsonNode predictions = rootNode.path("predictions");
 
             if (predictions.isEmpty()) {
                 log.warn("Imagen 4.0 응답에 predictions가 없습니다.");
-                log.info("사용 가능한 필드들: {}", rootNode.fieldNames());
                 return null;
             }
 
             JsonNode firstPrediction = predictions.get(0);
             List<String> predictionFields = new ArrayList<>();
             firstPrediction.fieldNames().forEachRemaining(predictionFields::add);
-            log.info("첫 번째 prediction 필드들: {}", String.join(", ", predictionFields));
 
             String base64Data = null;
             String mimeType = "image/png";
@@ -238,11 +230,7 @@ public class GeminiQuestionService {
                 return null;
             }
 
-            log.info("Imagen 4.0 Base64 이미지 데이터 발견: mimeType={}, 데이터 크기={} bytes",
-                    mimeType, base64Data.length());
-
             String dataUrl = String.format("data:%s;base64,%s", mimeType, base64Data);
-            log.info("Imagen 4.0 이미지 data URL 생성 완료");
 
             return dataUrl;
 
@@ -260,7 +248,6 @@ public class GeminiQuestionService {
 
         try {
             String modelToUse = geminiQuestionProperties.getModelToUse(requestModel);
-            log.info("Gemini API 호출 - 사용 모델: {} (요청 모델: {})", modelToUse, requestModel);
 
             ConversationHistoryDto historyDto = conversationService.getConversationHistory(
                     conversationId,
@@ -326,44 +313,32 @@ public class GeminiQuestionService {
                     "maxOutputTokens", 4096
             ));
 
-            log.info("=== Gemini API 요청 데이터 ===");
-            log.info("모델: {}", modelToUse);
-            log.info("contents 개수: {}", contents.size());
-
             if (!contents.isEmpty()) {
                 for (int i = 0; i < contents.size(); i++) {
                     Map<String, Object> content = contents.get(i);
-                    log.info("content[{}] role: {}", i, content.get("role"));
                 }
 
                 Map<String, Object> lastContent = contents.get(contents.size() - 1);
-                log.info("마지막 content role: {}", lastContent.get("role"));
 
                 Object partsObj = lastContent.get("parts");
                 if (partsObj instanceof List) {
                     List<Map<String, Object>> parts = (List<Map<String, Object>>) partsObj;
-                    log.info("parts 개수: {}", parts.size());
 
                     for (int i = 0; i < parts.size(); i++) {
                         Map<String, Object> part = parts.get(i);
 
                         if (part.containsKey("text")) {
                             String text = (String) part.get("text");
-                            log.info("parts[{}] 텍스트 길이: {} 문자", i, text != null ? text.length() : 0);
-                            log.info("parts[{}] 텍스트 내용: {}", i, text != null && text.length() > 100 ? text.substring(0, 100) + "..." : text);
                         } else if (part.containsKey("inline_data")) {
                             Map<String, Object> inlineData = (Map<String, Object>) part.get("inline_data");
                             if (inlineData != null) {
                                 String mimeType = (String) inlineData.get("mime_type");
                                 String data = (String) inlineData.get("data");
-                                log.info("parts[{}] 이미지 MIME 타입: {}", i, mimeType);
-                                log.info("parts[{}] Base64 데이터 길이: {} 문자", i, data != null ? data.length() : 0);
                             }
                         }
                     }
                 }
             }
-            log.info("=== Gemini API 요청 데이터 끝 ===");
 
             String geminiUrl = geminiQuestionProperties.getResponseUrl(modelToUse) + "&key=" + geminiQuestionProperties.getApiKey();
 
@@ -445,7 +420,6 @@ public class GeminiQuestionService {
                                             modelToUse
                                     );
                                     conversationService.addAnswer(conversationId, member.getId(), answerRequest);
-                                    log.info("Gemini 답변 저장 완료 - 모델: {}", modelToUse);
                                 }
 
                                 emitter.send(SseEmitter.event()
@@ -538,18 +512,12 @@ public class GeminiQuestionService {
         Map<String, Object> content = new HashMap<>();
         List<Map<String, Object>> parts = new ArrayList<>();
 
-        log.info("=== Gemini createContentWithFiles 시작 ===");
-        log.info("텍스트 내용: {}", textContent);
-        log.info("파일 개수: {}", files != null ? files.size() : 0);
-
         StringBuilder combinedText = new StringBuilder(textContent);
 
         if (files != null && !files.isEmpty()) {
             for (MultipartFile file : files) {
                 try {
-                    log.info("처리 중인 파일: {}", file.getOriginalFilename());
                     Map<String, Object> processedFile = fileProcessingService.processFile(file);
-//                    log.info("파일 처리 결과: {}", processedFile);
 
                     String fileType = (String) processedFile.get("type");
 
@@ -564,7 +532,6 @@ public class GeminiQuestionService {
                         ));
                         parts.add(imagePart);
 
-                        log.info("Gemini 이미지 파트 추가됨 - MIME: {}, Base64 길이: {}", mimeType, base64.length());
                     } else if ("text".equals(fileType)) {
                         String extractedText = (String) processedFile.get("extractedText");
                         String fileName = (String) processedFile.get("fileName");
@@ -574,8 +541,6 @@ public class GeminiQuestionService {
                         combinedText.append("파일명: ").append(fileName).append("\n\n");
                         combinedText.append(extractedText);
                         combinedText.append("\n\n=== 파일 전체 내용 끝 ===\n");
-
-                        log.info("Gemini 텍스트 파일 내용 텍스트에 추가됨 - 파일: {}, 길이: {}", fileName, extractedText.length());
                     }
                 } catch (Exception e) {
                     log.error("파일 처리 실패: {}", file.getOriginalFilename(), e);
@@ -588,11 +553,6 @@ public class GeminiQuestionService {
         parts.add(0, textPart);
 
         content.put("parts", parts);
-
-        log.info("Gemini 최종 parts 개수: {}", parts.size());
-        log.info("Gemini 최종 텍스트 내용 길이: {} 문자", combinedText.length());
-        log.info("=== Gemini createContentWithFiles 끝 ===");
-
         return content;
     }
 

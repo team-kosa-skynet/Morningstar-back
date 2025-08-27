@@ -27,26 +27,17 @@ public class FileProcessingService {
         String fileName = file.getOriginalFilename();
 
         try {
-            log.info("=== 파일 처리 시작 ===");
-            log.info("파일명: {}", fileName);
-            log.info("파일 크기: {} bytes", file.getSize());
-
             result.put("fileName", fileName);
             result.put("fileSize", file.getSize());
 
             String mimeType = detectMimeTypeSafely(file);
-            log.info("감지된 MIME 타입: {}", mimeType);
             result.put("mimeType", mimeType);
 
             if (isImageFile(mimeType)) {
-                log.info("이미지 파일로 인식됨");
                 result.put("type", "image");
                 String base64 = encodeToBase64(file);
-                log.info("Base64 인코딩 완료 - 길이: {} 문자", base64.length());
-                log.info("Base64 시작 부분: {}", base64.length() > 50 ? base64.substring(0, 50) + "..." : base64);
                 result.put("base64", base64);
             } else if (isTextBasedFile(mimeType)) {
-                log.info("텍스트 파일로 인식됨");
 
                 // PDF 특별 처리
                 if (mimeType.equals("application/pdf")) {
@@ -60,7 +51,6 @@ public class FileProcessingService {
                             result.put("type", "image");
                             result.put("base64", base64Image);
                             result.put("mimeType", "image/png");
-                            log.info("PDF → 이미지 변환 성공 - Base64 길이: {} 문자", base64Image.length());
                         } else {
                             result.put("type", "text");
                             result.put("extractedText", "[PDF 처리 실패: 텍스트 추출 및 이미지 변환 모두 실패]");
@@ -69,7 +59,6 @@ public class FileProcessingService {
                     } else {
                         result.put("type", "text");
                         result.put("extractedText", extractedText);
-                        log.info("PDF 텍스트 추출 성공 - 길이: {} 문자", extractedText.length());
                     }
                 } else {
                     // 일반 텍스트 파일 처리
@@ -80,10 +69,6 @@ public class FileProcessingService {
                 result.put("type", "unsupported");
                 log.warn("지원하지 않는 파일 형식: {} (파일: {})", mimeType, fileName);
             }
-
-            log.info("파일 처리 완료 - 타입: {}", result.get("type"));
-            log.info("=== 파일 처리 끝 ===");
-
             return result;
 
         } catch (Exception e) {
@@ -106,8 +91,6 @@ public class FileProcessingService {
 
     private String convertPdfToBase64Image(MultipartFile file) {
         try {
-            log.info("PDF → 이미지 변환 시작: {}", file.getOriginalFilename());
-
             // PDFBox 3.x 버전용 API 사용
             PDDocument document = PDDocument.load(file.getBytes());
             PDFRenderer pdfRenderer = new PDFRenderer(document);
@@ -125,9 +108,6 @@ public class FileProcessingService {
 
             // Base64 인코딩
             String base64 = Base64.getEncoder().encodeToString(imageBytes);
-            log.info("PDF → 이미지 변환 완료 - 이미지 크기: {}x{}, Base64 길이: {} 문자",
-                    image.getWidth(), image.getHeight(), base64.length());
-
             return base64;
 
         } catch (Exception e) {

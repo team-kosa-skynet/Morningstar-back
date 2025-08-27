@@ -96,7 +96,6 @@ public class OpenaiQuestionService {
                                         String prompt, String model, Member member) {
         try {
             String modelToUse = model != null && !model.trim().isEmpty() ? model : "dall-e-3";
-            log.info("OpenAI {} 이미지 생성 요청: {}", modelToUse, prompt);
 
             String imageDataUrl = generateImageWithOpenAI(prompt, model);
 
@@ -111,7 +110,6 @@ public class OpenaiQuestionService {
                             .name("image")
                             .data(imageResponse));
 
-                    log.info("OpenAI {} 이미지 생성 완료 및 전송", modelToUse);
                 } catch (IOException e) {
                     log.warn("OpenAI 이미지 전송 실패 - 클라이언트 연결 종료됨");
                     return;
@@ -157,9 +155,6 @@ public class OpenaiQuestionService {
             requestBody.put("quality", "standard");
             requestBody.put("response_format", "url");
 
-            log.info("OpenAI {} 이미지 생성 API 호출", modelToUse);
-            log.info("요청 프롬프트: {}", prompt);
-
             String response = restClient.post()
                     .uri("https://api.openai.com/v1/images/generations")
                     .header("Authorization", "Bearer " + openaiQuestionProperties.getApiKey())
@@ -185,7 +180,6 @@ public class OpenaiQuestionService {
                     });
 
             if (response != null) {
-                log.info("OpenAI {} 실제 API 응답 전체: {}", modelToUse, response);
                 return parseOpenAIImageResponseAndConvertToBase64(response);
             }
 
@@ -201,7 +195,6 @@ public class OpenaiQuestionService {
             JsonNode rootNode = objectMapper.readTree(response);
             List<String> fieldNames = new ArrayList<>();
             rootNode.fieldNames().forEachRemaining(fieldNames::add);
-            log.info("OpenAI 이미지 JSON 파싱 결과 - 최상위 필드들: {}", String.join(", ", fieldNames));
 
             JsonNode dataArray = rootNode.path("data");
 
@@ -213,17 +206,13 @@ public class OpenaiQuestionService {
             JsonNode firstData = dataArray.get(0);
             List<String> dataFields = new ArrayList<>();
             firstData.fieldNames().forEachRemaining(dataFields::add);
-            log.info("첫 번째 data 필드들: {}", String.join(", ", dataFields));
 
             if (firstData.has("url")) {
                 String imageUrl = firstData.path("url").asText();
                 String revisedPrompt = firstData.path("revised_prompt").asText("");
 
-                log.info("OpenAI 이미지 URL 수신: URL={}, Revised Prompt={}", imageUrl, revisedPrompt);
-
                 String base64DataUrl = downloadImageAndConvertToBase64(imageUrl);
                 if (base64DataUrl != null) {
-                    log.info("OpenAI 이미지 base64 변환 완료");
                     return base64DataUrl;
                 }
 
@@ -231,7 +220,6 @@ public class OpenaiQuestionService {
                 return null;
             }
 
-            log.warn("OpenAI 이미지 응답에 url 필드가 없습니다.");
             return null;
 
         } catch (Exception e) {
@@ -242,7 +230,6 @@ public class OpenaiQuestionService {
 
     private String downloadImageAndConvertToBase64(String imageUrl) {
         try {
-            log.info("이미지 다운로드 시작: {}", imageUrl);
 
             URL url = new URL(imageUrl);
             try (InputStream inputStream = url.openStream()) {
@@ -253,7 +240,6 @@ public class OpenaiQuestionService {
 
                 String dataUrl = String.format("data:%s;base64,%s", mimeType, base64Data);
 
-                log.info("이미지 다운로드 및 base64 변환 완료: 크기={} bytes", imageBytes.length);
                 return dataUrl;
             }
 
@@ -271,7 +257,6 @@ public class OpenaiQuestionService {
 
         try {
             String modelToUse = openaiQuestionProperties.getModelToUse(requestModel);
-            log.info("OpenAI API 호출 - 사용 모델: {} (요청 모델: {})", modelToUse, requestModel);
 
             ConversationHistoryDto historyDto = conversationService.getConversationHistory(
                     conversationId,
@@ -331,42 +316,30 @@ public class OpenaiQuestionService {
             parameters.put("max_tokens", 4096);
             parameters.put("stream", true);
 
-            log.info("=== OpenAI API 요청 데이터 ===");
-            log.info("모델: {}", modelToUse);
-            log.info("messages 개수: {}", messages.size());
-
             if (!messages.isEmpty()) {
                 Map<String, Object> lastMessage = messages.get(messages.size() - 1);
-                log.info("마지막 message role: {}", lastMessage.get("role"));
 
                 Object contentObj = lastMessage.get("content");
                 if (contentObj instanceof String) {
                     String textContent = (String) contentObj;
-                    log.info("content 텍스트 길이: {} 문자", textContent.length());
-                    log.info("content 텍스트 내용: {}", textContent.length() > 100 ? textContent.substring(0, 100) + "..." : textContent);
                 } else if (contentObj instanceof List) {
                     List<Map<String, Object>> contentParts = (List<Map<String, Object>>) contentObj;
-                    log.info("content parts 개수: {}", contentParts.size());
 
                     for (int i = 0; i < contentParts.size(); i++) {
                         Map<String, Object> part = contentParts.get(i);
                         String type = (String) part.get("type");
-                        log.info("part[{}] type: {}", i, type);
 
                         if ("text".equals(type)) {
                             String text = (String) part.get("text");
-                            log.info("part[{}] 텍스트 길이: {} 문자", i, text != null ? text.length() : 0);
                         } else if ("image_url".equals(type)) {
                             Map<String, Object> imageUrl = (Map<String, Object>) part.get("image_url");
                             if (imageUrl != null) {
                                 String url = (String) imageUrl.get("url");
-                                log.info("part[{}] 이미지 URL 길이: {} 문자", i, url != null ? url.length() : 0);
                             }
                         }
                     }
                 }
             }
-            log.info("=== OpenAI API 요청 데이터 끝 ===");
 
             restClient.post()
                     .uri("https://api.openai.com/v1/chat/completions")
@@ -504,10 +477,6 @@ public class OpenaiQuestionService {
         Map<String, Object> message = new HashMap<>();
         message.put("role", "user");
 
-        log.info("=== OpenAI createContentWithFiles 시작 ===");
-        log.info("텍스트 내용: {}", textContent);
-        log.info("파일 개수: {}", files != null ? files.size() : 0);
-
         if (files != null && !files.isEmpty()) {
             List<Map<String, Object>> contentParts = new ArrayList<>();
 
@@ -518,9 +487,7 @@ public class OpenaiQuestionService {
 
             for (MultipartFile file : files) {
                 try {
-                    log.info("처리 중인 파일: {}", file.getOriginalFilename());
                     Map<String, Object> processedFile = fileProcessingService.processFile(file);
-//                    log.info("파일 처리 결과: {}", processedFile);
 
                     String fileType = (String) processedFile.get("type");
 
@@ -537,7 +504,6 @@ public class OpenaiQuestionService {
 
                         contentParts.add(imagePart);
 
-                        log.info("OpenAI 이미지 파트 추가됨 - MIME: {}, Base64 길이: {}", mimeType, base64.length());
                     } else if ("text".equals(fileType)) {
                         String extractedText = (String) processedFile.get("extractedText");
                         String fileName = (String) processedFile.get("fileName");
@@ -548,7 +514,6 @@ public class OpenaiQuestionService {
                         combinedText.append(extractedText);
                         combinedText.append("\n\n=== 파일 전체 내용 끝 ===\n");
 
-                        log.info("OpenAI 텍스트 파일 내용 텍스트에 추가됨 - 파일: {}, 길이: {}", fileName, extractedText.length());
                     }
                 } catch (Exception e) {
                     log.error("파일 처리 실패: {}", file.getOriginalFilename(), e);
@@ -559,14 +524,9 @@ public class OpenaiQuestionService {
             contentParts.add(0, textPart);
 
             message.put("content", contentParts);
-            log.info("OpenAI 최종 content parts 개수: {}", contentParts.size());
         } else {
             message.put("content", textContent);
-            log.info("OpenAI 파일 없음 - 텍스트만 사용");
         }
-
-        log.info("OpenAI 최종 텍스트 내용 길이: {} 문자", textContent.length());
-        log.info("=== OpenAI createContentWithFiles 끝 ===");
 
         return message;
     }
