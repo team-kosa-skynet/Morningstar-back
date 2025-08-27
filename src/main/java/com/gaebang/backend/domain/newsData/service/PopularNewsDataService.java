@@ -40,9 +40,6 @@ public class PopularNewsDataService {
         // 인기글 제외하고 중복 분석 대상만 조회
         List<NewsData> newsData = newsDataRepository.findNewsByDateRangeExcludingPopular(startOfYesterday, endOfToday);
 
-        log.info("중복 분석 대상 뉴스 데이터 개수 확인 ({}부터 {}까지, 인기글 제외): {}",
-                startOfYesterday, endOfToday, newsData.size());
-
         StringBuilder data = new StringBuilder();
         data.append("[\n");
 
@@ -163,24 +160,16 @@ public class PopularNewsDataService {
     @Async("taskExecutor")
     public void handleNewsCreated(NewsCreatedEvent event) {
         try {
-            log.info("뉴스 생성 이벤트 수신 - {}건의 새 뉴스", event.getNewsCount());
 
             // 1. 중복 분석 (우선)
-            log.info("1단계: 중복 뉴스 분석 시작");
             getDuplatedNews();
-            log.info("1단계: 중복 뉴스 분석 완료");
-
             // 2. 이미지 생성 (후순위) - 쿼터 상태 확인 후 실행
-            log.info("2단계: 이미지 생성 시작");
-            
             // 쿼터 초과 상태 확인 - 초과 시 이미지 생성 스킵
             if (newsImageService.isQuotaExceeded()) {
                 log.warn("2단계: API 쿼터 초과로 인해 이미지 생성 스킵");
             } else {
                 newsImageService.createNewsImages();
             }
-            
-            log.info("2단계: 이미지 생성 완료");
 
         } catch (Exception e) {
             log.error("뉴스 후속 처리 중 오류", e);
@@ -191,17 +180,13 @@ public class PopularNewsDataService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void getDuplatedNews() {
         try {
-            log.info("=== 중복 뉴스 탐지 시작 (Gemini API) ===");
 
             String modelToUse = geminiQuestionProperties.getModelToUse("gemini-2.5-flash");
             String geminiUrl = geminiQuestionProperties.getResponseUrl(modelToUse);
-            log.info("사용 모델: {}, API URL: {}", modelToUse, geminiUrl);
 
             String promptSystem = writeSystem();
             String data = getNewsData();
             String content = promptSystem + "\n\nNews Data:\n" + data;
-
-            log.info("전송할 프롬프트 길이: {} 문자", content.length());
 
             // Gemini API 요청 구조
             Map<String, Object> part = new HashMap<>();
@@ -213,9 +198,6 @@ public class PopularNewsDataService {
 
             Map<String, Object> parameters = new HashMap<>();
             parameters.put("contents", Arrays.asList(geminiContent));
-
-            log.info("Gemini API 요청 파라미터: {}", parameters.keySet());
-            log.info("Gemini API 호출 시작...");
 
             String response = restClient.post()
                     .uri(geminiUrl.replace(":streamGenerateContent?alt=sse", ":generateContent")) // 스트리밍이 아닌 일반 요청
@@ -243,7 +225,6 @@ public class PopularNewsDataService {
 
                         try {
                             String responseBody = new String(httpResponse.getBody().readAllBytes());
-                            log.info("Gemini API 응답 길이: {} 문자", responseBody.length());
                             return responseBody;
                         } catch (Exception e) {
                             log.error("응답 파싱 오류", e);
@@ -258,8 +239,6 @@ public class PopularNewsDataService {
                 log.warn("=== Gemini API 응답이 null ===");
             }
 
-            log.info("=== 중복 뉴스 탐지 완료 ===");
-
         } catch (Exception e) {
             log.error("중복 뉴스 탐지 중 예외 발생", e);
         }
@@ -269,8 +248,6 @@ public class PopularNewsDataService {
     private void processDuplicateNews(String response) {
         try {
             JsonNode rootNode = objectMapper.readTree(response);
-            
-            log.info("전체 응답 구조: {}", rootNode.toString());
 
             // Gemini 응답 구조 안전하게 파싱
             JsonNode candidatesNode = rootNode.path("candidates");
@@ -303,8 +280,6 @@ public class PopularNewsDataService {
                 return;
             }
 
-            log.info("추출된 content JSON: {}", contentJson);
-
             JsonNode contentNode = objectMapper.readTree(contentJson);
 
             // 배치 업데이트를 위한 리스트들
@@ -321,7 +296,6 @@ public class PopularNewsDataService {
 
                     if ("90%+ English content".equals(reason)) {
                         englishArticlesToDeactivate.add(newsId);
-                        log.info("영어 콘텐츠 비활성화 대상 추가: newsId={}, reason={}", newsId, reason);
                     }
                 }
             }
@@ -333,9 +307,6 @@ public class PopularNewsDataService {
                 Long earlyPubDateNewsId = group.path("earlyPubDateNewsId").asLong();
                 JsonNode articles = group.path("articles");
 
-                log.info("=== 중복 그룹 {} 처리 시작 (기사 {}개) ===", groupId, articles.size());
-                log.info("  - 가장 오래된 기사: newsId={}", earlyPubDateNewsId);
-
                 List<Long> allNewsIds = new ArrayList<>();
 
                 // 모든 기사 정보 수집
@@ -344,77 +315,55 @@ public class PopularNewsDataService {
                     String title = article.path("title").asText();
                     allNewsIds.add(newsId);
 
-                    log.info("  - 중복 기사: newsId={}, title={}", newsId, title);
                 }
-
-                log.info("  - 그룹 내 모든 기사: {}", allNewsIds);
 
                 // DB 업데이트 로직 - 3개 이상부터 인기글 (배치용 수집)
                 if (earlyPubDateNewsId != null && allNewsIds.contains(earlyPubDateNewsId)) {
 
                     if (articles.size() >= 3) {
                         // 3개 이상: 인기글 처리 + 중복글 비활성화
-                        log.info("  📊 3개 이상 그룹 → 인기글 처리 + 중복글 비활성화");
 
                         // 가장 오래된 기사를 인기 기사로 설정 (배치용 수집)
                         popularArticlesToSet.add(earlyPubDateNewsId);
-                        log.info("  ✅ 인기 기사 설정 대상 추가: newsId = {}", earlyPubDateNewsId);
 
                         // 나머지 중복 기사들을 비활성화 (배치용 수집)
                         for (Long newsId : allNewsIds) {
                             if (!newsId.equals(earlyPubDateNewsId)) {
                                 duplicateArticlesToDeactivate.add(newsId);
-                                log.info("  ❌ 비활성화 대상 추가: newsId = {}", newsId);
                             }
                         }
 
                     } else {
                         // 3개 미만: 인기글 처리 안함 + 중복글만 비활성화
-                        log.info("  📝 3개 미만 그룹 → 중복글만 비활성화 (인기글 처리 안함)");
-
                         // 인기글 처리는 하지 않고, 중복글만 비활성화 (배치용 수집)
                         for (Long newsId : allNewsIds) {
                             if (!newsId.equals(earlyPubDateNewsId)) {
                                 duplicateArticlesToDeactivate.add(newsId);
-                                log.info("  ❌ 비활성화 대상 추가: newsId = {}", newsId);
                             }
                         }
-                        log.info("  ℹ️  가장 오래된 기사 유지 (인기글 아님): newsId = {}", earlyPubDateNewsId);
                     }
 
                 } else {
                     log.warn("  ⚠️ earlyPubDateNewsId를 찾을 수 없거나 유효하지 않음");
                 }
 
-                log.info("=== 중복 그룹 {} 처리 완료 ===", groupId);
             }
 
             // 3. 배치 업데이트 실행
-            log.info("=== 배치 업데이트 실행 시작 ===");
-            
             // 영어 기사 비활성화 배치
             if (!englishArticlesToDeactivate.isEmpty()) {
-                log.info("영어 기사 비활성화 배치 실행: {}개 기사", englishArticlesToDeactivate.size());
-                log.info("대상 기사 IDs: {}", englishArticlesToDeactivate);
                 newsDataRepository.markMultipleAsInactive(englishArticlesToDeactivate);
             }
 
             // 인기 기사 설정 배치
             if (!popularArticlesToSet.isEmpty()) {
-                log.info("인기 기사 설정 배치 실행: {}개 기사", popularArticlesToSet.size());
-                log.info("대상 기사 IDs: {}", popularArticlesToSet);
                 newsDataRepository.markMultipleAsPopular(popularArticlesToSet);
             }
 
             // 중복 기사 비활성화 배치
             if (!duplicateArticlesToDeactivate.isEmpty()) {
-                log.info("중복 기사 비활성화 배치 실행: {}개 기사", duplicateArticlesToDeactivate.size());
-                log.info("대상 기사 IDs: {}", duplicateArticlesToDeactivate);
                 newsDataRepository.markMultipleAsInactive(duplicateArticlesToDeactivate);
             }
-
-            log.info("=== 배치 업데이트 실행 완료 ===");
-            log.info("전체 중복 기사 처리 완료: 총 {}개 그룹 처리", duplicateGroups.size());
 
         } catch (Exception e) {
             log.error("중복 뉴스 응답 파싱 중 오류 발생", e);
