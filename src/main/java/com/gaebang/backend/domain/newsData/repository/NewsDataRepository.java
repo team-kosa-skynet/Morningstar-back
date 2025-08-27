@@ -34,7 +34,7 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     List<NewsData> findNewsByDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
     // 특정 날짜 범위 뉴스 조회 (인기글 제외 - 중복 분석용)
-    @Query("SELECT n FROM NewsData n WHERE n.pubDate >= :startDate AND n.pubDate < :endDate AND n.isPopular = 0 ORDER BY n.pubDate DESC")
+    @Query("SELECT n FROM NewsData n WHERE n.pubDate >= :startDate AND n.pubDate < :endDate AND n.isPopular = 0 AND n.isActive = 1 ORDER BY n.pubDate DESC")
     List<NewsData> findNewsByDateRangeExcludingPopular(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
     // isPopular를 1로 설정하는 메서드
