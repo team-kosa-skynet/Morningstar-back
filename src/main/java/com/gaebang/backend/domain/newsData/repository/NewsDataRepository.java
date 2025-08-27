@@ -14,13 +14,6 @@ import java.util.List;
 @Repository
 public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
 
-    // 중복 체크용 (서비스에서 사용)
-    @Query(value = "SELECT COUNT(*) FROM news WHERE link = ?1", nativeQuery = true)
-    Long countExistingByLink(String link);
-
-    // 특정 기간 뉴스 조회
-    List<NewsData> findByPubDateBetween(LocalDateTime start, LocalDateTime end);
-
     // 최신 뉴스 조회
     @Query("SELECT n FROM NewsData n WHERE n.isActive = 1 ORDER BY n.pubDate DESC")
     List<NewsData> findAllActiveNewsOrderByPubDateDesc();
@@ -29,9 +22,9 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     @Query("SELECT n FROM NewsData n WHERE n.isActive = 1 AND n.isPopular = 1 ORDER BY n.pubDate DESC")
     List<NewsData> findAllActiveNewsAndPopularNewsOrderByPubDateDesc();
 
-    // 특정 날짜 범위 뉴스 조회
-    @Query("SELECT n FROM NewsData n WHERE n.pubDate >= :startDate AND n.pubDate < :endDate ORDER BY n.pubDate DESC")
-    List<NewsData> findNewsByDateRange(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
+    // 특정 날짜 범위 뉴스 조회 (인기글 제외 - 중복 분석용)
+    @Query("SELECT n FROM NewsData n WHERE n.pubDate >= :startDate AND n.pubDate < :endDate AND n.isPopular = 0 AND n.isActive = 1 ORDER BY n.pubDate DESC")
+    List<NewsData> findNewsByDateRangeExcludingPopular(@Param("startDate") LocalDateTime startDate, @Param("endDate") LocalDateTime endDate);
 
     // isPopular를 1로 설정하는 메서드
     @Modifying
@@ -43,7 +36,7 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     @Modifying
     @Transactional
     @Query("UPDATE NewsData n SET n.isActive = 0 WHERE n.newsId = :newsId")
-    void markAsActive(@Param("newsId") Long newsId);
+    void markAsInactive(@Param("newsId") Long newsId);
 
     // imageUrl 업데이트 메서드
     @Modifying
@@ -64,10 +57,19 @@ public interface NewsDataRepository extends JpaRepository<NewsData, Long> {
     @Query("SELECT COUNT(n) FROM NewsData n WHERE (n.imageUrl IS NULL OR n.imageUrl = '') AND n.isActive = 1")
     Long countNewsWithoutImages();
 
-    // test용도
-    List<NewsData> findTop40ByOrderByPubDateDesc();
+    // 배치로 기존 링크들 확인 (N+1 문제 해결)
+    @Query("SELECT n.link FROM NewsData n WHERE n.link IN :links")
+    List<String> findExistingLinks(@Param("links") List<String> links);
 
-    // test용도
-    @Query(value = "SELECT * FROM news ORDER BY pub_date DESC LIMIT 15 OFFSET 20", nativeQuery = true)
-    List<NewsData> findNews31To40();
+    // 여러 기사를 한번에 비활성화 (배치 업데이트)
+    @Modifying
+    @Transactional
+    @Query("UPDATE NewsData n SET n.isActive = 0 WHERE n.newsId IN :newsIds")
+    void markMultipleAsInactive(@Param("newsIds") List<Long> newsIds);
+
+    // 여러 기사를 한번에 인기글로 설정 (배치 업데이트)
+    @Modifying
+    @Transactional
+    @Query("UPDATE NewsData n SET n.isPopular = 1 WHERE n.newsId IN :newsIds")
+    void markMultipleAsPopular(@Param("newsIds") List<Long> newsIds);
 }

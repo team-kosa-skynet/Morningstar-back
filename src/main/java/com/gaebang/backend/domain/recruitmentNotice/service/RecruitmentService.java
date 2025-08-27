@@ -16,8 +16,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -41,7 +43,8 @@ public class RecruitmentService {
     public List<RecruitmentResponseDto> getRecruitmentData() {
 
         LocalDateTime now = LocalDateTime.now();
-        List<Recruitment> recruitments = recruitmentRepository.findByExpirationDateAfterOrderByPubDateDesc(now);
+        LocalDateTime twoMonthsAgo = now.minusMonths(2);
+        List<Recruitment> recruitments = recruitmentRepository.findByExpirationDateAfterAndPubDateAfterOrderByPubDateDesc(now, twoMonthsAgo);
 
         return recruitments.stream()
                 .map(recruitment -> RecruitmentResponseDto.fromEntity(recruitment))
@@ -49,14 +52,10 @@ public class RecruitmentService {
     }
 
     // 채용정보 데이터를 조회하고 DB에 저장
-//    @Scheduled(cron = "0 */5 * * * *", zone = "Asia/Seoul") // 5분마다 실행
     @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul") // 10분마다 실행
-//    @Scheduled(cron = "*/30 * * * * *", zone = "Asia/Seoul") // 30초마다 실행
     @Transactional
     public void fetchAndSaveRecruitment() {
         try {
-            log.info("scheduled 실행 중");
-
             String response = getRecruitmentApiResponse();
             List<Recruitment> recruitmentList = parseRecruitmentResponse(response);
 
@@ -67,7 +66,6 @@ public class RecruitmentService {
             recruitmentList = filterExistingRecruitment(recruitmentList);
 
             if (!recruitmentList.isEmpty()) {
-                // 배치 저장
                 recruitmentRepository.saveAll(recruitmentList);
                 log.info("채용정보 데이터 {}건 저장 완료", recruitmentList.size());
             } else {
@@ -138,26 +136,32 @@ public class RecruitmentService {
         return recruitment;
     }
 
-    // 중복 제거 (링크 기준)
+    // 중복 제거 (링크 기준) - 성능 최적화
     private List<Recruitment> removeDuplicates(List<Recruitment> recruitmentList) {
+        Set<String> seen = new HashSet<>();
         return recruitmentList.stream()
-                .collect(Collectors.toMap(
-                        Recruitment::getLink,
-                        Function.identity(),
-                        (existing, replacement) -> existing
-                ))
-                .values()
-                .stream()
+                .filter(recruitment -> seen.add(recruitment.getLink())) // add()는 중복시 false 리턴
                 .collect(Collectors.toList());
     }
 
-    // 이미 DB에 존재하는 채용정보 필터링
+    // 이미 DB에 존재하는 채용정보 필터링 (N+1 문제 해결)
     private List<Recruitment> filterExistingRecruitment(List<Recruitment> recruitmentList) {
+        if (recruitmentList.isEmpty()) {
+            return recruitmentList;
+        }
+        
+        // 1. 모든 링크 추출
+        List<String> links = recruitmentList.stream()
+                .map(Recruitment::getLink)
+                .collect(Collectors.toList());
+        
+        // 2. 한 번의 쿼리로 기존 링크들 확인
+        List<String> existingLinks = recruitmentRepository.findExistingLinks(links);
+        Set<String> existingLinkSet = new HashSet<>(existingLinks);
+        
+        // 3. 기존에 없는 채용공고만 필터링
         return recruitmentList.stream()
-                .filter(recruitment -> {
-                    Long count = recruitmentRepository.countExistingByLink(recruitment.getLink());
-                    return count == 0; // 0이면 존재하지 않음
-                })
+                .filter(recruitment -> !existingLinkSet.contains(recruitment.getLink()))
                 .collect(Collectors.toList());
     }
 

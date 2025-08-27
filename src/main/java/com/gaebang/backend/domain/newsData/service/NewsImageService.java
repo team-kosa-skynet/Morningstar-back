@@ -41,7 +41,6 @@ public class NewsImageService {
     // 이미지가 없는 뉴스 데이터만 조회
     public List<NewsData> getNewsWithoutImages() {
         List<NewsData> newsData = newsDataRepository.findAllByImageUrlIsNullOrEmpty();
-        log.info("이미지가 없는 뉴스 데이터 개수: {}", newsData.size());
         return newsData;
     }
 
@@ -67,7 +66,6 @@ public class NewsImageService {
         }
 
         try {
-            log.info("=== 배치 단위 뉴스 이미지 생성 시작 ===");
 
             Long totalCount = newsDataRepository.countNewsWithoutImages();
             if (totalCount == 0) {
@@ -78,12 +76,8 @@ public class NewsImageService {
             final int BATCH_SIZE = 15; // 배치 사이즈를 35→15로 축소
             int totalBatches = (int) Math.ceil((double) totalCount / BATCH_SIZE);
 
-            log.info("총 {}개 뉴스를 {}개 배치로 나누어 처리합니다. (배치 크기: {})", totalCount, totalBatches, BATCH_SIZE);
-
             for (int batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
                 int offset = batchIndex * BATCH_SIZE;
-
-                log.info("=== 배치 {}/{} 처리 시작 (offset: {}) ===", batchIndex + 1, totalBatches, offset);
 
                 List<NewsData> batchNews = newsDataRepository.findNewsWithoutImagesByBatch(BATCH_SIZE, offset);
 
@@ -94,8 +88,6 @@ public class NewsImageService {
 
                 processBatch(batchNews, batchIndex + 1, totalBatches);
             }
-
-            log.info("=== 모든 배치 뉴스 이미지 생성 완료 - 총 {}개 처리 ===", totalCount);
 
         } catch (Exception e) {
             log.error("배치 뉴스 이미지 생성 중 예외 발생", e);
@@ -116,9 +108,6 @@ public class NewsImageService {
                     regularNews.add(news);
                 }
             }
-
-            log.info("배치 {}/{}: 총 {}개 뉴스 (인기글: {}개, 일반글: {}개) 처리 시작", batchNumber, totalBatches, batchNews.size(), popularNews.size(),
-                    regularNews.size());
 
             ExecutorService executor = Executors.newFixedThreadPool(3); // 5→3으로 축소
 
@@ -183,8 +172,6 @@ public class NewsImageService {
                 }
             }
 
-            log.info("배치 {}/{} 처리 완료 - {}개 뉴스 처리됨", batchNumber, totalBatches, batchNews.size());
-
         } catch (Exception e) {
             log.error("배치 {} 처리 중 예외 발생", batchNumber, e);
         }
@@ -201,8 +188,6 @@ public class NewsImageService {
 
             String newsType = isPopular ? "인기글" : "일반글";
             String sizeInfo = isPopular ? "500x324" : "기본 크기";
-
-            log.info("뉴스 ID {} 이미지 생성 시작 ({}, {}): {}", news.getNewsId(), newsType, sizeInfo, news.getTitle());
 
             String imagenUrl = geminiQuestionProperties.getCreateImageUrl();
 
@@ -235,8 +220,6 @@ public class NewsImageService {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("instances", Arrays.asList(instance));
             requestBody.put("parameters", parameters);
-
-            log.info("Imagen 4.0 API 요청 파라미터: prompt 길이={}, 타입={}", prompt.length(), newsType);
 
             // 재시도 로직 적용된 API 호출
             String response = callApiWithRetry(requestBody, imagenUrl, news.getNewsId());
@@ -387,14 +370,12 @@ public class NewsImageService {
             }
 
             String newsType = isPopular ? "인기글" : "일반글";
-            log.info("뉴스 ID {} - Imagen 4.0 이미지 발견 ({}): mimeType={}, 데이터 크기={} bytes", newsId, newsType, mimeType, base64Data.length());
 
             // Base64 이미지를 S3에 업로드
             String imageUrl = uploadBase64ImageToS3(base64Data, mimeType, isPopular);
 
             if (imageUrl != null) {
                 updateNewsImageUrl(newsId, imageUrl);
-                log.info("뉴스 ID {} - 이미지 URL 저장 완료 ({}): {}", newsId, newsType, imageUrl);
             } else {
                 log.error("뉴스 ID {} - S3 업로드 실패", newsId);
             }
