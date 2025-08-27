@@ -3,7 +3,6 @@ package com.gaebang.backend.domain.question.feedback.service;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
-import com.gaebang.backend.domain.question.common.entity.AiModel;
 import com.gaebang.backend.domain.question.common.repository.AiModelRepository;
 import com.gaebang.backend.domain.question.feedback.dto.request.SubmitFeedbackRequestDto;
 import com.gaebang.backend.domain.question.feedback.dto.response.FeedbackOptionsResponseDto;
@@ -11,7 +10,7 @@ import com.gaebang.backend.domain.question.feedback.dto.response.SubmitFeedbackR
 import com.gaebang.backend.domain.question.feedback.entity.FeedbackCategory;
 import com.gaebang.backend.domain.question.feedback.entity.ModelFeedback;
 import com.gaebang.backend.domain.question.feedback.exception.InvalidFeedbackCategoryException;
-import com.gaebang.backend.domain.question.feedback.exception.ModelNotFoundException;
+import com.gaebang.backend.domain.question.common.exception.ModelNotFoundException;
 import com.gaebang.backend.domain.question.feedback.repository.ModelFeedbackRepository;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
