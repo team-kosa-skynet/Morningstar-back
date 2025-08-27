@@ -265,7 +265,7 @@ public class PopularNewsDataService {
         }
     }
 
-    // 응답 파싱 메서드 - Gemini 응답 형태에 맞게 수정
+    // 응답 파싱 메서드 - Gemini 응답 형태에 맞게 수정 (배치 업데이트 적용)
     private void processDuplicateNews(String response) {
         try {
             JsonNode rootNode = objectMapper.readTree(response);
@@ -307,7 +307,12 @@ public class PopularNewsDataService {
 
             JsonNode contentNode = objectMapper.readTree(contentJson);
 
-            // 1. 영어 콘텐츠 비활성화 처리
+            // 배치 업데이트를 위한 리스트들
+            List<Long> englishArticlesToDeactivate = new ArrayList<>();
+            List<Long> popularArticlesToSet = new ArrayList<>();
+            List<Long> duplicateArticlesToDeactivate = new ArrayList<>();
+
+            // 1. 영어 콘텐츠 비활성화 처리 (배치용 수집)
             JsonNode deactivatedArticles = contentNode.path("deactivatedArticles");
             if (deactivatedArticles.isArray()) {
                 for (JsonNode article : deactivatedArticles) {
@@ -315,13 +320,13 @@ public class PopularNewsDataService {
                     String reason = article.path("reason").asText();
 
                     if ("90%+ English content".equals(reason)) {
-                        newsDataRepository.markAsInactive(newsId);
-                        log.info("영어 콘텐츠 비활성화: newsId={}, reason={}", newsId, reason);
+                        englishArticlesToDeactivate.add(newsId);
+                        log.info("영어 콘텐츠 비활성화 대상 추가: newsId={}, reason={}", newsId, reason);
                     }
                 }
             }
 
-            // 2. 중복 그룹 처리
+            // 2. 중복 그룹 처리 (배치용 수집)
             JsonNode duplicateGroups = contentNode.path("duplicateGroups");
             for (JsonNode group : duplicateGroups) {
                 int groupId = group.path("groupId").asInt();
@@ -344,22 +349,22 @@ public class PopularNewsDataService {
 
                 log.info("  - 그룹 내 모든 기사: {}", allNewsIds);
 
-                // DB 업데이트 로직 - 3개 이상부터 인기글
+                // DB 업데이트 로직 - 3개 이상부터 인기글 (배치용 수집)
                 if (earlyPubDateNewsId != null && allNewsIds.contains(earlyPubDateNewsId)) {
 
                     if (articles.size() >= 3) {
                         // 3개 이상: 인기글 처리 + 중복글 비활성화
                         log.info("  📊 3개 이상 그룹 → 인기글 처리 + 중복글 비활성화");
 
-                        // 가장 오래된 기사를 인기 기사로 설정
-                        newsDataRepository.markAsPopular(earlyPubDateNewsId);
-                        log.info("  ✅ 인기 기사로 설정: newsId = {}", earlyPubDateNewsId);
+                        // 가장 오래된 기사를 인기 기사로 설정 (배치용 수집)
+                        popularArticlesToSet.add(earlyPubDateNewsId);
+                        log.info("  ✅ 인기 기사 설정 대상 추가: newsId = {}", earlyPubDateNewsId);
 
-                        // 나머지 중복 기사들을 비활성화
+                        // 나머지 중복 기사들을 비활성화 (배치용 수집)
                         for (Long newsId : allNewsIds) {
                             if (!newsId.equals(earlyPubDateNewsId)) {
-                                newsDataRepository.markAsInactive(newsId);
-                                log.info("  ❌ 비활성화 처리: newsId = {}", newsId);
+                                duplicateArticlesToDeactivate.add(newsId);
+                                log.info("  ❌ 비활성화 대상 추가: newsId = {}", newsId);
                             }
                         }
 
@@ -367,11 +372,11 @@ public class PopularNewsDataService {
                         // 3개 미만: 인기글 처리 안함 + 중복글만 비활성화
                         log.info("  📝 3개 미만 그룹 → 중복글만 비활성화 (인기글 처리 안함)");
 
-                        // 인기글 처리는 하지 않고, 중복글만 비활성화
+                        // 인기글 처리는 하지 않고, 중복글만 비활성화 (배치용 수집)
                         for (Long newsId : allNewsIds) {
                             if (!newsId.equals(earlyPubDateNewsId)) {
-                                newsDataRepository.markAsInactive(newsId);
-                                log.info("  ❌ 비활성화 처리: newsId = {}", newsId);
+                                duplicateArticlesToDeactivate.add(newsId);
+                                log.info("  ❌ 비활성화 대상 추가: newsId = {}", newsId);
                             }
                         }
                         log.info("  ℹ️  가장 오래된 기사 유지 (인기글 아님): newsId = {}", earlyPubDateNewsId);
@@ -384,6 +389,31 @@ public class PopularNewsDataService {
                 log.info("=== 중복 그룹 {} 처리 완료 ===", groupId);
             }
 
+            // 3. 배치 업데이트 실행
+            log.info("=== 배치 업데이트 실행 시작 ===");
+            
+            // 영어 기사 비활성화 배치
+            if (!englishArticlesToDeactivate.isEmpty()) {
+                log.info("영어 기사 비활성화 배치 실행: {}개 기사", englishArticlesToDeactivate.size());
+                log.info("대상 기사 IDs: {}", englishArticlesToDeactivate);
+                newsDataRepository.markMultipleAsInactive(englishArticlesToDeactivate);
+            }
+
+            // 인기 기사 설정 배치
+            if (!popularArticlesToSet.isEmpty()) {
+                log.info("인기 기사 설정 배치 실행: {}개 기사", popularArticlesToSet.size());
+                log.info("대상 기사 IDs: {}", popularArticlesToSet);
+                newsDataRepository.markMultipleAsPopular(popularArticlesToSet);
+            }
+
+            // 중복 기사 비활성화 배치
+            if (!duplicateArticlesToDeactivate.isEmpty()) {
+                log.info("중복 기사 비활성화 배치 실행: {}개 기사", duplicateArticlesToDeactivate.size());
+                log.info("대상 기사 IDs: {}", duplicateArticlesToDeactivate);
+                newsDataRepository.markMultipleAsInactive(duplicateArticlesToDeactivate);
+            }
+
+            log.info("=== 배치 업데이트 실행 완료 ===");
             log.info("전체 중복 기사 처리 완료: 총 {}개 그룹 처리", duplicateGroups.size());
 
         } catch (Exception e) {

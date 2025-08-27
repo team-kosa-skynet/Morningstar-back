@@ -80,7 +80,6 @@ public class NewsDataService {
         }
 
         try {
-            log.info("scheduled 실행 중");
 
             String response = getNewsApiResponse();
             List<NewsData> newsDataList = parseNewsResponse(response);
@@ -116,8 +115,6 @@ public class NewsDataService {
         String encodedQuery = URLEncoder.encode("it", StandardCharsets.UTF_8);
         String apiUrl = buildApiUrl(encodedQuery, DEFAULT_DISPLAY_COUNT, 1, "sim");
         Map<String, String> headers = buildHeaders();
-
-        log.info("네이버 뉴스 API 호출 - 키워드: {}, 개수: {}, 시작: {}, 정렬: {}", "it", DEFAULT_DISPLAY_COUNT, 1, "sim");
 
         String response = httpClient.get(apiUrl, headers);
         log.info("네이버 뉴스 API 응답 수신 완료");
