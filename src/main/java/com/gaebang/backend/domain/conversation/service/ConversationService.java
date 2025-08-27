@@ -128,7 +128,6 @@ public class ConversationService {
         return ConversationHistoryDto.from(conversationId, messageResponseDtos);
     }
 
-    // todo AddQuestionRequestDto 에 toEntity 만들기
     @Transactional
     public void addQuestion(Long conversationId, Long memberId, AddQuestionRequestDto requestDto) {
         Conversation conversation = conversationRepository.findActiveConversationByIdAndMemberId(conversationId, memberId)
@@ -141,20 +140,13 @@ public class ConversationService {
 
         String attachmentsJson = convertAttachmentsToJson(requestDto.attachments());
 
-        ConversationMessage message = ConversationMessage.builder()
-                .conversation(conversation)
-                .role(MessageRole.USER)
-                .content(contentWithFiles)  // 파일 내용 포함
-                .messageOrder(nextOrder)
-                .attachments(attachmentsJson)
-                .build();
+        ConversationMessage message = requestDto.toEntity(conversation, contentWithFiles, nextOrder, attachmentsJson);
 
         messageRepository.save(message);
 
         log.info("질문 추가 완료 - 메시지 순서: {}", nextOrder);
     }
 
-    // todo AddAnswerRequestDto 에 toEntity 만들기
     @Transactional
     public void addAnswer(Long conversationId, Long memberId, AddAnswerRequestDto requestDto) {
         Conversation conversation = conversationRepository.findActiveConversationByIdAndMemberId(conversationId, memberId)
@@ -164,14 +156,7 @@ public class ConversationService {
 
         String attachmentsJson = convertAttachmentsToJson(requestDto.attachments());
 
-        ConversationMessage message = ConversationMessage.builder()
-                .conversation(conversation)
-                .role(MessageRole.ASSISTANT)
-                .content(requestDto.content())
-                .aiModel(requestDto.aiModel())
-                .messageOrder(nextOrder)
-                .attachments(attachmentsJson)
-                .build();
+        ConversationMessage message = requestDto.toEntity(conversation, nextOrder, attachmentsJson);
 
         messageRepository.save(message);
 
