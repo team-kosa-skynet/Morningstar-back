@@ -25,7 +25,7 @@ public class InterviewAnswer extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "session_id", referencedColumnName = "id")
+    @JoinColumn(name = "session_id")
     private InterviewSession session;
 
     private int questionIndex;

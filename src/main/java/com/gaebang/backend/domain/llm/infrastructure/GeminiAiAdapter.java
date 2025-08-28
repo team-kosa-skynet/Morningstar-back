@@ -239,7 +239,7 @@ public class GeminiAiAdapter implements InterviewerAiGateway {
                     },
                     {"idx": 1, "type": "BEHAVIORAL", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]},
                     ...
-                    {"idx": 9, "type": "WRAPUP", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]}
+                    {"idx": 9, "type": "TECHNICAL", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]}
                   ]
                 }
                 """);
@@ -1056,94 +1056,255 @@ public class GeminiAiAdapter implements InterviewerAiGateway {
 
     @Override
     public Map<String, Object> extractDocumentInfo(String rawText) throws Exception {
-        String prompt = """
-                당신은 이력서/포트폴리오 문서 분석 전문가입니다. 다음 텍스트에서 구조화된 정보를 추출해주세요.
-                
-                **개인정보 보호 원칙:**
-                - 이름, 전화번호, 이메일, 주소, 생년월일 등 개인 식별 정보는 완전히 무시
-                - 회사명, 학교명 등도 추출하지 말고 개인정보로 간주
-                
-                **추출할 정보 (개인정보 제외):**
-                1. techStacks: 기술 스택 ["Java", "Spring", "React"]
-                2. projects: 프로젝트 [{"duration":"6개월", "role":"백엔드"}]
-                3. careers: 경력 [{"duration":"3년", "role":"개발자"}] 
-                4. education: 학력 [{"degree":"학사", "major":"컴퓨터공학"}]
-                5. certifications: 자격증 ["정보처리기사"]
-                6. achievements: 수상/성과 ["해커톤 1위"]
-                7. portfolio: 포트폴리오 {"github":"활발", "blog":"있음"}
-                8. languages: 언어능력 ["한국어(원어민)", "영어(중급)"]
-                9. specialties: 전문분야 ["백엔드 개발"]
-                10. preferences: 선호도구 ["IntelliJ", "Agile"]
-                
-                **분석 대상 텍스트:**
-                %s
-                
-                응답은 반드시 다음 JSON 형식으로 작성해주세요:
-                {
-                  "techStacks": ["Java", "Spring"],
-                  "projects": [{"duration":"6개월", "role":"백엔드"}],
-                  "careers": [{"duration":"3년", "role":"개발자"}],
-                  "education": [{"degree":"학사", "major":"컴퓨터공학"}],
-                  "certifications": ["정보처리기사"],
-                  "achievements": ["해커톤 1위"],
-                  "portfolio": {"github":"있음", "blog":"없음"},
-                  "languages": ["한국어(원어민)"],
-                  "specialties": ["백엔드 개발"],
-                  "preferences": ["IntelliJ IDEA"]
-                }
-                """.formatted(rawText);
+        try {
+            String prompt = """
+                    당신은 전문 HR 담당자입니다. 아래 문서에서 면접에 필요한 종합적인 정보를 추출해주세요.
+                    
+                    **문서 내용:**
+                    %s
+                    
+                    **추출할 정보:**
+                    1. **기술 스택**: 모든 프로그래밍 언어, 프레임워크, 라이브러리, 도구
+                       - 다양한 표현 인식: "React.js", "리액트", "ReactJS" 모두 "React"로 통합
+                       - 버전 정보 포함: "Java 17", "Spring Boot 3.x" 등
+                    
+                    2. **프로젝트 경험**: 개발 프로젝트 정보
+                       - 기간: 시작-종료 날짜 또는 기간
+                       - 역할: 팀장, 리더, 백엔드, 프론트엔드, 풀스택 등
+                       - 규모: 팀 규모나 프로젝트 규모 (있는 경우)
+                    
+                    3. **경력 정보**: 실무 경험 (회사명 제외)
+                       - 기간: 총 경력 또는 각 회사별 기간
+                       - 직무: 개발자, 엔지니어, 팀장 등
+                       - 수준: 신입, 경력, 시니어 등
+                    
+                    4. **학력 정보**: 교육 배경 (학교명 제외)
+                       - 학위: 학사, 석사, 박사 등
+                       - 전공: 컴퓨터공학, 소프트웨어학과 등
+                       - 상태: 졸업, 재학, 수료 등
+                    
+                    5. **자격증/인증**: 보유 자격증 및 인증
+                       - IT 자격증: 정보처리기사, 네트워크관리사 등
+                       - 클라우드 인증: AWS, Azure, GCP 등
+                       - 기타 전문 인증: PMP, SCRUM 등
+                    
+                    6. **성과/수상**: 수상 경력 및 특별한 성과
+                       - 해커톤, 공모전, 경진대회 수상
+                       - 논문 발표, 특허 출원
+                       - 오픈소스 기여, 커뮤니티 활동
+                    
+                    7. **포트폴리오**: 온라인 활동 및 포트폴리오
+                       - GitHub 활동 여부
+                       - 기술 블로그 운영 여부  
+                       - 개인 웹사이트/포트폴리오 사이트
+                    
+                    8. **언어 능력**: 구사 가능한 언어
+                       - 한국어, 영어, 일본어, 중국어 등
+                       - 수준: 원어민, 비즈니스, 일상회화 등
+                    
+                    9. **전문 분야**: 관심 영역 및 전문성
+                       - 백엔드, 프론트엔드, DevOps, 데이터 등
+                       - AI/ML, 블록체인, IoT 등 신기술
+                       - 도메인 전문성: 핀테크, 이커머스 등
+                    
+                    10. **개발 선호도**: 선호하는 도구나 방법론
+                        - 개발 도구: IDE, 에디터
+                        - 협업 도구: Git, Slack, Notion 등
+                        - 방법론: Agile, Scrum, TDD 등
+                    
+                    **중요 지침:**
+                    - 개인 식별 정보 절대 포함 금지 (이름, 회사명, 학교명 등)
+                    - 맥락을 고려한 정확한 정보만 추출
+                    - 애매하거나 확실하지 않은 정보는 포함하지 않음
+                    - 각 항목은 빈 배열로라도 반드시 포함
+                    - 기술 스택은 표준 명칭으로 통일
+                    
+                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
+                    {
+                      "techStacks": ["Java", "Spring Boot", "React", "MySQL"],
+                      "projects": [
+                        {
+                          "duration": "2023년 3월 ~ 2023년 12월",
+                          "role": "백엔드 개발자",
+                          "scale": "5명 팀"
+                        }
+                      ],
+                      "careers": [
+                        {
+                          "duration": "3년 6개월",
+                          "role": "백엔드 개발자",
+                          "level": "경력"
+                        }
+                      ],
+                      "education": [
+                        {
+                          "degree": "학사",
+                          "major": "컴퓨터공학",
+                          "status": "졸업"
+                        }
+                      ],
+                      "certifications": ["정보처리기사", "AWS SAA", "리눅스마스터"],
+                      "achievements": ["해커톤 1위", "오픈소스 기여 100+ commits", "기술블로그 월 평균 1만 조회수"],
+                      "portfolio": {
+                        "github": "활발한 활동",
+                        "blog": "기술 블로그 운영",
+                        "website": "개인 포트폴리오 사이트"
+                      },
+                      "languages": ["한국어(원어민)", "영어(비즈니스)", "일본어(일상회화)"],
+                      "specialties": ["백엔드 개발", "클라우드 인프라", "데이터베이스 설계"],
+                      "preferences": ["IntelliJ IDEA", "Git/GitHub", "Agile 방법론", "TDD"]
+                    }
+                    """.formatted(rawText);
 
-        Map<String, Object> requestBody = Map.of(
-            "contents", List.of(
-                Map.of(
-                    "parts", List.of(
-                        Map.of("text", prompt)
+            Map<String, Object> requestBody = Map.of(
+                "contents", List.of(
+                    Map.of(
+                        "parts", List.of(
+                            Map.of("text", prompt)
+                        )
+                    )
+                ),
+                "generationConfig", Map.of(
+                    "temperature", 0.1,           // 매우 결정론적
+                    "maxOutputTokens", 7000,      // 문서 추출용 충분한 토큰 (5000 → 7000)
+                    "responseMimeType", "application/json",
+                    "responseSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                            "techStacks", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "projects", Map.of(
+                                "type", "array", 
+                                "items", Map.of(
+                                    "type", "object",
+                                    "properties", Map.of(
+                                        "duration", Map.of("type", "string"),
+                                        "role", Map.of("type", "string"),
+                                        "scale", Map.of("type", "string")
+                                    )
+                                )
+                            ),
+                            "careers", Map.of(
+                                "type", "array",
+                                "items", Map.of(
+                                    "type", "object", 
+                                    "properties", Map.of(
+                                        "duration", Map.of("type", "string"),
+                                        "role", Map.of("type", "string"),
+                                        "level", Map.of("type", "string")
+                                    )
+                                )
+                            ),
+                            "education", Map.of(
+                                "type", "array",
+                                "items", Map.of(
+                                    "type", "object",
+                                    "properties", Map.of(
+                                        "degree", Map.of("type", "string"),
+                                        "major", Map.of("type", "string"),
+                                        "status", Map.of("type", "string")
+                                    )
+                                )
+                            ),
+                            "certifications", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "achievements", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "portfolio", Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                    "github", Map.of("type", "string"),
+                                    "blog", Map.of("type", "string"),
+                                    "website", Map.of("type", "string")
+                                )
+                            ),
+                            "languages", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "specialties", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            ),
+                            "preferences", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "string")
+                            )
+                        ),
+                        "required", List.of("techStacks", "projects", "careers", "education", "certifications", "achievements", "portfolio", "languages", "specialties", "preferences")
                     )
                 )
-            ),
-            "generationConfig", Map.of(
-                "maxOutputTokens", 2000,
-                "temperature", 0.2
-            )
-        );
+            );
 
-        String url = baseUrl + "/models/" + analysisModel + ":generateContent?key=" + apiKey;
-        
-        try {
+            String selectedModel = getOptimalModel("extractDocumentInfo");
+            String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
+            
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
             
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-            String responseBody = response.getBody();
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
             
-            JsonNode root = om.readTree(responseBody);
+            JsonNode root = om.readTree(response.getBody());
             JsonNode candidates = root.path("candidates");
             
-            if (candidates.isArray() && candidates.size() > 0) {
-                JsonNode candidateTextNode = candidates.get(0).path("content").path("parts").get(0).path("text");
-                String responseText = candidateTextNode.asText();
-                
-                // 마크다운 코드블록 제거
-                String cleanedResponse = extractJsonFromMarkdown(responseText);
-                
-                try {
-                    Map<String, Object> documentInfo = om.readValue(cleanedResponse, Map.class);
-                    System.out.println("[AI][Interview][Gemini] 문서 정보 추출 완료 - 항목 수: " + documentInfo.size());
-                    return documentInfo;
-                    
-                } catch (Exception e) {
-                    System.err.println("[AI][Interview][Gemini] 문서 정보 추출 응답 파싱 실패 - 원본: " + responseText);
-                    return Map.of(); // 빈 맵 반환
+            if (candidates.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
+            }
+            
+            // 디버깅: finishReason과 token 사용량 로깅
+            JsonNode firstCandidate = candidates.get(0);
+            String finishReason = firstCandidate.path("finishReason").asText("UNKNOWN");
+            JsonNode usageMetadata = root.path("usageMetadata");
+            int thoughtsTokenCount = usageMetadata.path("thoughtsTokenCount").asInt(0);
+            int totalTokenCount = usageMetadata.path("totalTokenCount").asInt(0);
+            
+            log.info("[AI] Gemini extractDocumentInfo - finishReason: {}, thoughtsTokens: {}, totalTokens: {}", 
+                    finishReason, thoughtsTokenCount, totalTokenCount);
+            
+            JsonNode content = firstCandidate.path("content");
+            JsonNode parts = content.path("parts");
+            
+            if (parts.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 parts가 없습니다 - finishReason: " + finishReason + 
+                        ", thoughtsTokens: " + thoughtsTokenCount + ", totalTokens: " + totalTokenCount);
+            }
+            
+            String responseText = parts.get(0).path("text").asText();
+            
+            // 안전한 JSON 파싱
+            try {
+                if (!responseText.trim().startsWith("{")) {
+                    throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + responseText.substring(0, Math.min(responseText.length(), 100)));
                 }
-            } else {
-                System.err.println("[AI][Interview][Gemini] 문서 정보 추출 API 응답에서 candidates가 없습니다.");
-                return Map.of();
+                return om.readValue(responseText, Map.class);
+            } catch (Exception e) {
+                System.err.println("[Gemini] extractDocumentInfo JSON 파싱 실패. 응답 텍스트: " + responseText);
+                // 폴백: 10개 항목 빈 구조 반환
+                return Map.of(
+                    "techStacks", List.of(),
+                    "projects", List.of(),
+                    "careers", List.of(),
+                    "education", List.of(),
+                    "certifications", List.of(),
+                    "achievements", List.of(),
+                    "portfolio", Map.of("github", "정보 없음", "blog", "정보 없음", "website", "정보 없음"),
+                    "languages", List.of(),
+                    "specialties", List.of(),
+                    "preferences", List.of()
+                );
             }
             
         } catch (Exception e) {
-            System.err.println("[AI][Interview][Gemini] 문서 정보 추출 중 오류 발생: " + e.getMessage());
-            throw new Exception("Gemini 문서 정보 추출 실패", e);
+            System.err.println("[AI][Gemini] extractDocumentInfo 실패: " + e.getMessage());
+            throw e; // 상위에서 폴백 처리
         }
     }
 
