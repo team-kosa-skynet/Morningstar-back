@@ -154,3 +154,17 @@ resilience4j:
         timeout-duration: 10s
       image-moderation:
         timeout-duration: 15s
+
+# AI Bot 설정
+aibot:
+  enabled: true
+  confidence:
+    threshold: 0.7               # AI 답변 신뢰도 임계값 (0.0~1.0)
+  max-daily-responses: 100      # 일일 최대 답변 생성 수 (선택사항)
+  async:
+    core-pool-size: 3           # AI 봇 비동기 처리 코어 스레드 수
+    max-pool-size: 8            # AI 봇 비동기 처리 최대 스레드 수
+    queue-capacity: 50          # AI 봇 작업 큐 크기
+  recovery:
+    enabled: true               # 장애 복구 스케줄러 활성화 여부
+    lookback-hours: 2           # 복구 대상 조회 시간 범위 (시간 단위)
