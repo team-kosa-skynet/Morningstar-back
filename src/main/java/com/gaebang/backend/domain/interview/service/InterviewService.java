@@ -19,7 +19,7 @@ import com.gaebang.backend.domain.interview.entity.InterviewSession;
 import com.gaebang.backend.domain.interview.entity.UploadedDocument;
 import com.gaebang.backend.domain.interview.enums.InterviewMode;
 import com.gaebang.backend.domain.interview.enums.InterviewStatus;
-import com.gaebang.backend.domain.interview.llm.InterviewerAiGateway;
+import com.gaebang.backend.domain.llm.port.InterviewerAiGateway;
 import com.gaebang.backend.domain.interview.repository.InterviewAnswerRepository;
 import com.gaebang.backend.domain.interview.repository.InterviewSessionRepository;
 import com.gaebang.backend.domain.interview.repository.UploadedDocumentRepository;

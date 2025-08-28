@@ -1,7 +1,8 @@
 package com.gaebang.backend.domain.interview.service;
 
-import com.gaebang.backend.domain.interview.llm.InterviewerAiGateway;
+import com.gaebang.backend.domain.llm.port.InterviewerAiGateway;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -11,10 +12,22 @@ import java.util.regex.Pattern;
 @Component
 public class DocumentContentExtractor {
     
-    private final InterviewerAiGateway aiGateway;
+    private final InterviewerAiGateway openAiGateway;
+    private final InterviewerAiGateway geminiGateway;
+    private final String aiProvider;
     
-    public DocumentContentExtractor(@Qualifier("geminiInterviewerGateway") InterviewerAiGateway aiGateway) {
-        this.aiGateway = aiGateway;
+    public DocumentContentExtractor(
+            @Qualifier("openAiInterviewerGateway") InterviewerAiGateway openAiGateway,
+            @Qualifier("geminiInterviewerGateway") InterviewerAiGateway geminiGateway,
+            @Value("${ai.provider:gemini}") String aiProvider
+    ) {
+        this.openAiGateway = openAiGateway;
+        this.geminiGateway = geminiGateway;
+        this.aiProvider = aiProvider;
+    }
+    
+    private InterviewerAiGateway getAiGateway() {
+        return "openai".equalsIgnoreCase(aiProvider) ? openAiGateway : geminiGateway;
     }
     
     public Map<String, Object> extractStructuredInfo(String rawText) {
@@ -35,8 +48,8 @@ public class DocumentContentExtractor {
         // 개인정보 필터링 (이름, 연락처, 주소 등 제거)
         String filteredText = filterPersonalInfo(rawText);
         
-        // AI에게 구조화된 정보 추출 요청
-        return aiGateway.extractDocumentInfo(filteredText);
+        // Interview AI Gateway에게 구조화된 정보 추출 요청
+        return getAiGateway().extractDocumentInfo(filteredText);
     }
     
     /**
