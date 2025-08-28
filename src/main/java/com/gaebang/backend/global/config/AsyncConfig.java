@@ -31,6 +31,15 @@ public class AsyncConfig implements AsyncConfigurer {
     @Value("${moderation.async.keep-alive-seconds:60}")
     private int moderationKeepAliveSeconds;
 
+    @Value("${aibot.async.core-pool-size:3}")
+    private int aiBotCorePoolSize;
+
+    @Value("${aibot.async.max-pool-size:8}")
+    private int aiBotMaxPoolSize;
+
+    @Value("${aibot.async.queue-capacity:50}")
+    private int aiBotQueueCapacity;
+
     @Override
     @Bean(name = "taskExecutor")
     public Executor getAsyncExecutor() {
@@ -66,6 +75,32 @@ public class AsyncConfig implements AsyncConfigurer {
         
         log.info("검열용 비동기 스레드풀 초기화 완료 - Core: {}, Max: {}, Queue: {}", 
                  moderationCorePoolSize, moderationMaxPoolSize, moderationQueueCapacity);
+        
+        return executor;
+    }
+
+    @Bean(name = "aiBotExecutor")
+    public Executor aiBotExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(aiBotCorePoolSize);
+        executor.setMaxPoolSize(aiBotMaxPoolSize);
+        executor.setQueueCapacity(aiBotQueueCapacity);
+        executor.setKeepAliveSeconds(60);
+        executor.setThreadNamePrefix("AiBot-");
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
+        
+        // AI 봇 전용 거부 정책
+        executor.setRejectedExecutionHandler((runnable, threadPoolExecutor) -> {
+            log.warn("AI 봇 작업이 거부되었습니다. 큐가 가득참 - 큐 크기: {}, 활성 스레드: {}", 
+                     threadPoolExecutor.getQueue().size(), threadPoolExecutor.getActiveCount());
+            // AI 봇은 중요도가 낮으므로 단순히 로그만 남김
+        });
+        
+        executor.initialize();
+        
+        log.info("AI 봇용 비동기 스레드풀 초기화 완료 - Core: {}, Max: {}, Queue: {}", 
+                 aiBotCorePoolSize, aiBotMaxPoolSize, aiBotQueueCapacity);
         
         return executor;
     }

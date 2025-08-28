@@ -1,6 +1,7 @@
 package com.gaebang.backend.domain.community.dto.reqeust;
 
 import com.gaebang.backend.domain.community.entity.Board;
+import com.gaebang.backend.domain.community.entity.BoardCategory;
 import com.gaebang.backend.domain.member.entity.Member;
 
 import java.util.List;
@@ -17,7 +18,7 @@ public record BoardCreateAndEditRequestDto(
                 .member(member)
                 .title(requestDto.title())
                 .content(requestDto.content())
-                .category(requestDto.category())
+                .category(BoardCategory.fromDisplayName(requestDto.category()))
                 .build();
     }
 }

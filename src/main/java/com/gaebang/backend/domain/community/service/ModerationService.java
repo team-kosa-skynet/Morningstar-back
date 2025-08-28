@@ -4,6 +4,7 @@ import com.gaebang.backend.domain.community.dto.ModerationResult;
 import com.gaebang.backend.domain.community.entity.Board;
 import com.gaebang.backend.domain.community.entity.Comment;
 import com.gaebang.backend.domain.community.entity.Image;
+import com.gaebang.backend.domain.community.event.ModerationCompletedEvent;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.repository.CommentRepository;
 import com.gaebang.backend.domain.community.repository.ImageRepository;
@@ -11,6 +12,7 @@ import com.gaebang.backend.global.util.S3.S3ImageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +31,7 @@ public class ModerationService {
     private final TextModerationService textModerationService;
     private final ImageModerationService imageModerationService;
     private final S3ImageService s3ImageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${moderation.enabled:true}")
     private boolean moderationEnabled;
@@ -126,6 +129,10 @@ public class ModerationService {
                 board.approveModerationContent();
                 boardRepository.save(board);
                 log.debug("게시글 전체 검열 통과 - ID: {}", boardId);
+                
+                // 검열 통과한 게시글에 대해 이벤트 발행
+                eventPublisher.publishEvent(new ModerationCompletedEvent(boardId));
+                log.debug("검열 완료 이벤트 발행 - ID: {}", boardId);
             }
 
         } catch (Exception e) {
