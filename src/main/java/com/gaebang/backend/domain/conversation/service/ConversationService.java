@@ -76,14 +76,16 @@ public class ConversationService {
     }
 
     public ConversationListResponseDto getConversationList(Long memberId) {
+        List<Object[]> conversationSummaries = conversationRepository
+                .findConversationSummariesByMemberId(memberId);
 
-        List<Conversation> conversations = conversationRepository
-                .findActiveConversationsByMemberIdOrderByModifiedDateDesc(memberId);
-
-        List<ConversationSummaryDto> summaryDtos = conversations.stream()
-                .map(conversation -> {
-                    Long messageCount = messageRepository.countMessagesByConversationId(conversation.getConversationId());
-                    String lastMessagePreview = getLastMessagePreview(conversation.getConversationId());
+        List<ConversationSummaryDto> summaryDtos = conversationSummaries.stream()
+                .map(result -> {
+                    Conversation conversation = (Conversation) result[0];
+                    Long messageCount = (Long) result[1];
+                    String lastMessageContent = (String) result[2];
+                    
+                    String lastMessagePreview = getLastMessagePreview(lastMessageContent);
                     return ConversationSummaryDto.from(conversation, messageCount, lastMessagePreview);
                 })
                 .toList();
@@ -138,13 +140,7 @@ public class ConversationService {
 
         String attachmentsJson = convertAttachmentsToJson(requestDto.attachments());
 
-        ConversationMessage message = ConversationMessage.builder()
-                .conversation(conversation)
-                .role(MessageRole.USER)
-                .content(contentWithFiles)  // 파일 내용 포함
-                .messageOrder(nextOrder)
-                .attachments(attachmentsJson)
-                .build();
+        ConversationMessage message = requestDto.toEntity(conversation, contentWithFiles, nextOrder, attachmentsJson);
 
         messageRepository.save(message);
 
@@ -160,32 +156,22 @@ public class ConversationService {
 
         String attachmentsJson = convertAttachmentsToJson(requestDto.attachments());
 
-        ConversationMessage message = ConversationMessage.builder()
-                .conversation(conversation)
-                .role(MessageRole.ASSISTANT)
-                .content(requestDto.content())
-                .aiModel(requestDto.aiModel())
-                .messageOrder(nextOrder)
-                .attachments(attachmentsJson)
-                .build();
+        ConversationMessage message = requestDto.toEntity(conversation, nextOrder, attachmentsJson);
 
         messageRepository.save(message);
 
         log.info("답변 추가 완료 - 메시지 순서: {}", nextOrder);
     }
 
-    private String getLastMessagePreview(Long conversationId) {
-        List<ConversationMessage> messages = messageRepository.findMessagesByConversationIdOrderByOrder(conversationId);
-        if (messages.isEmpty()) {
+    private String getLastMessagePreview(String lastMessageContent) {
+        if (lastMessageContent == null || lastMessageContent.isEmpty()) {
             return "메시지가 없습니다.";
         }
         
-        ConversationMessage lastMessage = messages.get(messages.size() - 1);
-        String content = lastMessage.getContent();
-        if (content.length() > 50) {
-            return content.substring(0, 50) + "...";
+        if (lastMessageContent.length() > 50) {
+            return lastMessageContent.substring(0, 50) + "...";
         }
-        return content;
+        return lastMessageContent;
     }
 
     private String convertAttachmentsToJson(List<FileAttachmentDto> attachments) {

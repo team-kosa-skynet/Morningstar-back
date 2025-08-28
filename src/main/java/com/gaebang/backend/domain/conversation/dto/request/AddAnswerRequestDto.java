@@ -1,5 +1,8 @@
 package com.gaebang.backend.domain.conversation.dto.request;
 
+import com.gaebang.backend.domain.conversation.entity.Conversation;
+import com.gaebang.backend.domain.conversation.entity.ConversationMessage;
+import com.gaebang.backend.domain.conversation.entity.MessageRole;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -29,5 +32,16 @@ public record AddAnswerRequestDto(
         // attachments 없는 생성자 (기존 호환성)
         public AddAnswerRequestDto(String content, String aiModel) {
                 this(content, aiModel, null);
+        }
+
+        public ConversationMessage toEntity(Conversation conversation, Integer nextOrder, String attachmentsJson) {
+                return ConversationMessage.builder()
+                        .conversation(conversation)
+                        .role(MessageRole.ASSISTANT)
+                        .content(content)
+                        .aiModel(aiModel)
+                        .messageOrder(nextOrder)
+                        .attachments(attachmentsJson)
+                        .build();
         }
 }

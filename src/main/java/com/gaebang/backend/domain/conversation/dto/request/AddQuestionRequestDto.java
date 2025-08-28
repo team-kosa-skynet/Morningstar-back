@@ -1,5 +1,8 @@
 package com.gaebang.backend.domain.conversation.dto.request;
 
+import com.gaebang.backend.domain.conversation.entity.Conversation;
+import com.gaebang.backend.domain.conversation.entity.ConversationMessage;
+import com.gaebang.backend.domain.conversation.entity.MessageRole;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -12,4 +15,13 @@ public record AddQuestionRequestDto(
 
         List<FileAttachmentDto> attachments
 ) {
+    public ConversationMessage toEntity(Conversation conversation, String contentWithFiles, Integer nextOrder, String attachmentsJson) {
+        return ConversationMessage.builder()
+                .conversation(conversation)
+                .role(MessageRole.USER)
+                .content(contentWithFiles)
+                .messageOrder(nextOrder)
+                .attachments(attachmentsJson)
+                .build();
+    }
 }
