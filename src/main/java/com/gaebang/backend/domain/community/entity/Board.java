@@ -52,7 +52,10 @@ public class Board extends BaseTimeEntity {
     private String deleteYn = "N";
 
 
-    private String category;
+    @Enumerated(EnumType.STRING)
+    @Builder.Default
+    @Column(nullable = false)
+    private BoardCategory category = BoardCategory.GENERAL;
 
     @Builder.Default
     @Column(nullable = false, columnDefinition = "BIGINT DEFAULT 1")
@@ -68,7 +71,7 @@ public class Board extends BaseTimeEntity {
     public void updateBoard(BoardCreateAndEditRequestDto dto) {
         this.title = dto.title();
         this.content = dto.content();
-        this.category = dto.category();
+        this.category = BoardCategory.fromDisplayName(dto.category());
     }
 
     public void plusviewCount() {

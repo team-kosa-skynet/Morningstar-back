@@ -33,6 +33,7 @@ public class Comment extends BaseTimeEntity {
     @Builder.Default
     private List<CommentReport> commentReport = new ArrayList<>();
 
+    @Column(length = 5000)
     private String content;
 
     @Builder.Default

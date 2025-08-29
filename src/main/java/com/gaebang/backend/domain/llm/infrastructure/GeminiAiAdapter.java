@@ -1514,6 +1514,79 @@ public class GeminiAiAdapter implements InterviewerAiGateway {
     }
     
     @Override
+    public String generateQuestionAnswer(String title, String content) throws Exception {
+        String prompt = """
+                질문: %s
+                내용: %s
+                
+                답변 스타일:
+                - 핵심만 간결하게 2-3문장으로 설명
+                - 친근하지만 군더더기 없는 대화체
+                - 마크다운 헤더(##) 사용 금지
+                - 필요시 코드 예시 포함
+                - 전체 답변 150자 이내 권장
+                """.formatted(title, content);
+
+        Map<String, Object> requestBody = Map.of(
+            "contents", List.of(
+                Map.of(
+                    "parts", List.of(
+                        Map.of("text", prompt)
+                    )
+                )
+            ),
+            "generationConfig", Map.of(
+                "temperature", 0.5,
+                "maxOutputTokens", 2000,
+                "topK", 40,
+                "topP", 0.9
+            )
+        );
+
+        String url = baseUrl + "/models/" + analysisModel + ":generateContent?key=" + apiKey;
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        
+        ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+        
+        JsonNode root = om.readTree(response.getBody());
+        JsonNode candidates = root.path("candidates");
+        
+        if (candidates.isEmpty()) {
+            System.err.println("[AI] Gemini 응답 오류: candidates 없음 - " + response.getBody());
+            throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
+        }
+        
+        JsonNode contentNode = candidates.get(0).path("content");
+        JsonNode parts = contentNode.path("parts");
+        
+        if (parts.isEmpty()) {
+            System.err.println("[AI] Gemini 응답 오류: parts 없음 - " + response.getBody());
+            throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+        }
+        
+        String aiResponse = parts.get(0).path("text").asText();
+        
+        // 답변 완성도 검증
+        if (aiResponse.length() < 50) {
+            System.err.println("[AI] 불완전한 답변 감지 - 길이: " + aiResponse.length() + ", 내용: " + aiResponse);
+            throw new RuntimeException("AI 답변이 너무 짧습니다: " + aiResponse.length() + "자");
+        }
+        
+        // 자연스러운 답변 검증 (마크다운 헤더 없어야 함)
+        if (aiResponse.contains("##")) {
+            System.err.println("[AI] 마크다운 헤더 감지됨 - 내용: " + aiResponse.substring(0, Math.min(100, aiResponse.length())));
+            // 마크다운 헤더 제거
+            aiResponse = aiResponse.replaceAll("##\\s*[^\\n]+\\n?", "").trim();
+        }
+        
+        System.out.println("[AI] AI 답변 생성 완료 - 길이: " + aiResponse.length() + "자, 구조: ✓");
+        return aiResponse;
+    }
+    
+    @Override
     public String getProviderName() {
         return "Gemini";
     }

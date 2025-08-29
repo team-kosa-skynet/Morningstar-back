@@ -2,6 +2,8 @@ package com.gaebang.backend.domain.community.repository;
 
 import com.gaebang.backend.domain.community.dto.response.BoardListProjectionDto;
 import com.gaebang.backend.domain.community.entity.Board;
+import com.gaebang.backend.domain.community.entity.BoardCategory;
+import com.gaebang.backend.domain.community.entity.ModerationStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -9,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface BoardRepository extends JpaRepository<Board, Long> {
@@ -106,4 +109,10 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
             "AND b.createdAt > :windowStart")
     int countByMemberIdAndDeleteYnAndCreatedAtAfter(@Param("memberId") Long memberId, 
                                                    @Param("windowStart") LocalDateTime windowStart);
+
+    List<Board> findByCategoryAndModerationStatusAndCreatedAtAfter(
+            BoardCategory category, 
+            ModerationStatus moderationStatus, 
+            LocalDateTime createdAfter
+    );
 }

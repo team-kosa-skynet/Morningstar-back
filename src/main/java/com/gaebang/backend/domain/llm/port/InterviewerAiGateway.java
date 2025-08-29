@@ -89,6 +89,14 @@ public interface InterviewerAiGateway {
     ModerationResult moderateImage(String base64Image) throws Exception;
     
     /**
+     * 질문 게시글 AI 답변 생성 (AI 봇 전용)
+     * @param title 질문 게시글 제목
+     * @param content 질문 게시글 내용
+     * @return AI가 생성한 답변 텍스트
+     */
+    String generateQuestionAnswer(String title, String content) throws Exception;
+    
+    /**
      * AI 제공자 이름 반환
      * @return AI 제공자 이름
      */

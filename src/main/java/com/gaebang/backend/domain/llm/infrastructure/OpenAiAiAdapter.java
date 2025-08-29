@@ -1127,6 +1127,56 @@ public class OpenAiAiAdapter implements InterviewerAiGateway {
     }
     
     @Override
+    public String generateQuestionAnswer(String title, String content) throws Exception {
+        String prompt = """
+                질문: %s
+                내용: %s
+                
+                답변 스타일:
+                - 핵심만 간결하게 2-3문장으로 설명
+                - 친근하지만 군더더기 없는 대화체
+                - 마크다운 헤더(##) 사용 금지
+                - 필요시 코드 예시 포함
+                - 전체 답변 150자 이내 권장
+                """.formatted(title, content);
+
+        Map<String, Object> requestBody = Map.of(
+            "model", model,
+            "messages", List.of(
+                Map.of("role", "system", "content", "당신은 실용적이고 간결한 답변을 제공하는 AI 커뮤니티 도우미입니다."),
+                Map.of("role", "user", "content", prompt)
+            ),
+            "temperature", 0.5,
+            "max_tokens", 2000
+        );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(apiKey);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        
+        ResponseEntity<String> response = restTemplate.postForEntity(
+            "https://api.openai.com/v1/chat/completions", entity, String.class);
+        
+        JsonNode root = om.readTree(response.getBody());
+        JsonNode choices = root.path("choices");
+        
+        if (choices.isEmpty()) {
+            throw new RuntimeException("OpenAI 응답에 choices가 없습니다");
+        }
+        
+        String aiResponse = choices.get(0).path("message").path("content").asText();
+        
+        // 자연스러운 답변을 위한 마크다운 헤더 제거
+        if (aiResponse.contains("##")) {
+            System.err.println("[AI] OpenAI 마크다운 헤더 감지됨 - 내용: " + aiResponse.substring(0, Math.min(100, aiResponse.length())));
+            aiResponse = aiResponse.replaceAll("##\\s*[^\\n]+\\n?", "").trim();
+        }
+        
+        return aiResponse;
+    }
+    
+    @Override
     public String getProviderName() {
         return "OpenAI";
     }
