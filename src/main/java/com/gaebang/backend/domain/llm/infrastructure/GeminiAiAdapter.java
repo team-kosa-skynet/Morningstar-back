@@ -1,4 +1,4 @@
-package com.gaebang.backend.domain.interview.llm;
+package com.gaebang.backend.domain.llm.infrastructure;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -6,6 +6,7 @@ import com.gaebang.backend.domain.community.dto.ModerationResult;
 import com.gaebang.backend.domain.interview.dto.internal.AiTurnFeedbackDto;
 import com.gaebang.backend.domain.interview.dto.internal.PlanQuestionDto;
 import com.gaebang.backend.domain.interview.util.PlanParser;
+import com.gaebang.backend.domain.llm.port.InterviewerAiGateway;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -16,9 +17,15 @@ import org.springframework.web.client.RestTemplate;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Gemini AI Adapter (Infrastructure Layer)
+ * - LLM Supporting Subdomain의 Gemini API 연동 어댑터
+ * - InterviewerAiGateway 포트 구현
+ * - DDD Port-Adapter 패턴의 Adapter 역할
+ */
 @Slf4j
 @Component("geminiInterviewerGateway")
-public class GeminiInterviewerGateway implements InterviewerAiGateway {
+public class GeminiAiAdapter implements InterviewerAiGateway {
 
     private final RestTemplate restTemplate;
     private final String apiKey;
@@ -31,7 +38,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
     // 컨텍스트 관리를 위한 대화 기록 저장
     private final Map<String, List<Map<String, Object>>> conversationHistory = new ConcurrentHashMap<>();
 
-    public GeminiInterviewerGateway(
+    public GeminiAiAdapter(
             @Value("${gemini.api.key}") String apiKey,
             @Value("${gemini.api.models.realtime:gemini-1.5-flash}") String realtimeModel,
             @Value("${gemini.api.models.analysis:gemini-2.5-flash}") String analysisModel,
@@ -50,7 +57,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
 
     @PostConstruct
     void log() {
-        System.out.println("[AI] Using GeminiInterviewerGateway with Dynamic Model Selection");
+        System.out.println("[AI] Using GeminiAiAdapter with Dynamic Model Selection");
         System.out.println("[AI] API Key status: " + (apiKey != null && !apiKey.isBlank() ? "OK (length: " + apiKey.length() + ")" : "MISSING"));
         System.out.println("[AI] Realtime Model: " + realtimeModel);
         System.out.println("[AI] Analysis Model: " + analysisModel);
@@ -232,7 +239,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                     },
                     {"idx": 1, "type": "BEHAVIORAL", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]},
                     ...
-                    {"idx": 9, "type": "WRAPUP", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]}
+                    {"idx": 9, "type": "TECHNICAL", "text": "질문 내용", "intent": "의도 설명", "guides": ["가이드1", "가이드2", "가이드3"]}
                   ]
                 }
                 """);
@@ -296,8 +303,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
         }
         
-        JsonNode content = candidates.get(0).path("content");
-        JsonNode parts = content.path("parts");
+        JsonNode contentNode = candidates.get(0).path("content");
+        JsonNode parts = contentNode.path("parts");
         
         if (parts.isEmpty()) {
             throw new RuntimeException("Gemini 응답에 parts가 없습니다");
@@ -445,12 +452,12 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         }
         
         JsonNode candidate = candidates.get(0);
-        JsonNode content = candidate.path("content");
-        JsonNode parts = content.path("parts");
+        JsonNode contentNode = candidate.path("content");
+        JsonNode parts = contentNode.path("parts");
         
         // 후보자 정보 로깅
         System.err.println("[Gemini Debug] Candidate finish reason: " + candidate.path("finishReason").asText("NONE"));
-        System.err.println("[Gemini Debug] Content node: " + content.toPrettyString());
+        System.err.println("[Gemini Debug] Content node: " + contentNode.toPrettyString());
         
         if (parts.isEmpty()) {
             System.err.println("[Gemini Debug] Parts is empty. Full candidate: " + candidate.toPrettyString());
@@ -585,8 +592,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                 throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
             }
             
-            JsonNode content = candidates.get(0).path("content");
-            JsonNode parts = content.path("parts");
+            JsonNode contentNode = candidates.get(0).path("content");
+            JsonNode parts = contentNode.path("parts");
             
             if (parts.isEmpty()) {
                 throw new RuntimeException("Gemini 응답에 parts가 없습니다");
@@ -860,8 +867,8 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
             log.info("[AI] Gemini generateBatchEvaluation - finishReason: {}, thoughtsTokens: {}, totalTokens: {}", 
                     finishReason, thoughtsTokenCount, totalTokenCount);
             
-            JsonNode content = firstCandidate.path("content");
-            JsonNode parts = content.path("parts");
+            JsonNode contentNode = firstCandidate.path("content");
+            JsonNode parts = contentNode.path("parts");
             
             if (parts.isEmpty()) {
                 throw new RuntimeException("Gemini 응답에 parts가 없습니다 - finishReason: " + finishReason + 
@@ -911,7 +918,144 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
     }
 
     @Override
-    public Map<String, Object> extractDocumentInfo(String documentText) throws Exception {
+    public Map<String, Object> finalizeReport(String sessionJson, String previousResponseId) {
+        try {
+            String prompt = """
+                    당신은 엄격하고 전문적인 시니어 면접관입니다. 아래 facts는 서버가 계산/정리한 공식 정보이므로 사실로 간주하고 반드시 반영하세요.
+                    
+                    점수 기준 (100점 만점, 엄격한 기준):
+                    - 0-20점: 매우 부족 (답변 회피, 기본 지식 전무)
+                    - 21-40점: 부족 (기본 지식 부족, 대폭 개선 필요)
+                    - 41-60점: 보통 (최소 요구사항 충족, 추가 학습 필요)
+                    - 61-80점: 좋음 (실무 수준, 일부 개선점 존재)
+                    - 81-95점: 우수 (전문성 인정, 경험 풍부)
+                    - 96-100점: 최우수 (시니어급 전문성, 리더십 자질)
+                    
+                    엄격한 평가 원칙:
+                    1. overallScore와 subscores를 정확히 반영하여 현실적이고 직설적인 피드백 제공
+                    2. 부족한 부분에 대해서는 명확하고 구체적인 문제점 지적
+                    3. 강점보다는 개선이 필요한 영역에 더 많은 비중을 두어 분석
+                    4. 실제 답변 내용을 근거로 기술적 부족함이나 경험 부족을 명시
+                    5. 면접 통과를 위해 반드시 개선해야 할 핵심 요소들을 구체적으로 제시
+                    
+                    작성 요구사항:
+                    - strengths: 명확한 강점만 간결하게 언급 (과도한 격려 금지)
+                    - areasToImprove: 개선이 필요한 영역을 구체적이고 직설적으로 분석 (가장 중요한 섹션)
+                    - nextSteps: 현재 수준의 부족함을 인정하고 체계적인 학습 계획과 구체적 실행 방안 제시
+                    - 각 항목 3-4문장으로 상세하고 구체적으로 작성
+                    - 한국어, 존댓말 없이 전문적이고 직설적인 톤 유지
+                    - 실무에서 요구되는 수준과의 차이를 명확히 인식시키는 피드백
+                    
+                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
+                    {
+                      "strengths": "강점 분석 (3-4문장)",
+                      "areasToImprove": "개선점 분석 (3-4문장)",
+                      "nextSteps": "다음 단계 가이드 (3-4문장)"
+                    }
+                    
+                    [facts JSON]
+                    %s
+                    """.formatted(sessionJson);
+
+            // 컨텍스트 관리
+            String conversationKey = previousResponseId != null ? previousResponseId : "report_" + sessionJson.hashCode();
+            List<Map<String, Object>> history = conversationHistory.computeIfAbsent(conversationKey, k -> new ArrayList<>());
+            
+            // 히스토리가 비어있으면 시스템 메시지 추가
+            if (history.isEmpty()) {
+                history.add(Map.of(
+                    "role", "user",
+                    "parts", List.of(Map.of("text", "당신은 엄격하고 전문적인 시니어 면접관입니다. 면접 결과를 종합하여 현실적이고 직설적인 리포트를 작성해주세요."))
+                ));
+                history.add(Map.of(
+                    "role", "model", 
+                    "parts", List.of(Map.of("text", "네, 면접 결과를 엄격하고 현실적인 기준으로 분석하여 개선점 중심의 직설적인 리포트를 작성하겠습니다."))
+                ));
+            }
+            
+            history.add(Map.of(
+                "role", "user",
+                "parts", List.of(Map.of("text", prompt))
+            ));
+
+            Map<String, Object> requestBody = Map.of(
+                "contents", history,
+                "generationConfig", Map.of(
+                    "temperature", 0.3,
+                    "maxOutputTokens", 6000,  // 4000 → 6000 (MAX_TOKENS 해결)
+                    "responseMimeType", "application/json",
+                    "responseSchema", Map.of(
+                        "type", "object",
+                        "properties", Map.of(
+                            "strengths", Map.of("type", "string"),
+                            "areasToImprove", Map.of("type", "string"),
+                            "nextSteps", Map.of("type", "string")
+                        ),
+                        "required", List.of("strengths", "areasToImprove", "nextSteps")
+                    )
+                )
+            );
+
+            String selectedModel = getOptimalModel("finalizeReport");
+            String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            
+            JsonNode root = om.readTree(response.getBody());
+            JsonNode candidates = root.path("candidates");
+            
+            if (candidates.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
+            }
+            
+            JsonNode contentNode = candidates.get(0).path("content");
+            JsonNode parts = contentNode.path("parts");
+            
+            if (parts.isEmpty()) {
+                throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+            }
+            
+            String responseText = parts.get(0).path("text").asText();
+            
+            // 응답을 히스토리에 추가
+            history.add(Map.of(
+                "role", "model",
+                "parts", List.of(Map.of("text", responseText))
+            ));
+            
+            // 안전한 JSON 파싱
+            try {
+                if (!responseText.trim().startsWith("{")) {
+                    throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + responseText.substring(0, Math.min(responseText.length(), 100)));
+                }
+                return om.readValue(responseText, Map.class);
+            } catch (Exception e) {
+                System.err.println("[Gemini] finalizeReport JSON 파싱 실패. 응답 텍스트: " + responseText);
+                // 폴백: 기본 응답 생성
+                return Map.of(
+                    "strengths", "논리 전개가 명확합니다.",
+                    "areasToImprove", "사례 기반 근거를 보강하세요.",
+                    "nextSteps", "핵심 경험을 STAR로 1분 요약하는 연습."
+                );
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[AI][Gemini] finalizeReport 실패: " + e.getMessage());
+            return Map.of(
+                    "strengths", "논리 전개가 명확합니다.",
+                    "areasToImprove", "사례 기반 근거를 보강하세요.",
+                    "nextSteps", "핵심 경험을 STAR로 1분 요약하는 연습."
+            );
+        }
+    }
+
+    @Override
+    public Map<String, Object> extractDocumentInfo(String rawText) throws Exception {
         try {
             String prompt = """
                     당신은 전문 HR 담당자입니다. 아래 문서에서 면접에 필요한 종합적인 정보를 추출해주세요.
@@ -1010,7 +1154,7 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
                       "specialties": ["백엔드 개발", "클라우드 인프라", "데이터베이스 설계"],
                       "preferences": ["IntelliJ IDEA", "Git/GitHub", "Agile 방법론", "TDD"]
                     }
-                    """.formatted(documentText);
+                    """.formatted(rawText);
 
             Map<String, Object> requestBody = Map.of(
                 "contents", List.of(
@@ -1164,355 +1308,213 @@ public class GeminiInterviewerGateway implements InterviewerAiGateway {
         }
     }
 
+    /**
+     * Gemini API 응답에서 마크다운 코드블록을 제거하고 순수 JSON을 추출
+     * (Global GeminiLlmGateway에서 동일한 로직 사용)
+     */
+    private String extractJsonFromMarkdown(String response) {
+        if (response == null || response.trim().isEmpty()) {
+            return "{}";
+        }
+        
+        // 마크다운 코드블록 패턴 제거
+        String cleaned = response.trim();
+        
+        // ```json ... ``` 패턴 제거
+        if (cleaned.startsWith("```json") && cleaned.endsWith("```")) {
+            cleaned = cleaned.substring(7, cleaned.length() - 3).trim();
+        }
+        // ``` ... ``` 패턴 제거  
+        else if (cleaned.startsWith("```") && cleaned.endsWith("```")) {
+            cleaned = cleaned.substring(3, cleaned.length() - 3).trim();
+        }
+        
+        // 첫 번째 { 부터 마지막 } 까지만 추출 (추가 텍스트 제거)
+        int firstBrace = cleaned.indexOf('{');
+        int lastBrace = cleaned.lastIndexOf('}');
+        
+        if (firstBrace != -1 && lastBrace != -1 && firstBrace <= lastBrace) {
+            cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+        }
+        
+        return cleaned;
+    }
+    
     @Override
-    public Map<String, Object> finalizeReport(String sessionJson, String previousResponseId) {
-        try {
-            String prompt = """
-                    당신은 엄격하고 전문적인 시니어 면접관입니다. 아래 facts는 서버가 계산/정리한 공식 정보이므로 사실로 간주하고 반드시 반영하세요.
-                    
-                    점수 기준 (100점 만점, 엄격한 기준):
-                    - 0-20점: 매우 부족 (답변 회피, 기본 지식 전무)
-                    - 21-40점: 부족 (기본 지식 부족, 대폭 개선 필요)
-                    - 41-60점: 보통 (최소 요구사항 충족, 추가 학습 필요)
-                    - 61-80점: 좋음 (실무 수준, 일부 개선점 존재)
-                    - 81-95점: 우수 (전문성 인정, 경험 풍부)
-                    - 96-100점: 최우수 (시니어급 전문성, 리더십 자질)
-                    
-                    엄격한 평가 원칙:
-                    1. overallScore와 subscores를 정확히 반영하여 현실적이고 직설적인 피드백 제공
-                    2. 부족한 부분에 대해서는 명확하고 구체적인 문제점 지적
-                    3. 강점보다는 개선이 필요한 영역에 더 많은 비중을 두어 분석
-                    4. 실제 답변 내용을 근거로 기술적 부족함이나 경험 부족을 명시
-                    5. 면접 통과를 위해 반드시 개선해야 할 핵심 요소들을 구체적으로 제시
-                    
-                    작성 요구사항:
-                    - strengths: 명확한 강점만 간결하게 언급 (과도한 격려 금지)
-                    - areasToImprove: 개선이 필요한 영역을 구체적이고 직설적으로 분석 (가장 중요한 섹션)
-                    - nextSteps: 현재 수준의 부족함을 인정하고 체계적인 학습 계획과 구체적 실행 방안 제시
-                    - 각 항목 3-4문장으로 상세하고 구체적으로 작성
-                    - 한국어, 존댓말 없이 전문적이고 직설적인 톤 유지
-                    - 실무에서 요구되는 수준과의 차이를 명확히 인식시키는 피드백
-                    
-                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
-                    {
-                      "strengths": "강점 분석 (3-4문장)",
-                      "areasToImprove": "개선점 분석 (3-4문장)",
-                      "nextSteps": "다음 단계 가이드 (3-4문장)"
-                    }
-                    
-                    [facts JSON]
-                    %s
-                    """.formatted(sessionJson);
+    public ModerationResult moderateContent(String content) throws Exception {
+        String prompt = """
+                당신은 컨텐츠 검열 전문가입니다. 다음 내용이 부적절한지 판단해주세요.
+                
+                검열 기준 및 표준 사유 문구 (부적절한 경우 아래 정확한 문구 중 하나를 사용):
+                1. "욕설 및 비속어" - 욕설, 비속어, 모욕적 언어
+                2. "개인정보 노출" - 전화번호, 주소, 이메일 등 개인정보
+                3. "혐오 표현" - 차별, 혐오 발언, 편견적 내용
+                4. "성적 콘텐츠" - 음란, 선정적, 성적 내용
+                5. "폭력적 내용" - 폭력, 위협, 자해 관련 내용
+                6. "불법 활동" - 불법적 행위, 범죄 관련 내용
+                7. "스팸성 내용" - 광고, 홍보, 반복적 내용
+                
+                **중요**: 부적절하다고 판단되면 reason 필드에 위의 7가지 표준 문구 중 정확히 일치하는 하나만 사용하세요. 변형하거나 추가 설명하지 마세요.
+                
+                분석 대상 텍스트:
+                %s
+                
+                응답은 반드시 다음 JSON 형식으로 작성해주세요:
+                {
+                  "inappropriate": false,
+                  "reason": "표준 사유 문구 중 정확한 하나 (부적절한 경우에만)"
+                }
+                """.formatted(content);
 
-            // 컨텍스트 관리
-            String conversationKey = previousResponseId != null ? previousResponseId : "report_" + sessionJson.hashCode();
-            List<Map<String, Object>> history = conversationHistory.computeIfAbsent(conversationKey, k -> new ArrayList<>());
-            
-            // 히스토리가 비어있으면 시스템 메시지 추가
-            if (history.isEmpty()) {
-                history.add(Map.of(
-                    "role", "user",
-                    "parts", List.of(Map.of("text", "당신은 엄격하고 전문적인 시니어 면접관입니다. 면접 결과를 종합하여 현실적이고 직설적인 리포트를 작성해주세요."))
-                ));
-                history.add(Map.of(
-                    "role", "model", 
-                    "parts", List.of(Map.of("text", "네, 면접 결과를 엄격하고 현실적인 기준으로 분석하여 개선점 중심의 직설적인 리포트를 작성하겠습니다."))
-                ));
-            }
-            
-            history.add(Map.of(
-                "role", "user",
-                "parts", List.of(Map.of("text", prompt))
-            ));
-
-            Map<String, Object> requestBody = Map.of(
-                "contents", history,
-                "generationConfig", Map.of(
-                    "temperature", 0.3,
-                    "maxOutputTokens", 6000,  // 4000 → 6000 (MAX_TOKENS 해결)
-                    "responseMimeType", "application/json",
-                    "responseSchema", Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                            "strengths", Map.of("type", "string"),
-                            "areasToImprove", Map.of("type", "string"),
-                            "nextSteps", Map.of("type", "string")
-                        ),
-                        "required", List.of("strengths", "areasToImprove", "nextSteps")
+        Map<String, Object> requestBody = Map.of(
+            "contents", List.of(
+                Map.of(
+                    "parts", List.of(
+                        Map.of("text", prompt)
                     )
                 )
-            );
+            ),
+            "generationConfig", Map.of(
+                "temperature", 0.1,
+                "maxOutputTokens", 1000,
+                "responseMimeType", "application/json",
+                "responseSchema", Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                        "inappropriate", Map.of("type", "boolean"),
+                        "reason", Map.of("type", "string")
+                    ),
+                    "required", List.of("inappropriate")
+                )
+            )
+        );
 
-            String selectedModel = getOptimalModel("finalizeReport");
-            String url = baseUrl + "/models/" + selectedModel + ":generateContent?key=" + apiKey;
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            
-            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
-            
-            JsonNode root = om.readTree(response.getBody());
-            JsonNode candidates = root.path("candidates");
-            
-            if (candidates.isEmpty()) {
-                throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
-            }
-            
-            JsonNode content = candidates.get(0).path("content");
-            JsonNode parts = content.path("parts");
-            
-            if (parts.isEmpty()) {
-                throw new RuntimeException("Gemini 응답에 parts가 없습니다");
-            }
-            
-            String responseText = parts.get(0).path("text").asText();
-            
-            // 응답을 히스토리에 추가
-            history.add(Map.of(
-                "role", "model",
-                "parts", List.of(Map.of("text", responseText))
-            ));
-            
-            // 안전한 JSON 파싱
-            try {
-                if (!responseText.trim().startsWith("{")) {
-                    throw new RuntimeException("Gemini 응답이 JSON 형식이 아닙니다: " + responseText.substring(0, Math.min(responseText.length(), 100)));
-                }
-                return om.readValue(responseText, Map.class);
-            } catch (Exception e) {
-                System.err.println("[Gemini] finalizeReport JSON 파싱 실패. 응답 텍스트: " + responseText);
-                // 폴백: 기본 응답 생성
-                return Map.of(
-                    "strengths", "논리 전개가 명확합니다.",
-                    "areasToImprove", "사례 기반 근거를 보강하세요.",
-                    "nextSteps", "핵심 경험을 STAR로 1분 요약하는 연습."
-                );
-            }
-            
-        } catch (Exception e) {
-            System.err.println("[AI][Gemini] finalizeReport 실패: " + e.getMessage());
-            return Map.of(
-                    "strengths", "논리 전개가 명확합니다.",
-                    "areasToImprove", "사례 기반 근거를 보강하세요.",
-                    "nextSteps", "핵심 경험을 STAR로 1분 요약하는 연습."
-            );
+        String url = baseUrl + "/models/" + realtimeModel + ":generateContent?key=" + apiKey;
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        
+        ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+        
+        JsonNode root = om.readTree(response.getBody());
+        JsonNode candidates = root.path("candidates");
+        
+        if (candidates.isEmpty()) {
+            throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
         }
-    }
-
-    /**
-     * 컨텐츠 검열을 위한 메서드
-     * @param content 검열할 텍스트 내용
-     * @return ModerationResult 검열 결과
-     */
-    public ModerationResult moderateContent(String content) {
-        try {
-            String prompt = """
-                    당신은 커뮤니티 컨텐츠 검열 전문가입니다. 다음 텍스트가 부적절한 내용을 포함하고 있는지 판단해주세요.
-                    
-                    **검열 기준:**
-                    1. 욕설, 비속어, 모욕적 표현
-                    2. 성적인 내용이나 음란물
-                    3. 폭력적이거나 위협적인 내용
-                    4. 혐오 발언 (인종, 성별, 종교 등)
-                    5. 스팸성 광고나 홍보 내용
-                    6. 불법적이거나 범죄를 조장하는 내용
-                    
-                    **검열 대상 텍스트:**
-                    %s
-                    
-                    **응답 요구사항:**
-                    - inappropriate: true/false (부적절한 내용 포함 여부)
-                    - reason: 부적절한 경우 구체적인 사유, 적절한 경우 null
-                    
-                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
-                    {
-                      "inappropriate": true,
-                      "reason": "구체적인 검열 사유"
-                    }
-                    또는
-                    {
-                      "inappropriate": false,
-                      "reason": null
-                    }
-                    """.formatted(content);
-
-            Map<String, Object> requestBody = Map.of(
-                "contents", List.of(
-                    Map.of(
-                        "parts", List.of(
-                            Map.of("text", prompt)
-                        )
-                    )
-                ),
-                "generationConfig", Map.of(
-                    "maxOutputTokens", 1000,
-                    "temperature", 0.1  // 일관성 있는 검열을 위해 낮은 temperature
-                )
-            );
-
-            String url = baseUrl + "/models/" + analysisModel + ":generateContent?key=" + apiKey;
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-            String responseBody = response.getBody();
-            
-            JsonNode root = om.readTree(responseBody);
-            JsonNode candidates = root.path("candidates");
-            
-            if (candidates.isArray() && candidates.size() > 0) {
-                JsonNode candidateTextNode = candidates.get(0).path("content").path("parts").get(0).path("text");
-                String responseText = candidateTextNode.asText();
-                
-                // 마크다운 코드블록 제거
-                String cleanedResponse = extractJsonFromMarkdown(responseText);
-                
-                try {
-                    Map<String, Object> moderationResult = om.readValue(cleanedResponse, Map.class);
-                    boolean inappropriate = (Boolean) moderationResult.get("inappropriate");
-                    String reason = (String) moderationResult.get("reason");
-                    
-                    log.debug("컨텐츠 검열 완료 - 부적절함: {}, 사유: {}", inappropriate, reason);
-                    return new ModerationResult(inappropriate, reason);
-                    
-                } catch (Exception e) {
-                    log.error("검열 응답 파싱 실패 - 원본: {}, 정리 후: {}", responseText, cleanedResponse);
-                    // 파싱 실패 시 안전하게 승인 처리
-                    return new ModerationResult(false, null);
-                }
-            } else {
-                log.warn("Gemini API 응답에서 candidates가 없습니다.");
-                return new ModerationResult(false, null);
-            }
-            
-        } catch (Exception e) {
-            log.error("컨텐츠 검열 중 오류 발생: {}", e.getMessage(), e);
-            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
-            return new ModerationResult(true, "Gemini 검열 시스템 오류 - 관리자 검토 필요");
+        
+        JsonNode contentNode = candidates.get(0).path("content");
+        JsonNode parts = contentNode.path("parts");
+        
+        if (parts.isEmpty()) {
+            throw new RuntimeException("Gemini 응답에 parts가 없습니다");
         }
-    }
-
-    /**
-     * 이미지 검열을 위한 메서드
-     * @param base64Image Base64 인코딩된 이미지 데이터
-     * @return ModerationResult 검열 결과
-     */
-    public ModerationResult moderateImage(String base64Image) {
+        
+        String responseText = parts.get(0).path("text").asText();
+        
         try {
-            String prompt = """
-                    당신은 이미지 검열 전문가입니다. 다음 이미지가 부적절한 내용을 포함하고 있는지 판단해주세요.
-                    
-                    **이미지 검열 기준:**
-                    1. 성인/음란 콘텐츠 (노출, 성적 행위 등)
-                    2. 폭력적이거나 잔혹한 이미지
-                    3. 혐오 표현이나 상징 (나치, 인종차별 등)
-                    4. 개인정보 노출 (신분증, 카드번호, 주소 등)
-                    5. 스팸성 광고 이미지
-                    6. 불법적이거나 범죄를 조장하는 이미지
-                    7. 자해나 자살을 조장하는 이미지
-                    
-                    **응답 요구사항:**
-                    - inappropriate: true/false (부적절한 내용 포함 여부)
-                    - reason: 부적절한 경우 구체적인 사유, 적절한 경우 null
-                    
-                    응답은 반드시 다음 JSON 형식으로만 작성해주세요:
-                    {
-                      "inappropriate": true,
-                      "reason": "구체적인 검열 사유"
-                    }
-                    또는
-                    {
-                      "inappropriate": false,
-                      "reason": null
-                    }
-                    """;
-
-            Map<String, Object> requestBody = Map.of(
-                "contents", List.of(
-                    Map.of(
-                        "parts", List.of(
-                            Map.of("text", prompt),
-                            Map.of("inline_data", Map.of(
-                                "mime_type", "image/jpeg", // 기본값, 실제로는 동적으로 설정 가능
-                                "data", base64Image
-                            ))
-                        )
-                    )
-                ),
-                "generationConfig", Map.of(
-                    "maxOutputTokens", 1000,
-                    "temperature", 0.1  // 일관성 있는 검열을 위해 낮은 temperature
-                )
-            );
-
-            String url = baseUrl + "/models/" + realtimeModel + ":generateContent?key=" + apiKey;
+            Map<String, Object> parsedResponse = om.readValue(responseText, Map.class);
+            boolean inappropriate = (Boolean) parsedResponse.getOrDefault("inappropriate", false);
+            String reason = (String) parsedResponse.get("reason");
             
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-            
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-            String responseBody = response.getBody();
-            
-            JsonNode root = om.readTree(responseBody);
-            JsonNode candidates = root.path("candidates");
-            
-            if (candidates.isArray() && candidates.size() > 0) {
-                JsonNode candidateTextNode = candidates.get(0).path("content").path("parts").get(0).path("text");
-                String responseText = candidateTextNode.asText();
-                
-                // 마크다운 코드블록 제거
-                String cleanedResponse = extractJsonFromMarkdown(responseText);
-                
-                try {
-                    Map<String, Object> moderationResult = om.readValue(cleanedResponse, Map.class);
-                    boolean inappropriate = (Boolean) moderationResult.get("inappropriate");
-                    String reason = (String) moderationResult.get("reason");
-                    
-                    log.debug("이미지 검열 완료 - 부적절함: {}, 사유: {}", inappropriate, reason);
-                    return new ModerationResult(inappropriate, reason);
-                    
-                } catch (Exception e) {
-                    log.error("이미지 검열 응답 파싱 실패 - 원본: {}, 정리 후: {}", responseText, cleanedResponse);
-                    // 파싱 실패 시 안전하게 승인 처리
-                    return new ModerationResult(false, null);
-                }
-            } else {
-                log.warn("Gemini API 응답에서 candidates가 없습니다. (이미지 검열)");
-                return new ModerationResult(false, null);
-            }
+            return new ModerationResult(inappropriate, reason);
             
         } catch (Exception e) {
-            log.error("이미지 검열 중 오류 발생: {}", e.getMessage(), e);
-            // 오류 발생 시 보수적으로 차단 처리 (보안 우선)
-            return new ModerationResult(true, "Gemini 이미지 검열 시스템 오류 - 관리자 검토 필요");
+            System.err.println("[Gemini] moderateContent JSON 파싱 실패. 응답 텍스트: " + responseText);
+            return new ModerationResult(false, null);
         }
     }
     
-    /**
-     * Gemini API 응답에서 마크다운 코드블록을 제거하고 순수 JSON을 추출
-     * 
-     * @param response Gemini API 응답 텍스트
-     * @return 정리된 JSON 문자열
-     */
-    private String extractJsonFromMarkdown(String response) {
-        if (response == null) {
-            return null;
+    @Override
+    public ModerationResult moderateImage(String base64Image) throws Exception {
+        String prompt = """
+                당신은 이미지 검열 전문가입니다. 다음 이미지가 부적절한지 판단해주세요.
+                
+                검열 기준 및 표준 사유 문구 (부적절한 경우 아래 정확한 문구 중 하나를 사용):
+                1. "성적 콘텐츠" - 음란, 선정적, 성적 내용
+                2. "폭력적 내용" - 폭력적, 잔혹한, 위협적 내용
+                3. "혐오 표현" - 차별, 혐오 발언, 편견적 내용
+                4. "개인정보 노출" - 신분증, 개인정보가 포함된 이미지
+                5. "불법 활동" - 불법적 행위, 범죄 관련 내용
+                6. "스팸성 내용" - 광고, 홍보, 반복적 내용
+                7. "저작권 침해" - 저작권 침해 우려가 있는 내용
+                
+                **중요**: 부적절하다고 판단되면 reason 필드에 위의 7가지 표준 문구 중 정확히 일치하는 하나만 사용하세요. 변형하거나 추가 설명하지 마세요.
+                
+                응답은 반드시 다음 JSON 형식으로 작성해주세요:
+                {
+                  "inappropriate": false,
+                  "reason": "표준 사유 문구 중 정확한 하나 (부적절한 경우에만)"
+                }
+                """;
+
+        Map<String, Object> requestBody = Map.of(
+            "contents", List.of(
+                Map.of(
+                    "parts", List.of(
+                        Map.of("text", prompt),
+                        Map.of("inlineData", Map.of(
+                            "mimeType", "image/jpeg",
+                            "data", base64Image
+                        ))
+                    )
+                )
+            ),
+            "generationConfig", Map.of(
+                "temperature", 0.1,
+                "maxOutputTokens", 1000,
+                "responseMimeType", "application/json",
+                "responseSchema", Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                        "inappropriate", Map.of("type", "boolean"),
+                        "reason", Map.of("type", "string")
+                    ),
+                    "required", List.of("inappropriate")
+                )
+            )
+        );
+
+        String url = baseUrl + "/models/" + realtimeModel + ":generateContent?key=" + apiKey;
+        
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        
+        ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+        
+        JsonNode root = om.readTree(response.getBody());
+        JsonNode candidates = root.path("candidates");
+        
+        if (candidates.isEmpty()) {
+            throw new RuntimeException("Gemini 응답에 candidates가 없습니다");
         }
         
-        // 마크다운 코드블록 제거: ```json 시작과 ``` 끝 제거
-        String cleaned = response
-            .replaceAll("```json\\s*", "")  // ```json 시작 부분 제거
-            .replaceAll("```\\s*$", "")     // ``` 끝 부분 제거
-            .trim();                        // 앞뒤 공백 제거
-            
-        log.debug("마크다운 정리 전: {}", response);
-        log.debug("마크다운 정리 후: {}", cleaned);
+        JsonNode contentNode = candidates.get(0).path("content");
+        JsonNode parts = contentNode.path("parts");
         
-        return cleaned;
+        if (parts.isEmpty()) {
+            throw new RuntimeException("Gemini 응답에 parts가 없습니다");
+        }
+        
+        String responseText = parts.get(0).path("text").asText();
+        
+        try {
+            Map<String, Object> parsedResponse = om.readValue(responseText, Map.class);
+            boolean inappropriate = (Boolean) parsedResponse.getOrDefault("inappropriate", false);
+            String reason = (String) parsedResponse.get("reason");
+            
+            return new ModerationResult(inappropriate, reason);
+            
+        } catch (Exception e) {
+            System.err.println("[Gemini] moderateImage JSON 파싱 실패. 응답 텍스트: " + responseText);
+            return new ModerationResult(false, null);
+        }
+    }
+    
+    @Override
+    public String getProviderName() {
+        return "Gemini";
     }
 }

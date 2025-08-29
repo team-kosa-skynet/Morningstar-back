@@ -74,9 +74,9 @@ public class AiUpdatesService {
         return ResponseDTO.okWithData(dtoPage);
     }
 
-    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "0 0 9 */2 * *", zone = "Asia/Seoul")
     public void scheduleDailyAiUpdates() {
-        System.out.println("매일 아침 9시 AI 뉴스 업데이트 작업을 시작합니다...");
+        System.out.println("2일에 한번 아침 9시 AI 뉴스 업데이트 작업을 시작합니다...");
         try {
             getLatestAiUpdates();
             System.out.println("AI 뉴스 업데이트 작업이 성공적으로 완료되었습니다.");

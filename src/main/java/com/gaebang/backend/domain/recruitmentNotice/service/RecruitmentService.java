@@ -51,6 +51,7 @@ public class RecruitmentService {
                 .collect(Collectors.toList());
     }
 
+    // 이것도 시간 조정?
     // 채용정보 데이터를 조회하고 DB에 저장
     @Scheduled(cron = "0 */10 * * * *", zone = "Asia/Seoul") // 10분마다 실행
     @Transactional
