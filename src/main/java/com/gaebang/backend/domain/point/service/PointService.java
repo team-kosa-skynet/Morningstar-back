@@ -17,6 +17,7 @@ import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -65,74 +66,112 @@ public class PointService {
         return CurrentPointResponseDto.fromEntity(point, point.getDepositSum() + point.getWithdrawSum());
     }
 
-    // 포인트 생성
-    // 트랜잭션이 비효율적이다 -> 재시도 로직에서 같은 트랜잭션이 실행되기 때문에 이미 한 번 실패해버린 트랜잭션은
-    // rollback이 일어나는데 그 상태에서 무의미한 재시도를 한다고 함. -> 그래도 데이터 불일치는 일어나지 않는다고 함.
-    @Transactional
+    // 포인트 생성 (재시도 로직 포함)
     public PointResponseDto createPoint(PointRequestDto pointRequestDto, PrincipalDetails principalDetails) {
-
-        // 얘는 단순히 jwt에서 가져온 것이므로 현재 트랜잭션에서 가져온 member가 아니다!
-//        Member member = principalDetails.getMember();
         Long memberId = principalDetails.getMember().getId();
-
-        // 이렇게 하면 같은 트랜잭션 안에서 멤버를 가져온 것
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new UserNotFoundException());
-
         if (memberId == null) {
             throw new UserInvalidAccessException();
         }
-        // 재시도 로직
+
+        // 재시도 로직 - 각 재시도마다 새로운 트랜잭션 생성
         int retryCount = 0;
         int maxRetries = 3;
 
         while (retryCount < maxRetries) {
             try {
-                // 최신 포인트 레코드를 한번에 조회
-                Point latestPoint = pointRepository.findLatestPointByMemberId(member.getId())
-                        .orElse(null);
-
-                Integer nextVersion = (latestPoint == null) ? 1 : latestPoint.getVersion() + 1;
-                Integer currentDepositSum = (latestPoint == null) ? 0 : latestPoint.getDepositSum();
-                Integer currentWithdrawSum = (latestPoint == null) ? 0 : latestPoint.getWithdrawSum();
-                // 포인트를 차감할 때 최신 버전의 남은 포인트를 계산해서 남은 포인트보다 사용하고자 하는 포인트가
-                // 많은지 적은지 판단하는 부분
-                if (pointRequestDto.amount() + currentDepositSum + currentWithdrawSum < 0) {
-                    throw new InsufficientFundsException();
-                }
-                // 새 누적 합계 계산
-                Integer newDepositSum = pointRequestDto.amount() > 0 ? currentDepositSum + pointRequestDto.amount() : currentDepositSum;
-                Integer newWithdrawSum = pointRequestDto.amount() < 0 ? currentWithdrawSum + pointRequestDto.amount() : currentWithdrawSum;
-                Point newPoint = pointRequestDto.toEntity(member, newDepositSum, newWithdrawSum, nextVersion);
-                // 포인트 생성 후 디비에 저장
-                pointRepository.save(newPoint);
-                // 유저의 points 업데이트
-                member.changePoint(newDepositSum + newWithdrawSum);
-                // 유저의 상태 업데이트 버전
-                PointTier pointTier = pointTierService.getTierByPoints(newDepositSum + newWithdrawSum);
-
-                // 이것은 LazyInitializationException입니다. Hibernate의 지연 로딩(Lazy Loading) 문제로 발생하는 전형적인 오류입니다.
-                // 이건 등급이 바뀌었을 때만 실행 될 수 있게 조정 => DB 효율성 상승을 위하여
-                // member의 티어가 만약 null 값일 때 로직 추가
-                if (member.getCurrentTier() == null ||
-                        !Objects.equals(member.getCurrentTier().getTierOrder(), pointTier.getTierOrder())) {
-                    member.changeTier(pointTier);
-                }
-
-                // 변경된 유저를 db에 저장
-                memberRepository.save(member);
-
-                // return 은 dto로
-                return PointResponseDto.fromEntity(newPoint);
-
-            } catch (DataIntegrityViolationException e) {
+                return createPointInternal(pointRequestDto, memberId);
+                
+            } catch (DataIntegrityViolationException | ObjectOptimisticLockingFailureException e) {
                 retryCount++;
+                log.warn("포인트 생성 충돌 발생 - 회원ID: {}, 재시도: {}/{}, 오류: {}", 
+                        memberId, retryCount, maxRetries, e.getClass().getSimpleName());
+                
                 if (retryCount >= maxRetries) {
+                    throw new PointCreationRetryExhaustedException();
+                }
+                
+                // 재시도 전 잠시 대기 (동시성 충돌 완화)
+                try {
+                    Thread.sleep(50L * retryCount); // 50ms, 100ms, 150ms 간격으로 대기
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
                     throw new PointCreationRetryExhaustedException();
                 }
             }
         }
 
         throw new PointCreationRetryExhaustedException();
+    }
+
+    /**
+     * 포인트 생성 내부 로직 (각 재시도마다 새로운 트랜잭션에서 실행)
+     */
+    @Transactional
+    private PointResponseDto createPointInternal(PointRequestDto pointRequestDto, Long memberId) {
+        // 트랜잭션 안에서 Member 조회
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new UserNotFoundException());
+
+        // 최신 포인트 레코드를 한번에 조회
+        Point latestPoint = pointRepository.findLatestPointByMemberId(member.getId())
+                .orElse(null);
+
+        Integer nextVersion = (latestPoint == null) ? 1 : latestPoint.getVersion() + 1;
+        Integer currentDepositSum = (latestPoint == null) ? 0 : latestPoint.getDepositSum();
+        Integer currentWithdrawSum = (latestPoint == null) ? 0 : latestPoint.getWithdrawSum();
+        
+        // 포인트 잔액 검증
+        if (pointRequestDto.amount() + currentDepositSum + currentWithdrawSum < 0) {
+            throw new InsufficientFundsException();
+        }
+        
+        // 새 누적 합계 계산
+        Integer newDepositSum = pointRequestDto.amount() > 0 ? currentDepositSum + pointRequestDto.amount() : currentDepositSum;
+        Integer newWithdrawSum = pointRequestDto.amount() < 0 ? currentWithdrawSum + pointRequestDto.amount() : currentWithdrawSum;
+        
+        Point newPoint = pointRequestDto.toEntity(member, newDepositSum, newWithdrawSum, nextVersion);
+        
+        // 포인트 생성 후 디비에 저장
+        pointRepository.save(newPoint);
+        
+        // 계산된 포인트 값
+        Integer calculatedPoint = newDepositSum + newWithdrawSum;
+        
+        // Member의 현재 포인트를 원자적으로 업데이트 (데이터 정합성 보장)
+        memberRepository.updateCurrentPoint(member.getId(), calculatedPoint);
+        
+        // 포인트 기반 티어 업데이트 (필요한 경우에만)
+        updateMemberTierIfNeeded(member, calculatedPoint);
+
+        log.info("포인트 생성 완료 - 회원ID: {}, 금액: {}, 총 포인트: {}", 
+                member.getId(), pointRequestDto.amount(), calculatedPoint);
+
+        return PointResponseDto.fromEntity(newPoint);
+    }
+
+    /**
+     * 포인트 변경에 따른 회원 티어 업데이트 (필요한 경우에만)
+     * 티어 변경이 필요한 경우에만 DB 업데이트를 수행하여 효율성 향상
+     */
+    private void updateMemberTierIfNeeded(Member member, Integer newPointTotal) {
+        try {
+            PointTier newTier = pointTierService.getTierByPoints(newPointTotal);
+            
+            // 현재 티어가 없거나 티어가 변경된 경우에만 업데이트
+            if (member.getCurrentTier() == null ||
+                    !Objects.equals(member.getCurrentTier().getTierOrder(), newTier.getTierOrder())) {
+                
+                member.changeTier(newTier);
+                memberRepository.save(member); // 티어 변경만 저장
+                
+                log.info("회원 티어 업데이트 완료 - 회원ID: {}, 새 티어: {}, 포인트: {}", 
+                        member.getId(), newTier.getTierType(), newPointTotal);
+            }
+            
+        } catch (Exception e) {
+            log.error("회원 티어 업데이트 실패 - 회원ID: {}, 포인트: {}, 오류: {}", 
+                    member.getId(), newPointTotal, e.getMessage());
+            // 티어 업데이트 실패해도 포인트 적립은 성공 처리
+        }
     }
 }
