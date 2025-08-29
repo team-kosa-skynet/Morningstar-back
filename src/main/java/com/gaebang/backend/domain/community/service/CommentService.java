@@ -9,7 +9,6 @@ import com.gaebang.backend.domain.community.exception.CommentNotFoundException;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.repository.CommentRepository;
 import com.gaebang.backend.domain.member.entity.Member;
-import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.member.service.MemberService;
 import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.entity.PointType;
@@ -105,7 +104,7 @@ public class CommentService {
         // AI 어시스턴트 전용 계정 조회 (Member ID = 999)
         Member aiMember = memberRepository.findById(999L)
                 .orElseThrow(() -> new RuntimeException("AI 어시스턴트 계정이 존재하지 않습니다 (ID: 999)"));
-        
+
         // AI 답변 내용 (기술 정보 제거하여 자연스럽게)
         String finalContent = content;
 
@@ -116,10 +115,10 @@ public class CommentService {
                 .build();
 
         Comment savedComment = commentRepository.save(aiComment);
-        
+
         // AI 댓글은 검열하지 않음 (이미 생성 단계에서 검열 완료)
         // 포인트도 지급하지 않음 (AI 봇이므로)
-        
+
         return savedComment;
     }
 

@@ -7,10 +7,8 @@ import com.gaebang.backend.domain.community.entity.Board;
 import com.gaebang.backend.domain.community.entity.Comment;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.service.CommentService;
-import com.gaebang.backend.domain.llm.port.InterviewerAiGateway;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -24,19 +22,20 @@ import java.util.concurrent.CompletableFuture;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class AiBotService {
     
     /**
      * AI 어시스턴트 전용 Member 계정 ID
      */
     private static final Long AI_BOT_MEMBER_ID = 999L;
-    
+
     private final BotResponseRepository botResponseRepository;
     private final BotResponseRequestRepository botResponseRequestRepository;
     private final BoardRepository boardRepository;
     private final CommentService commentService;
     private final InterviewerAiGateway aiGateway;
-    
+
     public AiBotService(
             BotResponseRepository botResponseRepository,
             BotResponseRequestRepository botResponseRequestRepository,
@@ -50,7 +49,7 @@ public class AiBotService {
         this.commentService = commentService;
         this.aiGateway = aiGateway;
     }
-    
+
     @Value("${aibot.enabled:true}")
     private boolean aiBotEnabled;
     
@@ -127,7 +126,7 @@ public class AiBotService {
             // 실제 AI 답변 생성
             String aiAnswer = generateRealAnswer(board);
             double aiConfidence = 0.90; // Gemini/OpenAI 답변 기본 신뢰도
-            
+
             // 2. 답변 업데이트
             botResponse.markAsGenerated(aiAnswer, aiConfidence);
             botResponseRepository.save(botResponse);
@@ -169,7 +168,7 @@ public class AiBotService {
      */
     private Comment createAiComment(Board board, BotResponse botResponse) {
         // Comment 생성 - AI 서명은 CommentService에서 처리
-        return commentService.createAiComment(board.getId(), botResponse.getResponse(), 
+        return commentService.createAiComment(board.getId(), botResponse.getResponse(),
                 botResponse.getAiProvider().getDisplayName(), botResponse.getConfidenceScore());
     }
     
@@ -180,21 +179,21 @@ public class AiBotService {
         try {
             // InterviewerAiGateway의 generateQuestionAnswer 메서드 활용
             String aiAnswer = aiGateway.generateQuestionAnswer(board.getTitle(), board.getContent());
-            
-            log.debug("[AiBot] AI 답변 생성 완료 - boardId: {}, provider: {}, length: {}", 
+
+            log.debug("[AiBot] AI 답변 생성 완료 - boardId: {}, provider: {}, length: {}",
                     board.getId(), aiGateway.getProviderName(), aiAnswer.length());
-                    
+
             return aiAnswer;
-            
+
         } catch (Exception e) {
-            log.error("[AiBot] AI 답변 생성 실패, 폴백 답변 사용 - boardId: {}, error: {}", 
+            log.error("[AiBot] AI 답변 생성 실패, 폴백 답변 사용 - boardId: {}, error: {}",
                     board.getId(), e.getMessage());
-            
+
             // AI 실패 시 폴백 답변
             return generateFallbackAnswer(board);
         }
     }
-    
+
     /**
      * AI 실패 시 폴백 답변
      */
@@ -202,7 +201,7 @@ public class AiBotService {
         return String.format("안녕하세요! '%s'에 대한 질문을 확인했습니다.\n\n" +
                 "현재 AI 시스템에 일시적인 문제가 발생하여 상세한 답변을 제공할 수 없습니다. " +
                 "빠른 시일 내에 문제를 해결하겠습니다.\n\n" +
-                "이용에 불편을 드려 죄송합니다.", 
+                "이용에 불편을 드려 죄송합니다.",
                 board.getTitle());
     }
     
