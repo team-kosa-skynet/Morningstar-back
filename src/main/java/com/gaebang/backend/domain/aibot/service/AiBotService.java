@@ -7,8 +7,10 @@ import com.gaebang.backend.domain.community.entity.Board;
 import com.gaebang.backend.domain.community.entity.Comment;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.service.CommentService;
+import com.gaebang.backend.domain.llm.port.InterviewerAiGateway;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -22,7 +24,6 @@ import java.util.concurrent.CompletableFuture;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AiBotService {
     
     /**

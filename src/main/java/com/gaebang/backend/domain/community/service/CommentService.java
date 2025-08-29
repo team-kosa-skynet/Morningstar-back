@@ -4,17 +4,18 @@ import com.gaebang.backend.domain.community.dto.reqeust.CommentRequestDto;
 import com.gaebang.backend.domain.community.dto.response.CommentResponseDto;
 import com.gaebang.backend.domain.community.entity.Board;
 import com.gaebang.backend.domain.community.entity.Comment;
+import com.gaebang.backend.domain.community.event.CommentCreatedEvent;
+import com.gaebang.backend.domain.community.event.CommentUpdatedEvent;
 import com.gaebang.backend.domain.community.exception.BoardNotFoundException;
 import com.gaebang.backend.domain.community.exception.CommentNotFoundException;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
 import com.gaebang.backend.domain.community.repository.CommentRepository;
 import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.member.service.MemberService;
 import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.entity.PointType;
 import com.gaebang.backend.domain.point.service.PointService;
-import com.gaebang.backend.domain.community.event.CommentCreatedEvent;
-import com.gaebang.backend.domain.community.event.CommentUpdatedEvent;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -54,7 +55,7 @@ public class CommentService {
                 .orElseThrow(CommentNotFoundException::new);
 
         editComment.update(commentRequestDto.content());
-        
+
         // 트랜잭션 커밋 후 검열을 위한 이벤트 발행
         eventPublisher.publishEvent(new CommentUpdatedEvent(commentId));
     }
@@ -74,7 +75,7 @@ public class CommentService {
                 .amount(5)
                 .build();
         pointService.createPoint(pointRequestDto, principalDetails);
-        
+
         // 트랜잭션 커밋 후 검열을 위한 이벤트 발행
         eventPublisher.publishEvent(new CommentCreatedEvent(savedComment.getId()));
     }
@@ -91,8 +92,9 @@ public class CommentService {
 
     /**
      * AI 봇 전용 댓글 생성
-     * @param boardId 게시글 ID
-     * @param content AI 답변 내용
+     *
+     * @param boardId    게시글 ID
+     * @param content    AI 답변 내용
      * @param aiProvider AI 제공자 이름
      * @param confidence 답변 신뢰도
      * @return 생성된 댓글
