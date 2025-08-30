@@ -1,5 +1,6 @@
 package com.gaebang.backend.domain.community.dto.response;
 
+import com.gaebang.backend.domain.community.entity.BoardCategory;
 import lombok.Builder;
 
 import java.time.LocalDateTime;
@@ -8,7 +9,7 @@ import java.time.LocalDateTime;
 public record BoardListProjectionDto(
         Long boardId,              // 게시글 ID
         String title,              // 제목
-        String category,           // 게시글 카테고리
+        BoardCategory category,           // 게시글 카테고리
         Long commentCount,         // 댓글 수 (COUNT 결과는 Long)
         String writer,             // 작성자(글쓴이)
         String imageUrl,           // 이미지 URL

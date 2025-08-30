@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter;
 public record BoardListResponseDto(
         Long boardId,               // 게시글 ID
         String title,               // 제목
+        String category,            // 카테고리
         Long commentCount,          // 댓글 수
         String writer,              // 작성자(글쓴이)\
         int writerLevel,            // 작성자 레벨

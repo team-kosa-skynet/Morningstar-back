@@ -1,17 +1,17 @@
 package com.gaebang.backend.domain.community.dto.response;
 
 import com.gaebang.backend.domain.community.entity.Board;
+import com.gaebang.backend.domain.community.entity.BoardCategory;
 import lombok.Builder;
 import org.springframework.data.domain.Page;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 @Builder
 public record BoardDetailResponseDto(
         Long boardId,                       // 게시글 ID
         String title,                       // 제목
-        String category,                    // 카테고리
+        BoardCategory category,                    // 카테고리
         Long commentCount,                  // 댓글 수
         List<String> imageUrl,              // 이미지 URL
         String content,                     // 본문
@@ -27,7 +27,7 @@ public record BoardDetailResponseDto(
         return BoardDetailResponseDto.builder()
                 .boardId(board.getId())
                 .title(board.getTitle())
-                .category(board.getCategory().name())
+                .category(board.getCategory())
                 .commentCount(commentCount)
                 .writer(board.getMember().getMemberBase().getNickname())
                 .writerLevel(writerLevel)

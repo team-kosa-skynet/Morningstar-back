@@ -71,7 +71,7 @@ public class Board extends BaseTimeEntity {
     public void updateBoard(BoardCreateAndEditRequestDto dto) {
         this.title = dto.title();
         this.content = dto.content();
-        this.category = BoardCategory.fromDisplayName(dto.category());
+        this.category = BoardCategory.valueOf(dto.category());
     }
 
     public void plusviewCount() {
