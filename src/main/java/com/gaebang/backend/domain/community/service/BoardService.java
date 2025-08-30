@@ -176,6 +176,7 @@ public class BoardService {
                 BoardListResponseDto.builder()
                         .boardId(dto.boardId())
                         .title(dto.title())
+                        .category(dto.category().name())
                         .commentCount(dto.commentCount())
                         .writer(dto.writer())
                         .writerLevel(memberService.getMemberTierOrder(dto.writerPoint()))

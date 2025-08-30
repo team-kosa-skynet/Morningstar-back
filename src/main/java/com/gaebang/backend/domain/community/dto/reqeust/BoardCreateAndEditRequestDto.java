@@ -18,7 +18,7 @@ public record BoardCreateAndEditRequestDto(
                 .member(member)
                 .title(requestDto.title())
                 .content(requestDto.content())
-                .category(BoardCategory.fromDisplayName(requestDto.category()))
+                .category(BoardCategory.valueOf(requestDto.category()))
                 .build();
     }
 }

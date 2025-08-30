@@ -18,7 +18,8 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
 
     @Query(value = "SELECT new com.gaebang.backend.domain.community.dto.response.BoardListProjectionDto(" +
             "b.id, " +
-            "b.title," +
+            "b.title, " +
+            "b.category, " +
             "COUNT(distinct c)," +
             "b.member.memberBase.nickname," +
             "(SELECT img.imageUrl FROM Image img WHERE img.board = b AND img.id = " +
@@ -43,7 +44,8 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
 
     @Query(value = "SELECT new com.gaebang.backend.domain.community.dto.response.BoardListProjectionDto(" +
             "b.id, " +
-            "b.title," +
+            "b.title, " +
+            "b.category, " +
             "COUNT(distinct c)," +
             "b.member.memberBase.nickname," +
             "(SELECT img.imageUrl FROM Image img WHERE img.board = b AND img.id = " +
@@ -78,6 +80,7 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
     @Query(value = "SELECT new com.gaebang.backend.domain.community.dto.response.BoardListProjectionDto(" +
             "b.id, " +
             "b.title," +
+            "b.category, " +
             "COUNT(distinct c)," +
             "b.member.memberBase.nickname," +
             "(SELECT img.imageUrl FROM Image img WHERE img.board = b AND img.id = " +
