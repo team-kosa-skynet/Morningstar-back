@@ -11,6 +11,7 @@ import java.util.List;
 public record BoardDetailResponseDto(
         Long boardId,                       // 게시글 ID
         String title,                       // 제목
+        String category,                    // 카테고리
         Long commentCount,                  // 댓글 수
         List<String> imageUrl,              // 이미지 URL
         String content,                     // 본문
@@ -26,6 +27,7 @@ public record BoardDetailResponseDto(
         return BoardDetailResponseDto.builder()
                 .boardId(board.getId())
                 .title(board.getTitle())
+                .category(board.getCategory().name())
                 .commentCount(commentCount)
                 .writer(board.getMember().getMemberBase().getNickname())
                 .writerLevel(writerLevel)
