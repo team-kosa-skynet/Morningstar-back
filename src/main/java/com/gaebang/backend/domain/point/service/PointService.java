@@ -124,7 +124,7 @@ public class PointService {
         if (pointRequestDto.amount() + currentDepositSum + currentWithdrawSum < 0) {
             throw new InsufficientFundsException();
         }
-        
+
         // 새 누적 합계 계산
         Integer newDepositSum = pointRequestDto.amount() > 0 ? currentDepositSum + pointRequestDto.amount() : currentDepositSum;
         Integer newWithdrawSum = pointRequestDto.amount() < 0 ? currentWithdrawSum + pointRequestDto.amount() : currentWithdrawSum;
@@ -138,7 +138,7 @@ public class PointService {
         Integer calculatedPoint = newDepositSum + newWithdrawSum;
         
         // Member의 현재 포인트를 원자적으로 업데이트 (데이터 정합성 보장)
-        memberRepository.updateCurrentPoint(member.getId(), calculatedPoint);
+        member.changePoint(calculatedPoint);
         
         // 포인트 기반 티어 업데이트 (필요한 경우에만)
         updateMemberTierIfNeeded(member, calculatedPoint);
@@ -160,12 +160,9 @@ public class PointService {
             // 현재 티어가 없거나 티어가 변경된 경우에만 업데이트
             if (member.getCurrentTier() == null ||
                     !Objects.equals(member.getCurrentTier().getTierOrder(), newTier.getTierOrder())) {
-                
+
+                // 새로운 티어 업데이트
                 member.changeTier(newTier);
-                memberRepository.save(member); // 티어 변경만 저장
-                
-                log.info("회원 티어 업데이트 완료 - 회원ID: {}, 새 티어: {}, 포인트: {}", 
-                        member.getId(), newTier.getTierType(), newPointTotal);
             }
             
         } catch (Exception e) {
