@@ -4,6 +4,7 @@ import com.gaebang.backend.domain.attendance.dto.response.AttendanceResponseDto;
 import com.gaebang.backend.domain.attendance.entity.Attendance;
 import com.gaebang.backend.domain.attendance.repository.AttendanceRepository;
 import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.domain.attendance.exception.AttendanceNotFoundException;
 import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
@@ -70,14 +71,12 @@ public class AttendanceService {
                         .build();
 
                 attendanceRepository.save(newAttendance);
-                log.info("새 출석 기록 생성 완료 - 회원ID: {}, 날짜: {}", member.getId(), today);
 
                 return AttendanceResponseDto.fromEntity(newAttendance, true);
             }
 
         } catch (DataIntegrityViolationException e) {
             // 동시 요청으로 인한 중복 출석 시도 - 정상 처리
-            log.info("Duplicate attendance attempt for member: {} on date: {}", member.getId(), today);
             // 새로운 트랜잭션으로 안전하게 조회
             return getExistingAttendanceInNewTransaction(member.getId(), today);
         }
@@ -99,14 +98,12 @@ public class AttendanceService {
         
         try {
             pointService.createPoint(pointRequestDto, principalDetails);
-            log.info("출석 포인트 지급 완료 - 회원ID: {}, 포인트: 100", 
-                    principalDetails.getMember().getId());
             
         } catch (Exception e) {
             // 포인트 지급 실패 - 1회 재시도
-            log.error("출석 포인트 지급 실패 - 회원ID: {}, 오류: {}", 
+            log.error("출석 포인트 지급 실패 - 회원ID: {}, 오류: {}",
                     principalDetails.getMember().getId(), e.getMessage());
-            
+
             try {
                 log.info("포인트 지급 재시도 중 - 회원ID: {}", principalDetails.getMember().getId());
                 Thread.sleep(1000); // 1초 대기
@@ -124,7 +121,6 @@ public class AttendanceService {
                 log.error("포인트 재시도도 실패 - 회원ID: {}, 오류: {}", 
                         principalDetails.getMember().getId(), retryException.getMessage());
                 // 최종 실패 - 운영팀 개입 필요 또는 추후 배치 처리 필요
-                // TODO: 실패 케이스 별도 기록 또는 알림 시스템 연동
             }
         }
     }
@@ -137,9 +133,8 @@ public class AttendanceService {
     public AttendanceResponseDto getExistingAttendanceInNewTransaction(Long memberId, LocalDate date) {
         Attendance attendance = attendanceRepository
                 .findByMemberIdAndAttendanceDate(memberId, date)
-                .orElseThrow(() -> new RuntimeException("출석 정보를 찾을 수 없습니다"));
-        
-        log.info("기존 출석 정보 조회 완료 - 회원ID: {}, 날짜: {}", memberId, date);
+                .orElseThrow(() -> new AttendanceNotFoundException());
+
         return AttendanceResponseDto.fromEntity(attendance, false);
     }
 
