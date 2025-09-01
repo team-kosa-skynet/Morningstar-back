@@ -4,6 +4,7 @@ import com.gaebang.backend.domain.attendance.dto.response.AttendanceResponseDto;
 import com.gaebang.backend.domain.attendance.entity.Attendance;
 import com.gaebang.backend.domain.attendance.repository.AttendanceRepository;
 import com.gaebang.backend.domain.member.entity.Member;
+import com.gaebang.backend.domain.attendance.exception.AttendanceNotFoundException;
 import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
@@ -132,7 +133,7 @@ public class AttendanceService {
     public AttendanceResponseDto getExistingAttendanceInNewTransaction(Long memberId, LocalDate date) {
         Attendance attendance = attendanceRepository
                 .findByMemberIdAndAttendanceDate(memberId, date)
-                .orElseThrow(() -> new RuntimeException("출석 정보를 찾을 수 없습니다"));
+                .orElseThrow(() -> new AttendanceNotFoundException());
 
         return AttendanceResponseDto.fromEntity(attendance, false);
     }
