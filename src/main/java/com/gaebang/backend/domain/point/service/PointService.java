@@ -151,24 +151,52 @@ public class PointService {
 
     /**
      * 포인트 변경에 따른 회원 티어 업데이트 (필요한 경우에만)
-     * 티어 변경이 필요한 경우에만 DB 업데이트를 수행하여 효율성 향상
+     * 재시도 로직을 포함하여 안정성 보장
      */
     private void updateMemberTierIfNeeded(Member member, Integer newPointTotal) {
-        try {
-            PointTier newTier = pointTierService.getTierByPoints(newPointTotal);
-            
-            // 현재 티어가 없거나 티어가 변경된 경우에만 업데이트
-            if (member.getCurrentTier() == null ||
-                    !Objects.equals(member.getCurrentTier().getTierOrder(), newTier.getTierOrder())) {
-
-                // 새로운 티어 업데이트
-                member.changeTier(newTier);
+        int retryCount = 0;
+        int maxRetries = 3;
+        
+        while (retryCount < maxRetries) {
+            try {
+                PointTier newTier = pointTierService.getTierByPoints(newPointTotal);
+                
+                // 현재 티어가 없거나 티어가 변경된 경우에만 업데이트
+                if (member.getCurrentTier() == null ||
+                        !Objects.equals(member.getCurrentTier().getTierOrder(), newTier.getTierOrder())) {
+                    
+                    member.changeTier(newTier);
+                    
+                    log.info("회원 티어 업데이트 완료 - 회원ID: {}, 새 티어: {}, 포인트: {}", 
+                            member.getId(), newTier.getTierType(), newPointTotal);
+                }
+                return; // 성공 시 메서드 종료
+                
+            } catch (DataIntegrityViolationException | ObjectOptimisticLockingFailureException e) {
+                retryCount++;
+                log.warn("티어 업데이트 충돌 발생 - 회원ID: {}, 재시도: {}/{}, 오류: {}", 
+                        member.getId(), retryCount, maxRetries, e.getClass().getSimpleName());
+                
+                if (retryCount >= maxRetries) {
+                    log.error("티어 업데이트 최종 실패 - 회원ID: {}, 포인트: {}", 
+                            member.getId(), newPointTotal);
+                    return; // 포인트 적립은 성공, 티어만 실패
+                }
+                
+                // 재시도 전 점진적 지연
+                try {
+                    Thread.sleep(50L * retryCount); // 50ms, 100ms, 150ms
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.error("티어 업데이트 재시도 중단 - 회원ID: {}", member.getId());
+                    return;
+                }
+                
+            } catch (Exception e) {
+                log.error("티어 업데이트 예상치 못한 오류 - 회원ID: {}, 포인트: {}, 오류: {}", 
+                        member.getId(), newPointTotal, e.getMessage(), e);
+                return; // 예상치 못한 오류는 재시도하지 않고 바로 종료
             }
-            
-        } catch (Exception e) {
-            log.error("회원 티어 업데이트 실패 - 회원ID: {}, 포인트: {}, 오류: {}", 
-                    member.getId(), newPointTotal, e.getMessage());
-            // 티어 업데이트 실패해도 포인트 적립은 성공 처리
         }
     }
 }
