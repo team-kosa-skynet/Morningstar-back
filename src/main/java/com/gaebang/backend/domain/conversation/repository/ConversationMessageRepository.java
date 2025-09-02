@@ -1,6 +1,7 @@
 package com.gaebang.backend.domain.conversation.repository;
 
 import com.gaebang.backend.domain.conversation.entity.ConversationMessage;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -30,12 +31,11 @@ public interface ConversationMessageRepository extends JpaRepository<Conversatio
      * 토큰 제한이 있을 때 최근 대화만 포함하는 용도
      *
      * @param conversationId 대화방 ID
-     * @param limit 가져올 메시지 개수
      * @return 최근 N개 메시지 (시간순 정렬)
      */
-    @Query(value = "SELECT cm FROM ConversationMessage cm WHERE cm.conversation.conversationId = :conversationId ORDER BY cm.messageOrder DESC, cm.createdAt DESC")
-    List<ConversationMessage> findRecentMessagesByConversationId(@Param("conversationId") Long conversationId,
-                                                                 @Param("limit") int limit);
+    @Query("SELECT cm FROM ConversationMessage cm WHERE cm.conversation.conversationId = :conversationId ORDER BY cm.messageOrder DESC, cm.createdAt DESC")
+    List<ConversationMessage> findRecentMessagesByConversationId(@Param("conversationId") Long conversationId, 
+                                                                Pageable pageable);
 
     /**
      * 특정 대화방의 다음 메시지 순서 번호 조회

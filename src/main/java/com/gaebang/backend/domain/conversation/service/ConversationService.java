@@ -24,6 +24,8 @@ import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.question.common.service.FileProcessingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -113,7 +115,8 @@ public class ConversationService {
         List<ConversationMessage> messages;
 
         if (maxMessages != null && maxMessages > 0) {
-            messages = messageRepository.findRecentMessagesByConversationId(conversationId, maxMessages);
+            Pageable pageable = PageRequest.of(0, maxMessages);
+            messages = messageRepository.findRecentMessagesByConversationId(conversationId, pageable);
             messages = messages.stream()
                     .sorted((m1, m2) -> m1.getMessageOrder().compareTo(m2.getMessageOrder()))
                     .toList();

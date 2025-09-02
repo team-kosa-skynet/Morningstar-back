@@ -80,7 +80,7 @@ public class ClaudeQuestionService {
             ConversationHistoryDto historyDto = conversationService.getConversationHistory(
                     conversationId,
                     member.getId(),
-                    null
+                    20  // 최근 20개 메시지만 가져오기 (질문-답변 쌍 10개)
             );
 
             Map<String, Object> parameters = new HashMap<>();
