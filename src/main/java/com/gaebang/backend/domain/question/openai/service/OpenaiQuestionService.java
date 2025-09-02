@@ -312,9 +312,16 @@ public class OpenaiQuestionService {
 
             parameters.put("model", modelToUse);
             parameters.put("messages", messages);
-            parameters.put("temperature", 0.7);
-            parameters.put("max_tokens", 4096);
             parameters.put("stream", true);
+
+            // gpt-5 라인업은 파라미터 일부 다르게 설정
+            if (modelToUse.startsWith("gpt-5")) {
+                parameters.put("temperature", 1);
+                parameters.put("max_completion_tokens", 4096);
+            } else {
+                parameters.put("temperature", 0.7);
+                parameters.put("max_tokens", 4096);
+            }
 
             if (!messages.isEmpty()) {
                 Map<String, Object> lastMessage = messages.get(messages.size() - 1);
