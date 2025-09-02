@@ -499,17 +499,14 @@ public class OpenaiQuestionService {
                     String fileType = (String) processedFile.get("type");
 
                     if ("image".equals(fileType)) {
-                        String base64 = (String) processedFile.get("base64");
-                        String mimeType = (String) processedFile.get("mimeType");
-
-                        Map<String, Object> imagePart = new HashMap<>();
-                        imagePart.put("type", "image_url");
-
-                        Map<String, Object> imageUrl = new HashMap<>();
-                        imageUrl.put("url", String.format("data:%s;base64,%s", mimeType, base64));
-                        imagePart.put("image_url", imageUrl);
-
-                        contentParts.add(imagePart);
+                        String fileName = (String) processedFile.get("fileName");
+                        
+                        // 이미지를 텍스트 설명으로 처리 (image_url 대신)
+                        combinedText.append("\n\n--- 파일: ").append(fileName).append(" ---\n");
+                        combinedText.append("업로드된 이미지: ").append(fileName);
+                        combinedText.append("\n\n[이미지 분석 안내: 이 이미지는 현재 질문에서만 직접 분석됩니다. ");
+                        combinedText.append("향후 이 이미지에 대한 추가 질문이 있을 경우, 이번 답변에서 제공된 분석 결과를 참고해주세요.]");
+                        combinedText.append("\n--- 파일 끝 ---");
 
                     } else if ("text".equals(fileType)) {
                         String extractedText = (String) processedFile.get("extractedText");
