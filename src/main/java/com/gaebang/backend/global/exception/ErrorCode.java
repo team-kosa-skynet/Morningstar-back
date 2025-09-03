@@ -85,6 +85,11 @@ public enum ErrorCode {
     INVALID_FEEDBACK_CATEGORY(HttpStatus.BAD_REQUEST, "유효하지 않은 피드백 카테고리입니다."),
     MODEL_NOT_FOUND(HttpStatus.BAD_REQUEST, "존재하지 않거나 비활성화된 모델입니다."),
 
+    // image generation
+    IMAGE_GENERATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 생성에 실패했습니다."),
+    IMAGE_API_ERROR(HttpStatus.BAD_GATEWAY, "이미지 생성 API 호출에 실패했습니다."),
+    IMAGE_API_CONFIGURATION_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "이미지 생성 API 설정이 올바르지 않습니다."),
+
     // 5xx
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 에러");
 
