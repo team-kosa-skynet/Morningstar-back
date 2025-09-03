@@ -132,6 +132,13 @@ resilience4j:
         sliding-window-size: 10
         minimum-number-of-calls: 5
         permitted-number-of-calls-in-half-open-state: 3
+      imagen-api:
+        failure-rate-threshold: 70
+        wait-duration-in-open-state: 60s
+        sliding-window-type: count-based
+        sliding-window-size: 20
+        minimum-number-of-calls: 5
+        permitted-number-of-calls-in-half-open-state: 3
   retry:
     instances:
       text-moderation:
@@ -148,6 +155,14 @@ resilience4j:
         retry-exceptions:
           - java.io.IOException
           - java.util.concurrent.TimeoutException
+      imagen-api:
+        max-attempts: 2
+        wait-duration: 1s
+        exponential-backoff-multiplier: 1.5
+        retry-exceptions:
+          - java.net.SocketTimeoutException
+          - java.io.IOException
+          - org.springframework.web.client.ResourceAccessException
   timelimiter:
     instances:
       text-moderation:

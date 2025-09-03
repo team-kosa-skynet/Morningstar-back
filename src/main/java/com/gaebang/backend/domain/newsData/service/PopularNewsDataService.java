@@ -163,13 +163,8 @@ public class PopularNewsDataService {
 
             // 1. 중복 분석 (우선)
             getDuplatedNews();
-            // 2. 이미지 생성 (후순위) - 쿼터 상태 확인 후 실행
-            // 쿼터 초과 상태 확인 - 초과 시 이미지 생성 스킵
-            if (newsImageService.isQuotaExceeded()) {
-                log.warn("2단계: API 쿼터 초과로 인해 이미지 생성 스킵");
-            } else {
-                newsImageService.createNewsImages();
-            }
+            // 2. 이미지 생성 (후순위)
+            newsImageService.createNewsImages();
 
         } catch (Exception e) {
             log.error("뉴스 후속 처리 중 오류", e);
