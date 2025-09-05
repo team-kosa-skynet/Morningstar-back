@@ -5,6 +5,7 @@ import com.gaebang.backend.domain.payment.dto.response.PaymentApproveResponseDto
 import com.gaebang.backend.domain.payment.dto.response.PaymentStatusResponseDto;
 import com.gaebang.backend.domain.payment.entity.Payment;
 import com.gaebang.backend.domain.payment.entity.PaymentStatus;
+import com.gaebang.backend.domain.payment.exception.PaymentAlreadyProcessedException;
 import com.gaebang.backend.domain.payment.exception.PaymentAmountMismatchException;
 import com.gaebang.backend.domain.payment.exception.PaymentExternalApiException;
 import com.gaebang.backend.domain.payment.exception.PaymentNotFoundException;
@@ -13,6 +14,7 @@ import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.exception.UserInvalidAccessException;
 import com.gaebang.backend.domain.member.exception.UserNotFoundException;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.payment.dto.response.Amount;
 import com.gaebang.backend.domain.payment.dto.response.PaymentReadyResponseDto;
 import com.gaebang.backend.domain.payment.util.PaymentProperties;
 import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
@@ -133,11 +135,11 @@ public class PaymentService {
         }
     }
 
-    // 결제 승인 요청
+    // 결제 승인 요청 (멱등성 보장)
     @Transactional
     public PaymentApproveResponseDto paymentApproveByPgToken(String pgToken, String partnerOrderId) {
-        // partnerOrderId로 결제 조회 (비관적 락 적용)
-        Payment payment = paymentRepository.findByPartnerOrderIdAndStatusWithLock(partnerOrderId, PaymentStatus.READY)
+        // 1. 먼저 결제 조회 (상태 무관)
+        Payment payment = paymentRepository.findByPartnerOrderId(partnerOrderId)
                 .orElseThrow(() -> new PaymentNotFoundException());
 
         Member member = payment.getMember();
@@ -145,15 +147,33 @@ public class PaymentService {
             throw new UserNotFoundException();
         }
 
+        // 2. 멱등성 처리: 이미 성공한 경우 기존 결과 반환
+        if (payment.getStatus() == PaymentStatus.SUCCESS) {
+            log.info("이미 처리된 결제 재요청 - 회원ID: {}, TID: {}, 상태: SUCCESS, 주문ID: {}",
+                    member.getId(), payment.getTid(), partnerOrderId);
+            return createSuccessResponseFromPayment(payment);
+        }
+
+        // 3. READY가 아닌 상태면 예외 발생
+        if (payment.getStatus() != PaymentStatus.READY) {
+            log.warn("처리할 수 없는 결제 상태 - 회원ID: {}, 상태: {}, 주문ID: {}",
+                    member.getId(), payment.getStatus(), partnerOrderId);
+            throw new PaymentAlreadyProcessedException();
+        }
+
+        // 4. READY 상태 결제에 대해서만 락 획득 후 승인 진행
+        Payment lockedPayment = paymentRepository.findByPartnerOrderIdAndStatusWithLock(partnerOrderId, PaymentStatus.READY)
+                .orElseThrow(() -> new PaymentAlreadyProcessedException()); // 락 획득 실패시 이미 처리됨
+
         log.info("결제 승인 시작 - 회원ID: {}, TID: {}, 주문ID: {}",
-                member.getId(), payment.getTid(), partnerOrderId);
+                member.getId(), lockedPayment.getTid(), partnerOrderId);
 
         // 카카오페이 API 요청 데이터 준비
         Map<String, Object> parameters = new HashMap<>();
         parameters.put("cid", paymentProperties.getCid());
-        parameters.put("tid", payment.getTid());
-        parameters.put("partner_order_id", payment.getPartnerOrderId());
-        parameters.put("partner_user_id", payment.getMember().getId());
+        parameters.put("tid", lockedPayment.getTid());
+        parameters.put("partner_order_id", lockedPayment.getPartnerOrderId());
+        parameters.put("partner_user_id", lockedPayment.getMember().getId());
         parameters.put("pg_token", pgToken);
 
         HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(parameters, this.getHeaders());
@@ -166,49 +186,49 @@ public class PaymentService {
                     PaymentApproveResponseDto.class);
 
             // 금액 검증
-            if (!payment.getAmount().equals(paymentApproveResponseDto.amount().getTotal())) {
-                payment.updateStatus(PaymentStatus.FAIL);
+            if (!lockedPayment.getAmount().equals(paymentApproveResponseDto.amount().getTotal())) {
+                lockedPayment.updateStatus(PaymentStatus.FAIL);
                 log.error("결제 금액 불일치 - 요청: {}, 응답: {}, 회원ID: {}, 주문ID: {}",
-                        payment.getAmount(), paymentApproveResponseDto.amount().getTotal(),
+                        lockedPayment.getAmount(), paymentApproveResponseDto.amount().getTotal(),
                         member.getId(), partnerOrderId);
                 throw new PaymentAmountMismatchException("결제 금액이 일치하지 않습니다");
             }
 
             // 결제 성공 처리
-            payment.updateStatus(PaymentStatus.SUCCESS);
-            log.info("결제 승인 성공 - 회원ID: {}, TID: {}, 금액: {}, 주문ID: {}",
-                    member.getId(), payment.getTid(), payment.getAmount(), partnerOrderId);
+            lockedPayment.updateStatus(PaymentStatus.SUCCESS);
+            log.info("결제 승인 성공 - 회원ID: {}, TID: {}, 금액: {}, 주문ID: {}, AID: {}",
+                    member.getId(), lockedPayment.getTid(), lockedPayment.getAmount(), partnerOrderId, paymentApproveResponseDto.aid());
 
             // 포인트 적립 (재시도 로직 포함)
             try {
                 PrincipalDetails principalDetails = new PrincipalDetails(member);
                 PointRequestDto pointRequestDto = PointRequestDto.builder()
-                        .amount(payment.getAmount())
+                        .amount(lockedPayment.getAmount())
                         .type(PointType.SPONSORSHIP)
                         .build();
 
                 pointService.createPoint(pointRequestDto, principalDetails);
                 log.info("포인트 적립 성공 - 회원ID: {}, 금액: {}, 주문ID: {}",
-                        member.getId(), payment.getAmount(), partnerOrderId);
+                        member.getId(), lockedPayment.getAmount(), partnerOrderId);
 
             } catch (PointCreationRetryExhaustedException e) {
                 // 3번 재시도 후에도 실패한 경우 - 결제는 성공 유지
                 log.error("포인트 적립 완전 실패 (3회 재시도 후) - 회원ID: {}, 금액: {}, 주문ID: {}, 오류: {}",
-                        member.getId(), payment.getAmount(), partnerOrderId, e.getMessage());
+                        member.getId(), lockedPayment.getAmount(), partnerOrderId, e.getMessage());
                 // 고객 서비스팀에 알림 등의 후속 처리 가능
             } catch (Exception e) {
                 // 다른 예상치 못한 포인트 적립 오류
                 log.error("포인트 적립 실패 - 회원ID: {}, 금액: {}, 주문ID: {}, 오류: {}",
-                        member.getId(), payment.getAmount(), partnerOrderId, e.getMessage());
+                        member.getId(), lockedPayment.getAmount(), partnerOrderId, e.getMessage());
             }
 
             return paymentApproveResponseDto;
 
         } catch (RestClientException e) {
             // 카카오페이 API 호출 실패 - 치명적 오류
-            payment.updateStatus(PaymentStatus.FAIL);
+            lockedPayment.updateStatus(PaymentStatus.FAIL);
             log.error("카카오페이 승인 API 호출 실패 - 회원ID: {}, TID: {}, 주문ID: {}, 오류: {}",
-                    member.getId(), payment.getTid(), partnerOrderId, e.getMessage());
+                    member.getId(), lockedPayment.getTid(), partnerOrderId, e.getMessage());
             throw new PaymentExternalApiException("결제 승인 중 오류가 발생했습니다");
         }
     }
@@ -269,6 +289,28 @@ public class PaymentService {
                 payment.getAmount(),
                 payment.getItemName(),
                 payment.getCreatedAt().toString()
+        );
+    }
+
+    // 기존 성공한 결제에 대한 응답을 생성하는 헬퍼 메소드
+    private PaymentApproveResponseDto createSuccessResponseFromPayment(Payment payment) {
+        // 성공한 결제에 대해서는 기본적인 정보만 포함한 응답 생성
+        // 실제 카카오페이 응답과 동일한 형태로 구성
+        return new PaymentApproveResponseDto(
+                "MOCK_AID_" + payment.getPaymentId(), // AID는 저장하지 않으므로 Mock 값
+                payment.getTid(),
+                paymentProperties.getCid(),
+                null, // SID는 일반적으로 정기결제에서 사용
+                payment.getPartnerOrderId(),
+                payment.getMember().getId().toString(),
+                "MONEY", // 카카오머니로 가정
+                new Amount(payment.getAmount(), 0, 0, 0, 0, 0), // 실제 결제 금액
+                payment.getItemName(),
+                null, // 상품 코드
+                1, // 수량
+                payment.getCreatedAt().toString(),
+                payment.getUpdatedAt().toString(), // 승인시간으로 수정시간 사용
+                null // payload
         );
     }
 }
