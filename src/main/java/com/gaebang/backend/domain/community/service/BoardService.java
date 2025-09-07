@@ -1,12 +1,15 @@
 package com.gaebang.backend.domain.community.service;
 
 import com.gaebang.backend.domain.community.dto.reqeust.BoardCreateAndEditRequestDto;
-import com.gaebang.backend.domain.community.dto.response.BoardListResponseDto;
-import com.gaebang.backend.domain.community.dto.response.BoardListProjectionDto;
 import com.gaebang.backend.domain.community.dto.response.BoardDetailResponseDto;
+import com.gaebang.backend.domain.community.dto.response.BoardListProjectionDto;
+import com.gaebang.backend.domain.community.dto.response.BoardListResponseDto;
 import com.gaebang.backend.domain.community.dto.response.CommentResponseDto;
 import com.gaebang.backend.domain.community.entity.Board;
 import com.gaebang.backend.domain.community.entity.Image;
+import com.gaebang.backend.domain.community.event.BoardCreatedEvent;
+import com.gaebang.backend.domain.community.event.BoardUpdatedEvent;
+import com.gaebang.backend.domain.community.event.BoardChangedEvent;
 import com.gaebang.backend.domain.community.exception.BoardNotFoundException;
 import com.gaebang.backend.domain.community.repository.BoardLikeRepository;
 import com.gaebang.backend.domain.community.repository.BoardRepository;
@@ -14,25 +17,28 @@ import com.gaebang.backend.domain.community.repository.CommentRepository;
 import com.gaebang.backend.domain.community.repository.ImageRepository;
 import com.gaebang.backend.domain.community.util.TimeUtil;
 import com.gaebang.backend.domain.member.entity.Member;
-import com.gaebang.backend.domain.member.repository.MemberRepository;
 import com.gaebang.backend.domain.member.service.MemberService;
 import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.entity.PointType;
-import com.gaebang.backend.domain.point.repository.PointRepository;
 import com.gaebang.backend.domain.point.service.PointService;
-import com.gaebang.backend.domain.community.event.BoardCreatedEvent;
-import com.gaebang.backend.domain.community.event.BoardUpdatedEvent;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
+import com.gaebang.backend.global.infrastructure.redis.cache.CacheVersion;
+import com.gaebang.backend.global.infrastructure.redis.cache.Keys;
+import com.gaebang.backend.global.infrastructure.redis.cache.PageResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @RequiredArgsConstructor
 @Service
 public class BoardService {
@@ -48,12 +54,47 @@ public class BoardService {
     private final PostRateLimitService postRateLimitService;
     private final ModerationService moderationService;
     private final ApplicationEventPublisher eventPublisher;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final CacheVersion cacheVersion;
 
     // 검색 조건 있을 시 사용
     @Transactional(readOnly = true)
     public Page<BoardListResponseDto> getBoardByCondition(String condition, Pageable pageable) {
+        
+        // 1. 캐시 키 생성
+        String version = cacheVersion.current();
+        String cacheKey = Keys.boardsKey(version, condition, pageable);
+        
+        try {
+            // 2. 캐시에서 조회 시도
+            @SuppressWarnings("unchecked")
+            PageResponse<BoardListResponseDto> cachedPage = 
+                (PageResponse<BoardListResponseDto>) redisTemplate.opsForValue().get(cacheKey);
+            
+            if (cachedPage != null) {
+                log.info("Cache HIT - Key: {}", cacheKey);
+                return cachedPage.toPageUsingRequest(pageable);
+            }
+            
+            log.info("Cache MISS - Key: {}", cacheKey);
+        } catch (Exception e) {
+            log.warn("캐시 조회 실패, DB로 폴백: {}", e.getMessage(), e);
+        }
+        
+        // 3. DB에서 조회
         Page<BoardListProjectionDto> getDtos = boardRepository.findByCondition(condition, pageable);
-        return transformBoardDtos(getDtos);
+        Page<BoardListResponseDto> result = transformBoardDtos(getDtos);
+        
+        // 4. 캐시에 저장 (3분 TTL)
+        try {
+            PageResponse<BoardListResponseDto> pageResponse = PageResponse.from(result);
+            redisTemplate.opsForValue().set(cacheKey, pageResponse, Duration.ofMinutes(3));
+            log.info("Cache SET - Key: {}", cacheKey);
+        } catch (Exception e) {
+            log.warn("캐시 저장 실패: {}", e.getMessage(), e);
+        }
+        
+        return result;
     }
 
     // 마이페이지 조회 시 사용
@@ -73,20 +114,53 @@ public class BoardService {
     // 검색 조건 없이 조회
     @Transactional(readOnly = true)
     public Page<BoardListResponseDto> getBoard(Pageable pageable) {
+        
+        // 1. 캐시 키 생성 (검색 조건 없음)
+        String version = cacheVersion.current();
+        String cacheKey = Keys.boardsKey(version, "", pageable); // condition = ""
+        
+        try {
+            // 2. 캐시에서 조회 시도
+            @SuppressWarnings("unchecked")
+            PageResponse<BoardListResponseDto> cachedPage = 
+                (PageResponse<BoardListResponseDto>) redisTemplate.opsForValue().get(cacheKey);
+            
+            if (cachedPage != null) {
+                log.info("Cache HIT - Key: {}", cacheKey);
+                return cachedPage.toPageUsingRequest(pageable);
+            }
+            
+            log.info("Cache MISS - Key: {}", cacheKey);
+        } catch (Exception e) {
+            log.warn("캐시 조회 실패, DB로 폴백: {}", e.getMessage(), e);
+        }
+        
+        // 3. DB에서 조회
         Page<BoardListProjectionDto> getDtos = boardRepository.findAllBoardDtos(pageable);
-        return transformBoardDtos(getDtos);
+        Page<BoardListResponseDto> result = transformBoardDtos(getDtos);
+        
+        // 4. 캐시에 저장 (3분 TTL)
+        try {
+            PageResponse<BoardListResponseDto> pageResponse = PageResponse.from(result);
+            redisTemplate.opsForValue().set(cacheKey, pageResponse, Duration.ofMinutes(3));
+            log.info("Cache SET - Key: {}", cacheKey);
+        } catch (Exception e) {
+            log.warn("캐시 저장 실패: {}", e.getMessage(), e);
+        }
+        
+        return result;
     }
 
     // 게시판 생성
     @Transactional
     public void createBoard(PrincipalDetails principalDetails, BoardCreateAndEditRequestDto boardCreateAndEditRequestDto) {
         Member loginMember = principalDetails.getMember();
-        
+
         // 도배 방지 체크
         postRateLimitService.validatePostRateLimit(loginMember.getId());
-        
+
         Board createBoard = BoardCreateAndEditRequestDto.toEntity(loginMember, boardCreateAndEditRequestDto);
-        
+
         List<String> images = boardCreateAndEditRequestDto.imageUrl();
         Board saveBoard = boardRepository.save(createBoard);
 
@@ -103,9 +177,12 @@ public class BoardService {
                 .amount(10)
                 .build();
         pointService.createPoint(pointRequestDto, principalDetails);
-        
+
         // 트랜잭션 커밋 후 검열을 위한 이벤트 발행
         eventPublisher.publishEvent(new BoardCreatedEvent(saveBoard.getId()));
+        
+        // 캐시 무효화를 위한 이벤트 발행
+        eventPublisher.publishEvent(new BoardChangedEvent(saveBoard.getId(), BoardChangedEvent.ChangeType.CREATED));
     }
 
     // 게시판 수정
@@ -133,9 +210,12 @@ public class BoardService {
         });
         imageRepository.saveAll(createImages);
         boardRepository.save(findBoard);
-        
+
         // 트랜잭션 커밋 후 검열을 위한 이벤트 발행
         eventPublisher.publishEvent(new BoardUpdatedEvent(findBoard.getId()));
+        
+        // 캐시 무효화를 위한 이벤트 발행
+        eventPublisher.publishEvent(new BoardChangedEvent(findBoard.getId(), BoardChangedEvent.ChangeType.UPDATED));
     }
 
     // 게시글 상세 조회
@@ -169,6 +249,9 @@ public class BoardService {
 
         // 연관된 이미지들도 함께 삭제 (CASCADE 설정 고려)
         imageRepository.deleteByBoardId(boardId);
+        
+        // 캐시 무효화를 위한 이벤트 발행
+        eventPublisher.publishEvent(new BoardChangedEvent(boardId, BoardChangedEvent.ChangeType.DELETED));
     }
 
     private Page<BoardListResponseDto> transformBoardDtos(Page<BoardListProjectionDto> projectionDtos) {
