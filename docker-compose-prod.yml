@@ -9,10 +9,14 @@ services:
       - "8080:8080"
 
     volumes:
-      # 기존 로그 마운트 설정
       - ./logs:/app/logs
-      # EC2 서버의 .env 파일을 컨테이너의 루트(/) 디렉터리에 .env 파일로 연결합니다.
       - ./.env:/.env
+
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://localhost:3100/loki/api/v1/push"
+        loki-external-labels: job=morningstar-spring,env=prod
 
     environment:
       - SPRING_DATA_REDIS_HOST=redis
@@ -24,7 +28,6 @@ services:
     networks:
       - morningstar-network
 
-  # Redis
   redis:
     image: redis:7-alpine
     container_name: redis-cache
