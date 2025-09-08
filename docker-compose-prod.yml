@@ -5,7 +5,6 @@ services:
   spring-app:
     image: liyusang97/project:latest # CI/CD에서 이 이미지를 pull해서 사용합니다.
     container_name: project-container
-    restart: always
     ports:
       - "8080:8080"
 
