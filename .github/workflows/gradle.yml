@@ -42,43 +42,43 @@ jobs:
 
   # 2. EC2에 배포
   deploy:
-      needs: build-and-push-docker-image
-      runs-on: ubuntu-latest
-      if: github.event_name == 'push'
-      steps:
-        - name: Checkout
-          uses: actions/checkout@v3
+    needs: build-and-push-docker-image
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
 
-        - name: Copy docker-compose.yml to EC2
-          uses: appleboy/scp-action@v0.1.7
-          with:
-            host: ${{ secrets.EC2_HOST }}
-            username: ec2-user
-            key: ${{ secrets.EC2_SSH_KEY }}
-            source: "docker-compose-prod.yml" # ✅ 1. 파일 이름 수정
-            target: "/home/ec2-user/Morningstar-back"
+      - name: Copy docker-compose.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose-prod.yml"
+          target: "/home/ec2-user/Morningstar-back"
 
-        - name: Deploy to EC2
-          uses: appleboy/ssh-action@v1.0.3
-          with:
-            host: ${{ secrets.EC2_HOST }}
-            username: ec2-user
-            key: ${{ secrets.EC2_SSH_KEY }}
-            script: |
-              cd /home/ec2-user/Morningstar-back
-
-              echo "🐳 Docker Hub에서 최신 이미지를 가져옵니다..."
-              docker pull ${{ secrets.DOCKERHUB_USERNAME }}/project:latest
-
-              echo "🚀 Docker Compose로 애플리케이션을 배포합니다..."
-              # ✅ 2. 모든 docker-compose 명령어에 -f 옵션 추가
-              docker-compose -f docker-compose-prod.yml up -d
-
-              docker image prune -af
-
-              sleep 5
-              echo "✅ 배포된 컨테이너 상태를 확인합니다:"
-              docker-compose -f docker-compose-prod.yml ps
-
-              echo "📄 최신 로그 20줄을 확인합니다:"
-              docker-compose -f docker-compose-prod.yml logs --tail=20
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ec2-user/Morningstar-back
+            
+            echo "🐳 Docker Hub에서 최신 이미지를 가져옵니다..."
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/project:latest
+            
+            echo "🚀 Docker Compose로 애플리케이션을 배포합니다..."
+            # ✅ --env-file 옵션을 추가하여 .env 파일을 명시적으로 지정
+            docker-compose --env-file .env -f docker-compose-prod.yml up -d
+            
+            docker image prune -af
+            
+            sleep 5
+            echo "✅ 배포된 컨테이너 상태를 확인합니다:"
+            docker-compose -f docker-compose-prod.yml ps
+            
+            echo "📄 최신 로그 20줄을 확인합니다:"
+            docker-compose -f docker-compose-prod.yml logs --tail=20
