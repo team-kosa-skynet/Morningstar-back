@@ -1,16 +1,11 @@
-FROM openjdk:17-jdk-slim-buster
-COPY build/libs/yanolja-0.0.1-SNAPSHOT.jar app.jar
-EXPOSE 8080
-# 작업 디렉토리 생성
-WORKDIR /app
+# 베이스 이미지로 OpenJDK 17 버전을 사용합니다.
+FROM eclipse-temurin:17-jdk-jammy
 
-# 소스 코드 및 .env 파일 복사
-COPY . .
+# 빌드된 JAR 파일의 경로를 변수로 지정합니다.
+ARG JAR_FILE=build/libs/*.jar
 
-# .env 파일을 WORKDIR로 복사
-COPY .env .env
+# 위 경로의 JAR 파일을 컨테이너 내부의 app.jar 라는 이름으로 복사합니다.
+COPY ${JAR_FILE} app.jar
 
-# keystore.p12 파일을 WORKDIR로 복사
-COPY src/main/resources/keystore.p12 keystore.p12
-
-ENTRYPOINT ["java", "-jar", "/app.jar"]
+# 컨테이너가 시작될 때 실행할 명령어를 지정합니다.
+ENTRYPOINT ["java","-Dfile.encoding=UTF-8","-jar","/app.jar"]

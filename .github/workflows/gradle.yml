@@ -1,93 +1,84 @@
-##cicd
-name: Project CI/CD
+name: Project CI/CD with Docker
+
 on:
   push:
-    branches: [ develop ]
-  pull_request:
     branches: [ develop ]
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  # 1. Docker 이미지를 빌드하고 Docker Hub에 푸시하는 잡
+  build-and-push-docker-image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           java-version: 17
           distribution: 'temurin'
-          cache: gradle
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@v2.6.0
+        run: ./gradlew clean build -x test
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          arguments: clean build -x test
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Rename JAR file to Project.jar
-        run: |
-          JAR_FILE=$(ls build/libs | grep -E '\.jar$' | grep -v plain | head -n 1)
-          mv "build/libs/$JAR_FILE" build/libs/Project.jar
-          ls -l build/libs
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
         with:
-          name: Project
-          path: build/libs/Project.jar
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/project:latest
 
+  # 2. EC2에 배포하는 잡
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push'
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: Project
-          path: build/libs/
+      needs: build-and-push-docker-image
+      runs-on: ubuntu-latest
+      if: github.event_name == 'push'
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v3
 
-      - name: Create .ssh directory and add EC2 host key
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+        - name: Copy docker-compose.yml to EC2
+          uses: appleboy/scp-action@v0.1.7
+          with:
+            host: ${{ secrets.EC2_HOST }}
+            username: ec2-user
+            key: ${{ secrets.EC2_SSH_KEY }}
+            source: "docker-compose-prod.yml" # ✅ 1. 파일 이름 수정
+            target: "/home/ec2-user/Morningstar-back"
 
-      - name: Create private key file
-        run: |
-          echo "${{ secrets.EC2_SSH_KEY }}" | sed 's/\\n/\n/g' > private_key.pem
-          chmod 600 private_key.pem
+        - name: Deploy to EC2
+          uses: appleboy/ssh-action@v1.0.3
+          with:
+            host: ${{ secrets.EC2_HOST }}
+            username: ec2-user
+            key: ${{ secrets.EC2_SSH_KEY }}
+            script: |
+              cd /home/ec2-user/Morningstar-back
 
-      - name: Upload JAR to EC2
-        run: |
-          scp -i private_key.pem build/libs/Project.jar \
-            ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/Morningstar-back/Project.jar
+              echo "🐳 Docker Hub에서 최신 이미지를 가져옵니다..."
+              docker pull ${{ secrets.DOCKERHUB_USERNAME }}/project:latest
 
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /home/ec2-user/Morningstar-back
+              echo "🚀 Docker Compose로 애플리케이션을 배포합니다..."
+              # ✅ 2. 모든 docker-compose 명령어에 -f 옵션 추가
+              docker-compose -f docker-compose-prod.yml up -d
 
-            # 기존 java 프로세스 종료
-            pgrep java && pgrep java | xargs -r kill -9
+              docker image prune -af
 
-            # 로그 디렉터리 생성
-            mkdir -p log
+              sleep 5
+              echo "✅ 배포된 컨테이너 상태를 확인합니다:"
+              docker-compose -f docker-compose-prod.yml ps
 
-            # 애플리케이션 실행
-            nohup java -Dfile.encoding=UTF-8 -jar Project.jar > /dev/null 2>&1 & disown
-
-            sleep 3
-            echo "📄 애플리케이션 로그 미리보기:"
-            head -n 30 log/app_log.out
-
-            pgrep java && echo "✅ 애플리케이션 실행됨" || echo "❌ 실행 실패"
+              echo "📄 최신 로그 20줄을 확인합니다:"
+              docker-compose -f docker-compose-prod.yml logs --tail=20

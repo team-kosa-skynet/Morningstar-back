@@ -15,5 +15,14 @@ services:
     networks:
       - network
 
+  redis:
+    container_name: morningstar-redis
+    image: redis:7-alpine # 경량화된 alpine 버전을 사용합니다.
+    ports:
+      - "6379:6379" # Redis 기본 포트를 매핑합니다.
+    restart: always
+    networks:
+      - morningstar-network
+
 networks:
   network:
