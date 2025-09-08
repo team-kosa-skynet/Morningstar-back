@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 jobs:
-  # 1. Docker 이미지를 빌드하고 Docker Hub에 푸시하는 잡
+  # 1. Docker 이미지를 빌드하고 Docker Hub에 푸시
   build-and-push-docker-image:
     runs-on: ubuntu-latest
     steps:
@@ -40,7 +40,7 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/project:latest
 
-  # 2. EC2에 배포하는 잡
+  # 2. EC2에 배포
   deploy:
       needs: build-and-push-docker-image
       runs-on: ubuntu-latest
