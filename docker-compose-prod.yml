@@ -33,7 +33,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: redis-cache
-    restart: always
 
     volumes:
       - redis-data:/data
