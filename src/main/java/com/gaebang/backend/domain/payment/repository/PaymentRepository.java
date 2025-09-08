@@ -24,6 +24,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                                       @Param("expiredTime") LocalDateTime expiredTime);
 
     // 비관적 락을 위한 설정
+    Optional<Payment> findByPartnerOrderId(String partnerOrderId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p WHERE p.partnerOrderId = :partnerOrderId AND p.status = :status")
     Optional<Payment> findByPartnerOrderIdAndStatusWithLock(@Param("partnerOrderId") String partnerOrderId,
