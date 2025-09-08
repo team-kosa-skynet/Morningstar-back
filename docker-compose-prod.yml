@@ -12,14 +12,15 @@ services:
       - ./logs:/app/logs
       - ./.env:/.env
 
+    environment:
+      - TZ=Asia/Seoul
+      - SPRING_DATA_REDIS_HOST=redis
+
     logging:
       driver: loki
       options:
         loki-url: "http://localhost:3100/loki/api/v1/push"
         loki-external-labels: job=morningstar-spring,env=prod
-
-    environment:
-      - SPRING_DATA_REDIS_HOST=redis
 
     depends_on:
       redis:
