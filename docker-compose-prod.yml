@@ -3,54 +3,43 @@ version: '3.8'
 services:
   # Spring Boot 애플리케이션 서비스
   spring-app:
-    image: liyusang97/project:latest # CI/CD에서 이 이미지를 pull해서 사용합니다.
+    image: liyusang97/project:latest
     container_name: project-container
     ports:
       - "8080:8080"
 
-    # 현재 디렉터리에 있는 .env 파일의 내용을 환경변수로 주입합니다.
-    env_file:
-      - ./.env
+    volumes:
+      # 기존 로그 마운트 설정
+      - ./logs:/app/logs
+      # EC2 서버의 .env 파일을 컨테이너의 루트(/) 디렉터리에 .env 파일로 연결합니다.
+      - ./.env:/.env
 
     environment:
       - SPRING_DATA_REDIS_HOST=redis
 
-    # redis 서비스가 healthy 상태가 된 후에만 spring-app 서비스를 시작합니다.
     depends_on:
       redis:
         condition: service_healthy
 
-    # 이 서비스는 아래에 정의된 'morningstar-network'에 연결됩니다.
     networks:
       - morningstar-network
 
-    # 호스트의 ./logs 디렉터리를 컨테이너의 /app/logs 디렉터리에 마운트합니다.
-    # 이 경로는 application.yml의 경로와 일치해야 합니다.
-    volumes:
-      - ./logs:/app/logs
-
-  # Redis 서비스
+  # Redis
   redis:
     image: redis:7-alpine
     container_name: redis-cache
-
     volumes:
       - redis-data:/data
     networks:
       - morningstar-network
-
-    # Redis가 연결을 받을 준비가 되었는지 확인하는 Healthcheck.
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-# 컨테이너들이 서로 통신할 수 있는 가상 네트워크를 정의합니다.
 networks:
   morningstar-network:
 
-# Docker 볼륨을 정의합니다.
 volumes:
   redis-data:
-
