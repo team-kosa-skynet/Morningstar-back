@@ -94,7 +94,7 @@
   <img src="https://github.com/user-attachments/assets/1df04a1d-339d-48ae-8a7a-c87e7ce2ffc6" alt=""/>
 </details>
 <details>
-  <summary>채용공고</summary>
+  <summary>모의면접</summary>
   <br/>
   <img src="https://github.com/user-attachments/assets/92c9ed89-4d1a-4362-ac77-2ac019d05203" alt=""/>
   <img src="https://github.com/user-attachments/assets/ae20e387-f0c2-4e69-97cb-a9faea8e0bd2" alt=""/>
