@@ -20,22 +20,20 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
             "b.id, " +
             "b.title, " +
             "b.category, " +
-            "COUNT(distinct c)," +
+            "(SELECT COUNT(c) FROM Comment c WHERE c.board = b AND c.deleteYn = 'N')," +
             "b.member.memberBase.nickname," +
             "(SELECT img.imageUrl FROM Image img WHERE img.board = b AND img.id = " +
             "(SELECT MIN(img2.id) FROM Image img2 WHERE img2.board = b))," +
             "b.createdAt," +
             "b.viewCount, " +
             "b.member.points, " +
-            "COUNT(distinct bl)) FROM Board b " +
-            "LEFT JOIN b.comments c " +
-            "LEFT JOIN b.boardLikes bl " +
-            "WHERE b.deleteYn = 'N' AND (b.title LIKE CONCAT('%', :condition, '%') " +
+            "(SELECT COUNT(bl) FROM BoardLike bl WHERE bl.board = b)) " +
+            "FROM Board b " +
+            "WHERE b.deleteYn = 'N' " +
+            "AND (b.title LIKE CONCAT('%', :condition, '%') " +
             "OR b.member.memberBase.nickname LIKE CONCAT('%', :condition, '%') " +
-            "OR b.content LIKE CONCAT('%', :condition, '%')) " +
-            "GROUP BY b",
+            "OR b.content LIKE CONCAT('%', :condition, '%')) ",
             countQuery = "SELECT COUNT(DISTINCT b) FROM Board b " +
-                    "LEFT JOIN b.comments c " +
                     "WHERE b.deleteYn = 'N' " +
                     "AND (b.title LIKE CONCAT('%', :condition, '%') " +
                     "OR b.member.memberBase.nickname LIKE CONCAT('%', :condition, '%') " +
@@ -54,7 +52,7 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
             "b.viewCount, " +
             "b.member.points, " +
             "COUNT(distinct bl)) FROM Board b " +
-            "LEFT JOIN b.comments c " +
+            "LEFT JOIN b.comments c ON c.deleteYn = 'N' " +
             "LEFT JOIN b.boardLikes bl " +
             "WHERE b.deleteYn = 'N' AND b.member.memberBase.nickname like CONCAT('%', :writer, '%') " +
             "GROUP BY b",
@@ -81,18 +79,16 @@ public interface BoardRepository extends JpaRepository<Board, Long> {
             "b.id, " +
             "b.title," +
             "b.category, " +
-            "COUNT(distinct c)," +
+            "(SELECT COUNT(c) FROM Comment c WHERE c.board = b AND c.deleteYn = 'N')," +
             "b.member.memberBase.nickname," +
             "(SELECT img.imageUrl FROM Image img WHERE img.board = b AND img.id = " +
             "(SELECT MIN(img2.id) FROM Image img2 WHERE img2.board = b))," +
             "b.createdAt," +
             "b.viewCount, " +
             "b.member.points, " +
-            "COUNT(distinct bl)) FROM Board b " +
-            "LEFT JOIN b.comments c " +
-            "LEFT JOIN b.boardLikes bl " +
-            "WHERE b.deleteYn = 'N' " +
-            "GROUP BY b",
+            "(SELECT COUNT(bl) FROM BoardLike bl WHERE bl.board = b)) " +
+            "FROM Board b " +
+            "WHERE b.deleteYn = 'N' " ,
             countQuery = "SELECT COUNT(DISTINCT b) FROM Board b " +
                     "WHERE b.deleteYn = 'N'")
     Page<BoardListProjectionDto> findAllBoardDtos(Pageable pageable);
