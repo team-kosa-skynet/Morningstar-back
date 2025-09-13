@@ -8,6 +8,7 @@ import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.dto.response.CurrentPointResponseDto;
 import com.gaebang.backend.domain.point.dto.response.PointResponseDto;
 import com.gaebang.backend.domain.point.entity.Point;
+import com.gaebang.backend.domain.point.entity.PointType;
 import com.gaebang.backend.domain.point.exception.InsufficientFundsException;
 import com.gaebang.backend.domain.point.exception.PointCreationRetryExhaustedException;
 import com.gaebang.backend.domain.point.repository.PointRepository;
