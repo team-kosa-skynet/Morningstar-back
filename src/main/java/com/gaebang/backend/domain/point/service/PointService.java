@@ -8,6 +8,7 @@ import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
 import com.gaebang.backend.domain.point.dto.response.CurrentPointResponseDto;
 import com.gaebang.backend.domain.point.dto.response.PointResponseDto;
 import com.gaebang.backend.domain.point.entity.Point;
+import com.gaebang.backend.domain.point.entity.PointType;
 import com.gaebang.backend.domain.point.exception.InsufficientFundsException;
 import com.gaebang.backend.domain.point.exception.PointCreationRetryExhaustedException;
 import com.gaebang.backend.domain.point.repository.PointRepository;
@@ -147,6 +148,23 @@ public class PointService {
                 member.getId(), pointRequestDto.amount(), calculatedPoint);
 
         return PointResponseDto.fromEntity(newPoint);
+    }
+
+    /**
+     * 질문 포인트 차감 (공통 로직) - 10포인트 고정 차감
+     * @param principalDetails 사용자 정보
+     * @throws InsufficientFundsException 포인트 부족 시
+     */
+    public void deductQuestionPoints(PrincipalDetails principalDetails) {
+        PointRequestDto pointRequest = PointRequestDto.builder()
+                .amount(-10) // 10포인트 차감
+                .type(PointType.QUESTION)
+                .build();
+        
+        createPoint(pointRequest, principalDetails);
+        
+        log.info("질문 포인트 차감 완료 - 회원ID: {}, 차감 포인트: 10", 
+                principalDetails.getMember().getId());
     }
 
     /**

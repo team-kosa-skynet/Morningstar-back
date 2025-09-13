@@ -6,7 +6,9 @@ public enum PointType {
     ATTENDANCE("출석"),
     BOARD("게시글"),
     COMMENT("댓글"),
-    FEEDBACK("피드백");
+    FEEDBACK("피드백"),
+    QUESTION("질문"),
+    INTERVIEW("면접");
 
     private final String description;  // 필드
 

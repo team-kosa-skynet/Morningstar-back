@@ -13,10 +13,12 @@ import com.gaebang.backend.domain.question.claude.dto.request.ClaudeQuestionRequ
 import com.gaebang.backend.domain.question.claude.util.ClaudeQuestionProperties;
 import com.gaebang.backend.domain.question.common.service.FileProcessingService;
 import com.gaebang.backend.domain.question.common.util.QuestionServiceUtils;
+import com.gaebang.backend.domain.point.service.PointService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -38,6 +40,7 @@ public class ClaudeQuestionService {
     private final ObjectMapper objectMapper;
     private final ConversationService conversationService;
     private final FileProcessingService fileProcessingService;
+    private final PointService pointService;
 
     public SseEmitter createQuestionStream(
             Long conversationId,
@@ -46,6 +49,28 @@ public class ClaudeQuestionService {
     ) {
         Member member = QuestionServiceUtils.validateAndGetMember(principalDetails, memberRepository);
         SseEmitter emitter = new SseEmitter(300000L);
+
+        // 포인트 차감과 질문 저장을 트랜잭션으로 묶어서 처리
+        List<FileAttachmentDto> attachments = processQuestionWithTransaction(
+                conversationId, claudeQuestionRequestDto, principalDetails, member
+        );
+
+        // AI API 호출은 트랜잭션 외부에서 처리
+        performApiCallWithFiles(emitter, conversationId, claudeQuestionRequestDto.model(), claudeQuestionRequestDto, member, attachments);
+
+        QuestionServiceUtils.setupEmitterCallbacks(emitter, "Claude");
+        return emitter;
+    }
+
+    @Transactional
+    private List<FileAttachmentDto> processQuestionWithTransaction(
+            Long conversationId,
+            ClaudeQuestionRequestDto claudeQuestionRequestDto,
+            PrincipalDetails principalDetails,
+            Member member
+    ) {
+        // 질문 포인트 차감 (10포인트)
+        pointService.deductQuestionPoints(principalDetails);
 
         List<FileAttachmentDto> attachments = QuestionServiceUtils.processFiles(claudeQuestionRequestDto.files(), fileProcessingService);
 
@@ -62,10 +87,7 @@ public class ClaudeQuestionService {
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performApiCallWithFiles(emitter, conversationId, claudeQuestionRequestDto.model(), claudeQuestionRequestDto, member, attachments);
-
-        QuestionServiceUtils.setupEmitterCallbacks(emitter, "Claude");
-        return emitter;
+        return attachments;
     }
 
 
