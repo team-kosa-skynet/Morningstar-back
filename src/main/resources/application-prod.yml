@@ -14,6 +14,11 @@ spring:
       idle-timeout: 600000   # 10분
       max-lifetime: 1800000  # 30분
 
+  data:
+    redis:
+      host: redis
+      port: 6379
+
   jpa:
     show-sql: false
     hibernate:
