@@ -13,10 +13,12 @@ import com.gaebang.backend.domain.question.openai.dto.request.OpenaiQuestionRequ
 import com.gaebang.backend.domain.question.openai.util.OpenaiQuestionProperties;
 import com.gaebang.backend.domain.question.common.service.FileProcessingService;
 import com.gaebang.backend.domain.question.common.util.QuestionServiceUtils;
+import com.gaebang.backend.domain.point.service.PointService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -41,6 +43,7 @@ public class OpenaiQuestionService {
     private final ObjectMapper objectMapper;
     private final ConversationService conversationService;
     private final FileProcessingService fileProcessingService;
+    private final PointService pointService;
 
     public SseEmitter createQuestionStream(
             Long conversationId,
@@ -49,6 +52,28 @@ public class OpenaiQuestionService {
     ) {
         Member member = QuestionServiceUtils.validateAndGetMember(principalDetails, memberRepository);
         SseEmitter emitter = new SseEmitter(300000L);
+
+        // 포인트 차감과 질문 저장을 트랜잭션으로 묶어서 처리
+        List<FileAttachmentDto> attachments = processQuestionWithTransaction(
+                conversationId, openaiQuestionRequestDto, principalDetails, member
+        );
+
+        // AI API 호출은 트랜잭션 외부에서 처리
+        performApiCallWithFiles(emitter, conversationId, openaiQuestionRequestDto.model(), openaiQuestionRequestDto, member, attachments);
+
+        QuestionServiceUtils.setupEmitterCallbacks(emitter, "OpenAI");
+        return emitter;
+    }
+
+    @Transactional
+    private List<FileAttachmentDto> processQuestionWithTransaction(
+            Long conversationId,
+            OpenaiQuestionRequestDto openaiQuestionRequestDto,
+            PrincipalDetails principalDetails,
+            Member member
+    ) {
+        // 질문 포인트 차감 (10포인트)
+        pointService.deductQuestionPoints(principalDetails);
 
         List<FileAttachmentDto> attachments = QuestionServiceUtils.processFiles(openaiQuestionRequestDto.files(), fileProcessingService);
 
@@ -65,10 +90,7 @@ public class OpenaiQuestionService {
         );
         conversationService.addQuestion(conversationId, member.getId(), questionRequest);
 
-        performApiCallWithFiles(emitter, conversationId, openaiQuestionRequestDto.model(), openaiQuestionRequestDto, member, attachments);
-
-        QuestionServiceUtils.setupEmitterCallbacks(emitter, "OpenAI");
-        return emitter;
+        return attachments;
     }
 
     public SseEmitter generateImageInConversation(

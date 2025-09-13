@@ -150,6 +150,23 @@ public class PointService {
     }
 
     /**
+     * 질문 포인트 차감 (공통 로직) - 10포인트 고정 차감
+     * @param principalDetails 사용자 정보
+     * @throws InsufficientFundsException 포인트 부족 시
+     */
+    public void deductQuestionPoints(PrincipalDetails principalDetails) {
+        PointRequestDto pointRequest = PointRequestDto.builder()
+                .amount(-10) // 10포인트 차감
+                .type(PointType.QUESTION)
+                .build();
+        
+        createPoint(pointRequest, principalDetails);
+        
+        log.info("질문 포인트 차감 완료 - 회원ID: {}, 차감 포인트: 10", 
+                principalDetails.getMember().getId());
+    }
+
+    /**
      * 포인트 변경에 따른 회원 티어 업데이트 (필요한 경우에만)
      * 재시도 로직을 포함하여 안정성 보장
      */
