@@ -26,6 +26,10 @@ import com.gaebang.backend.domain.interview.repository.UploadedDocumentRepositor
 import com.gaebang.backend.domain.interview.util.PlanParser;
 import com.gaebang.backend.domain.member.entity.Member;
 import com.gaebang.backend.domain.member.repository.MemberRepository;
+import com.gaebang.backend.domain.point.dto.request.PointRequestDto;
+import com.gaebang.backend.domain.point.entity.PointType;
+import com.gaebang.backend.domain.point.service.PointService;
+import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -53,6 +57,7 @@ public class InterviewService {
     private final PlanParser planParser;
     private final QuestionCatalog questionCatalog;
     private final TtsService ttsService;
+    private final PointService pointService;
     
     @Value("${tts.default-format:mp3}")
     private String defaultTtsFormat;
@@ -68,7 +73,7 @@ public class InterviewService {
                             MemberRepository memberRepository,
                             UploadedDocumentRepository uploadedDocumentRepository,
                             PlanParser planParser, QuestionCatalog questionCatalog,
-                            TtsService ttsService) {
+                            TtsService ttsService, PointService pointService) {
         this.interviewSessionRepository = interviewSessionRepository;
         this.interviewAnswerRepository = interviewAnswerRepository;
         this.memberRepository = memberRepository;
@@ -79,6 +84,7 @@ public class InterviewService {
         this.planParser = planParser;
         this.questionCatalog = questionCatalog;
         this.ttsService = ttsService;
+        this.pointService = pointService;
     }
     
     /**
@@ -89,9 +95,16 @@ public class InterviewService {
     }
 
     @Transactional
-    public StartSessionResponseDto start(Long memberId, StartSessionRequestDto req, boolean withAudio) throws Exception {
+    public StartSessionResponseDto start(PrincipalDetails principalDetails, StartSessionRequestDto req, boolean withAudio) throws Exception {
+        Long memberId = principalDetails.getMember().getId();
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new IllegalArgumentException("member not found: " + memberId));
+
+        PointRequestDto pointRequestDto = PointRequestDto.builder()
+                .type(PointType.INTERVIEW)
+                .amount(-50)
+                .build();
+        pointService.createPoint(pointRequestDto, principalDetails);
 
         String displayName = (req.displayName() != null && !req.displayName().isBlank())
                 ? req.displayName()
@@ -184,7 +197,8 @@ public class InterviewService {
     }
 
     @Transactional
-    public NextTurnResponseDto nextTurn(TurnRequestDto req, Long memberId, boolean withAudio) throws Exception {
+    public NextTurnResponseDto nextTurn(TurnRequestDto req, PrincipalDetails principalDetails, boolean withAudio) throws Exception {
+        Long memberId = principalDetails.getMember().getId();
         long methodStart = System.nanoTime();
         log.info("[PERF] nextTurn 메서드 시작 - session: {}, question: {}, withAudio: {}", 
                 req.sessionId(), req.questionIndex(), withAudio);
@@ -321,7 +335,8 @@ public class InterviewService {
     }
 
     @Transactional(readOnly = true)
-    public FinalizeReportResponseDto finalizeReport(UUID sessionId, Long memberId) throws Exception {
+    public FinalizeReportResponseDto finalizeReport(UUID sessionId, PrincipalDetails principalDetails) throws Exception {
+        Long memberId = principalDetails.getMember().getId();
         InterviewSession session = interviewSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new IllegalArgumentException("session not found: " + sessionId));
         if (!session.getMember().getId().equals(memberId)) {

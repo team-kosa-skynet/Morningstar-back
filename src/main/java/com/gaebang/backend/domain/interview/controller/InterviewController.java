@@ -46,9 +46,8 @@ public class InterviewController {
                                                                        @AuthenticationPrincipal PrincipalDetails principalDetails,
                                                                        @RequestParam(required = false) Boolean withAudio
     ) throws Exception {
-        Long memberId = principalDetails.getMember().getId();
         boolean includeAudio = (withAudio != null) ? withAudio : defaultWithAudio;
-        StartSessionResponseDto result = interviewService.start(memberId, req, includeAudio);
+        StartSessionResponseDto result = interviewService.start(principalDetails, req, includeAudio);
         ResponseDTO<StartSessionResponseDto> response = ResponseDTO.okWithData(result, "면접 세션이 성공적으로 시작되었습니다.");
         return ResponseEntity.status(response.getCode()).body(response);
     }
@@ -58,9 +57,8 @@ public class InterviewController {
                                                                  @AuthenticationPrincipal PrincipalDetails principalDetails,
                                                                  @RequestParam(required = false) Boolean withAudio
     ) throws Exception {
-        Long memberId = principalDetails.getMember().getId();
         boolean includeAudio = (withAudio != null) ? withAudio : defaultWithAudio;
-        NextTurnResponseDto result = interviewService.nextTurn(req, memberId, includeAudio);
+        NextTurnResponseDto result = interviewService.nextTurn(req, principalDetails, includeAudio);
         ResponseDTO<NextTurnResponseDto> response = ResponseDTO.okWithData(result, "면접 답변이 성공적으로 처리되었습니다.");
         return ResponseEntity.status(response.getCode()).body(response);
     }
@@ -68,8 +66,7 @@ public class InterviewController {
     @PostMapping("/report/finalize")
     public ResponseEntity<ResponseDTO<FinalizeReportResponseDto>> finalizeReport(@RequestBody FinalizeReportRequestDto dto,
                                                                                  @AuthenticationPrincipal PrincipalDetails principalDetails) throws Exception {
-        Long memberId = principalDetails.getMember().getId();
-        FinalizeReportResponseDto result = interviewService.finalizeReport(dto.sessionId(), memberId);
+        FinalizeReportResponseDto result = interviewService.finalizeReport(dto.sessionId(), principalDetails);
         ResponseDTO<FinalizeReportResponseDto> response = ResponseDTO.okWithData(result, "면접 보고서가 성공적으로 생성되었습니다.");
         return ResponseEntity.status(response.getCode()).body(response);
     }
