@@ -34,7 +34,7 @@ public class Point extends BaseTimeEntity {
     private Integer amount;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 20)
     private PointType type;
 
     // 누적 입금 합계
