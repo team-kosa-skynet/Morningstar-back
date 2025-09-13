@@ -23,9 +23,15 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.MySQLDialect
 
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
 logging:
   level:
     "[org.springframework.security]": DEBUG
+    org.springframework.data.redis: INFO
 
 
 news:

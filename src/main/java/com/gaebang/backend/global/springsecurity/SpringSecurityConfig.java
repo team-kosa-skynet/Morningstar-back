@@ -93,6 +93,8 @@ public class SpringSecurityConfig {
                 .requestMatchers(new AntPathRequestMatcher("/api/boards/search")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/boards")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/boards/{boardId}")).permitAll()
+                // 임시
+                .requestMatchers(new AntPathRequestMatcher("/api/boards/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/api/s3/upload/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/items/**")).permitAll()
                 .requestMatchers(new AntPathRequestMatcher("/free-boards/**")).permitAll()
