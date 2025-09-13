@@ -168,6 +168,22 @@ public class PointService {
     }
 
     /**
+     * 피드백 포인트 적립 (공통 로직) - 10포인트 고정 적립
+     * @param principalDetails 사용자 정보
+     */
+    public void rewardFeedbackPoints(PrincipalDetails principalDetails) {
+        PointRequestDto pointRequest = PointRequestDto.builder()
+                .amount(10) // 10포인트 적립
+                .type(PointType.FEEDBACK)
+                .build();
+        
+        createPoint(pointRequest, principalDetails);
+        
+        log.info("피드백 포인트 적립 완료 - 회원ID: {}, 적립 포인트: 10",
+                principalDetails.getMember().getId());
+    }
+
+    /**
      * 포인트 변경에 따른 회원 티어 업데이트 (필요한 경우에만)
      * 재시도 로직을 포함하여 안정성 보장
      */
