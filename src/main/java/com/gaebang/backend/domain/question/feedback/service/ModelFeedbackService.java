@@ -12,6 +12,7 @@ import com.gaebang.backend.domain.question.feedback.entity.ModelFeedback;
 import com.gaebang.backend.domain.question.feedback.exception.InvalidFeedbackCategoryException;
 import com.gaebang.backend.domain.question.common.exception.ModelNotFoundException;
 import com.gaebang.backend.domain.question.feedback.repository.ModelFeedbackRepository;
+import com.gaebang.backend.domain.point.service.PointService;
 import com.gaebang.backend.global.springsecurity.PrincipalDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,6 +30,7 @@ public class ModelFeedbackService {
     private final ModelFeedbackRepository modelFeedbackRepository;
     private final MemberRepository memberRepository;
     private final AiModelRepository aiModelRepository;
+    private final PointService pointService;
     
     public FeedbackOptionsResponseDto getFeedbackOptions() {
         return FeedbackOptionsResponseDto.create();
@@ -84,6 +86,9 @@ public class ModelFeedbackService {
         // 피드백 엔티티 생성 및 저장
         ModelFeedback feedback = requestDto.toEntity(member);
         ModelFeedback savedFeedback = modelFeedbackRepository.save(feedback);
+
+        // 피드백 제출 보상 포인트 적립 (10포인트)
+        pointService.rewardFeedbackPoints(principalDetails);
 
         return SubmitFeedbackResponseDto.fromEntity(savedFeedback);
     }

@@ -151,19 +151,35 @@ public class PointService {
     }
 
     /**
-     * 질문 포인트 차감 (공통 로직) - 10포인트 고정 차감
+     * 질문 포인트 차감 (공통 로직) - 5포인트 고정 차감
      * @param principalDetails 사용자 정보
      * @throws InsufficientFundsException 포인트 부족 시
      */
     public void deductQuestionPoints(PrincipalDetails principalDetails) {
         PointRequestDto pointRequest = PointRequestDto.builder()
-                .amount(-10) // 10포인트 차감
+                .amount(-5) // 5포인트 차감
                 .type(PointType.QUESTION)
                 .build();
         
         createPoint(pointRequest, principalDetails);
         
-        log.info("질문 포인트 차감 완료 - 회원ID: {}, 차감 포인트: 10", 
+        log.info("질문 포인트 차감 완료 - 회원ID: {}, 차감 포인트: 5",
+                principalDetails.getMember().getId());
+    }
+
+    /**
+     * 피드백 포인트 적립 (공통 로직) - 10포인트 고정 적립
+     * @param principalDetails 사용자 정보
+     */
+    public void rewardFeedbackPoints(PrincipalDetails principalDetails) {
+        PointRequestDto pointRequest = PointRequestDto.builder()
+                .amount(10) // 10포인트 적립
+                .type(PointType.FEEDBACK)
+                .build();
+        
+        createPoint(pointRequest, principalDetails);
+        
+        log.info("피드백 포인트 적립 완료 - 회원ID: {}, 적립 포인트: 10",
                 principalDetails.getMember().getId());
     }
 
