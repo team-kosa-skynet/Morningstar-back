@@ -20,7 +20,7 @@ public class NewsDataController {
 
     private final NewsDataService newsDataService;
 
-    // 뉴스 전체 조회
+    // 뉴스 전체 조회 - test를 위한 주석 수정
     @GetMapping("")
     public ResponseEntity<ResponseDTO<List<NewsDataResponseDTO>>> getNewsData() {
         List<NewsDataResponseDTO> newsData = newsDataService.getNewsData();
